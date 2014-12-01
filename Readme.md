@@ -2,7 +2,7 @@
 
 ## What's this?
 
-C++ Advent Calendar 2014のネタとして作成したVST3ホストアプリケーションです。
+[C++ Advent Calendar 2014](http://hwm.hatenablog.com/entry/2014/12/01/233320) のネタとして作成したVST3ホストアプリケーションです。
 VST3のプラグインををロードして、音を鳴らせます。
 
 ## 機能 

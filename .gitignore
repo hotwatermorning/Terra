@@ -1,0 +1,12 @@
+*.*
+!*.cpp
+!*.hpp
+!*.txt
+!*.sln
+!*.vcxproj
+!*.vcxproj.filters
+!*.gitignore
+!*.md
+
+Debug/
+Release/

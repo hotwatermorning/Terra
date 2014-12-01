@@ -25,6 +25,8 @@ VST3プラグインをドラッグアンドドロップすると、そのプラ�
 
 ## プログラムのビルド方法
 
+Visual Studio 2013でビルドが可能なのを確認しています
+
 1. [Steinberg](http://japan.steinberg.net/)から、VST 3.6のSDKをダウンロードし、ソリューション内のvst3ディレクトリに展開したファイルをコピーする。
  1. ちょうど、`base`, `pluginterfaces`, `public.sdk`がvst3ディレクトリの下に配置されるようにする
 

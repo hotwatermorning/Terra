@@ -1,22 +1,12 @@
 #pragma once
 
 #include <memory>
-#include <Windows.h>
+#include <utility>
 
-#include "./vst3/pluginterfaces/base/ftypes.h"
-#include "./vst3/pluginterfaces/base/ipluginbase.h"
+#include "pluginterfaces/base/ftypes.h"
+#include "pluginterfaces/base/ipluginbase.h"
 
-namespace hwm {
-
-struct ModuleReleaser
-{
-	template<class Handle>
-	void operator() (Handle handle) {
-		if(handle) {
-			FreeLibrary(handle);
-		}
-	}
-};
+NS_HWM_BEGIN
 
 struct SelfReleaser
 {
@@ -28,7 +18,6 @@ struct SelfReleaser
 	}
 };
 
-typedef std::unique_ptr<std::remove_pointer<HMODULE>::type, ModuleReleaser> module_holder;
 typedef std::unique_ptr<Steinberg::IPluginFactory, SelfReleaser> factory_ptr;
 
 template<class T>
@@ -37,8 +26,8 @@ std::unique_ptr<T, SelfReleaser>  to_unique(T *p)
 	return std::unique_ptr<T, SelfReleaser>(p);
 }
 
-//! ¸”s‚©¬Œ÷‚©‚Ç‚¿‚ç‚©‚Ìó‹µ‚ğ•Ô‚·ƒNƒ‰ƒX
-//! is_right() == true‚Ì‚Í¬Œ÷‚Ìó‹µ
+//! å¤±æ•—ã‹æˆåŠŸã‹ã©ã¡ã‚‰ã‹ã®çŠ¶æ³ã‚’è¿”ã™ã‚¯ãƒ©ã‚¹
+//! is_right() == trueã®æ™‚ã¯æˆåŠŸã®çŠ¶æ³
 template<class Left, class Right>
 struct Either
 {
@@ -64,25 +53,25 @@ struct Either
 
 	Left &			left	()
 	{
-		BOOST_ASSERT(!is_right());
+		assert(!is_right());
 		return left_;
 	}
 
 	Left const &	left	() const
 	{
-		BOOST_ASSERT(!is_right());
+		assert(!is_right());
 		return left_;
 	}
 
 	Right &			right	()
 	{
-		BOOST_ASSERT(is_right());
+		assert(is_right());
 		return right_;
 	}
 
 	Right const &	right	() const
 	{
-		BOOST_ASSERT(is_right());
+		assert(is_right());
 		return right_;
 	}
 
@@ -122,13 +111,13 @@ private:
 	Right right_;
 };
 
-//! p‚É‘Î‚µ‚ÄqueryInterface‚ğŒÄ‚Ño‚µA‚»‚ÌŒ‹‰Ê‚ğ•Ô‚·B
+//! pã«å¯¾ã—ã¦queryInterfaceã‚’å‘¼ã³å‡ºã—ã€ãã®çµæœã‚’è¿”ã™ã€‚
 /*!
-	@return queryInterface‚ª³í‚ÉŠ®—¹‚µA—LŒø‚Èƒ|ƒCƒ“ƒ^‚ª•Ô‚Á‚Ä‚«‚½ê‡‚ÍA
-	Right‚ÌƒIƒuƒWƒFƒNƒg‚ªİ’è‚³‚ê‚½Either‚ª•Ô‚éB
-	queryInterface‚ªkResultTrueˆÈŠO‚ğ•Ô‚µ‚Ä¸”s‚µ‚½ê‡‚ÍA‚»‚ÌƒGƒ‰[ƒR[ƒh‚ğLeft‚Éİ’è‚·‚éB
-	queryInterface‚É‚æ‚Á‚Äæ“¾‚³‚ê‚½ƒ|ƒCƒ“ƒ^‚ªnullptr‚¾‚Á‚½ê‡‚ÍAkNoInterface‚ğLeft‚Éİ’è‚·‚éBB
-	@note 	¸”s‚µ‚½‚ÉA‚»‚ÌƒGƒ‰[ƒR[ƒh‚ª•K—v‚É‚È‚é‚±‚Æ‚ğl‚¦‚ÄABoost.Optional‚Å‚Í‚È‚­AEither‚ğ•Ô‚·‚æ‚¤‚É‚µ‚½
+	@return queryInterfaceãŒæ­£å¸¸ã«å®Œäº†ã—ã€æœ‰åŠ¹ãªãƒã‚¤ãƒ³ã‚¿ãŒè¿”ã£ã¦ããŸå ´åˆã¯ã€
+	Rightã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆãŒè¨­å®šã•ã‚ŒãŸEitherãŒè¿”ã‚‹ã€‚
+	queryInterfaceãŒkResultTrueä»¥å¤–ã‚’è¿”ã—ã¦å¤±æ•—ã—ãŸå ´åˆã¯ã€ãã®ã‚¨ãƒ©ãƒ¼ã‚³ãƒ¼ãƒ‰ã‚’Leftã«è¨­å®šã™ã‚‹ã€‚
+	queryInterfaceã«ã‚ˆã£ã¦å–å¾—ã•ã‚ŒãŸãƒã‚¤ãƒ³ã‚¿ãŒnullptrã ã£ãŸå ´åˆã¯ã€kNoInterfaceã‚’Leftã«è¨­å®šã™ã‚‹ã€‚ã€‚
+	@note 	å¤±æ•—ã—ãŸæ™‚ã«ã€ãã®ã‚¨ãƒ©ãƒ¼ã‚³ãƒ¼ãƒ‰ãŒå¿…è¦ã«ãªã‚‹ã“ã¨ã‚’è€ƒãˆã¦ã€Boost.Optionalã§ã¯ãªãã€Eitherã‚’è¿”ã™ã‚ˆã†ã«ã—ãŸ
 */
 template<class To, class T>
 Either<Steinberg::tresult, std::unique_ptr<To, SelfReleaser>> queryInterface_impl(T *p, Steinberg::FIDString iid)
@@ -136,13 +125,13 @@ Either<Steinberg::tresult, std::unique_ptr<To, SelfReleaser>> queryInterface_imp
 	typedef Either<Steinberg::tresult, std::unique_ptr<To, SelfReleaser>> either_t;
 	To *obtained = nullptr;
 	Steinberg::tresult const res = p->queryInterface(iid, (void **)&obtained);
-	if(res == kResultTrue && obtained) {
+	if(res == Steinberg::kResultTrue && obtained) {
 		return either_t(to_unique(obtained));
 	} else {
-		if(res != kResultTrue) {
+		if(res != Steinberg::kResultTrue) {
 			return either_t(res);
 		} else {
-			return kNoInterface;
+			return Steinberg::kNoInterface;
 		}
 	}
 }
@@ -176,25 +165,25 @@ Either<Steinberg::tresult, std::unique_ptr<To, SelfReleaser>> createInstance_imp
 	To *obtained = nullptr;
 
 	Steinberg::tresult const res = factory->createInstance(class_id, iid, (void **)&obtained);
-	if(res == kResultTrue && obtained) {
+	if(res == Steinberg::kResultTrue && obtained) {
 		return either_t(to_unique(obtained));
 	} else {
 		return either_t(res);
 	}
 }
 
-//! ‚È‚ñ‚ç‚©‚Ìƒtƒ@ƒNƒgƒŠƒNƒ‰ƒX‚©‚ç‚ ‚éƒRƒ“ƒ|[ƒlƒ“ƒg‚ğæ“¾‚·‚éB
+//! ãªã‚“ã‚‰ã‹ã®ãƒ•ã‚¡ã‚¯ãƒˆãƒªã‚¯ãƒ©ã‚¹ã‹ã‚‰ã‚ã‚‹ã‚³ãƒ³ãƒãƒ¼ãƒãƒ³ãƒˆã‚’å–å¾—ã™ã‚‹ã€‚
 template<class To, class FactoryPointer>
 Either<Steinberg::tresult, std::unique_ptr<To, SelfReleaser>> createInstance(FactoryPointer const &factory, Steinberg::FUID class_id, Steinberg::FIDString iid)
 {
 	return createInstance_impl<To>(prevent_adl::get_raw_pointer(factory), class_id, iid);
 }
 
-//! ‚È‚ñ‚ç‚©‚Ìƒtƒ@ƒNƒgƒŠƒNƒ‰ƒX‚©‚ç‚ ‚éƒRƒ“ƒ|[ƒlƒ“ƒg‚ğæ“¾‚·‚éB
+//! ãªã‚“ã‚‰ã‹ã®ãƒ•ã‚¡ã‚¯ãƒˆãƒªã‚¯ãƒ©ã‚¹ã‹ã‚‰ã‚ã‚‹ã‚³ãƒ³ãƒãƒ¼ãƒãƒ³ãƒˆã‚’å–å¾—ã™ã‚‹ã€‚
 template<class To, class FactoryPointer>
 Either<Steinberg::tresult, std::unique_ptr<To, SelfReleaser>> createInstance(FactoryPointer const &factory, Steinberg::FUID class_id)
 {
 	return createInstance_impl<To>(prevent_adl::get_raw_pointer(factory), class_id, To::iid);
 }
 
-}	// ::hwm
+NS_HWM_END

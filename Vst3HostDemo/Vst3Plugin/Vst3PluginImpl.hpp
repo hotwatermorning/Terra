@@ -6,36 +6,29 @@
 #include <atomic>
 #include <vector>
 
-#include <boost/assert.hpp>
-#include <boost/optional.hpp>
-#include <boost/thread/mutex.hpp>
-
-#include "../vst3/pluginterfaces/base/ftypes.h"
-#include "../vst3/pluginterfaces/base/ipluginbase.h"
-#include "../vst3/pluginterfaces/vst/ivsteditcontroller.h"
-#include "../vst3/pluginterfaces/vst/ivstcomponent.h"
-#include "../vst3/pluginterfaces/vst/ivstaudioprocessor.h"
-#include "../vst3/pluginterfaces/vst/ivstmessage.h"
-#include "../vst3/pluginterfaces/vst/ivsthostapplication.h"
-#include "../vst3/pluginterfaces/vst/ivstprocesscontext.h"
-#include "../vst3/pluginterfaces/vst/ivstunits.h"
-#include "../vst3/pluginterfaces/gui/iplugview.h"
-#include "../vst3/pluginterfaces/vst/ivstevents.h"
-#include "../vst3/pluginterfaces/base/ustring.h"
-#include "../vst3/pluginterfaces/vst/vstpresetkeys.h"
+#include "pluginterfaces/base/ftypes.h"
+#include "pluginterfaces/base/ipluginbase.h"
+#include "pluginterfaces/vst/ivsteditcontroller.h"
+#include "pluginterfaces/vst/ivstcomponent.h"
+#include "pluginterfaces/vst/ivstaudioprocessor.h"
+#include "pluginterfaces/vst/ivstmessage.h"
+#include "pluginterfaces/vst/ivsthostapplication.h"
+#include "pluginterfaces/vst/ivstprocesscontext.h"
+#include "pluginterfaces/vst/ivstunits.h"
+#include "pluginterfaces/gui/iplugview.h"
+#include "pluginterfaces/vst/ivstevents.h"
+#include "pluginterfaces/base/ustring.h"
+#include "pluginterfaces/vst/vstpresetkeys.h"
 
 #include "../Vst3Utils.hpp"
 #include "../Vst3Plugin.hpp"
 #include "../Vst3PluginFactory.hpp"
-#include "../vst3/public.sdk/source/common/memorystream.h"
-#include "../vst3/public.sdk/source/vst/hosting/eventlist.h"
-#include "../vst3/public.sdk/source/vst/hosting/parameterchanges.h"
 
-#include "../flag.hpp"
+#include "../Flag.hpp"
 #include "../Buffer.hpp"
-#include "../debugger_output.hpp"
+#include <experimental/optional>
 
-namespace hwm {
+NS_HWM_BEGIN
 
 using namespace Steinberg;
 
@@ -103,14 +96,14 @@ struct Vst3Plugin::Impl
 
 		Vst::ParameterInfo const & GetInfoByIndex(size_type index) const
 		{
-			BOOST_ASSERT(index < parameters_.size());
+			assert(index < parameters_.size());
 			return parameters_[index];
 		}
 
 		size_type
 			IDToIndex(Vst::ParamID id) const
 		{
-			BOOST_ASSERT(param_id_to_index_.find(id) != param_id_to_index_.end());
+			assert(param_id_to_index_.find(id) != param_id_to_index_.end());
 			return param_id_to_index_.find(id)->second;
 		}
 
@@ -133,7 +126,7 @@ struct Vst3Plugin::Impl
 
 	struct ProgramInfo
 	{
-		balor::String		name_;
+		String		        name_;
 		Vst::ProgramListID	list_id_;
 		Steinberg::int32	index_;
 	};
@@ -150,8 +143,11 @@ struct Vst3Plugin::Impl
 	Vst::ParameterChanges output_changes_;
 
 public:
-	Impl(IPluginFactory *factory, ClassInfo const &info, host_context_type host_context);
-	~Impl();
+	Impl(IPluginFactory *factory,
+         ClassInfo const &info,
+         host_context_type host_context);
+
+    ~Impl();
 
 	Impl(Impl &&) = delete;
 	Impl &operator=(Impl &&) = delete;
@@ -166,13 +162,13 @@ public:
 	Vst::IEditController *	GetEditController	() const;
 	Vst::IEditController2 *	GetEditController2	() const;
 
-	balor::String GetEffectName() const;
+	String GetEffectName() const;
 
 	size_t GetNumOutputs() const;
 
 	bool HasEditor() const;
 
-	bool OpenEditor(HWND parent, IPlugFrame *frame);
+	//bool OpenEditor(HWND parent, IPlugFrame *frame);
 
 	void CloseEditor();
 
@@ -196,7 +192,7 @@ public:
 
 	size_t	GetProgramCount() const;
 
-	balor::String GetProgramName(size_t index) const;
+	String GetProgramName(size_t index) const;
 
 	Vst::ParamValue
 		NormalizeProgramIndex(size_t index) const;
@@ -213,11 +209,11 @@ public:
 
 //! Parameter Change
 public:
-	//! TakeParameterChangesÇ∆ÇÃåƒÇ—èoÇµÇÕÉXÉåÉbÉhÉZÅ[Ét
+	//! TakeParameterChanges„Å®„ÅÆÂëº„Å≥Âá∫„Åó„ÅØ„Çπ„É¨„ÉÉ„Éâ„Çª„Éº„Éï
 	void EnqueueParameterChange(Vst::ParamID id, Vst::ParamValue value);
 
 private:
-	//! EnqueueParameterChangeÇ∆ÇÃåƒÇ—èoÇµÇÕÉXÉåÉbÉhÉZÅ[Ét
+	//! EnqueueParameterChange„Å®„ÅÆÂëº„Å≥Âá∫„Åó„ÅØ„Çπ„É¨„ÉÉ„Éâ„Çª„Éº„Éï
 	void TakeParameterChanges(Vst::ParameterChanges &dest);
 
 private:
@@ -237,7 +233,7 @@ private:
 
 	void UnloadPlugin();
 
-//! ÉfÉoÉbÉOópä÷êî
+//! „Éá„Éê„ÉÉ„Ç∞Áî®Èñ¢Êï∞
 private:
 	std::wstring
 			UnitInfoToString(Steinberg::Vst::UnitInfo const &info);
@@ -255,11 +251,11 @@ private:
 
 	void OutputBusInfo(Vst::IComponent *component, Vst::IEditController *edit_controller);
 
-	boost::mutex			parameter_queue_mutex_;
+	std::mutex			parameter_queue_mutex_;
 	Vst::ParameterChanges	param_changes_queue_;
 
 private:
-	boost::optional<ClassInfo> plugin_info_;
+    std::experimental::optional<ClassInfo> plugin_info_;
 	component_ptr_t			component_;
 	audio_processor_ptr_t	audio_processor_;
 	edit_controller_ptr_t	edit_controller_;
@@ -271,7 +267,7 @@ private:
 	program_list_data_ptr_t	program_list_data_;
 	Steinberg::int32		current_program_index_;
 	std::vector<ProgramInfo> programs_;
-	Steinberg::Vst::ParamID	parameter_for_program_; //PresetÇï\Ç∑ParameterÇÃID
+	Steinberg::Vst::ParamID	parameter_for_program_; //Preset„ÇíË°®„ÅôParameter„ÅÆID
 
 	Flag					is_processing_started_;
 	Flag					edit_controller_is_created_new_;
@@ -299,7 +295,7 @@ private:
 		State note_state_;
 	};
 
-	boost::mutex note_mutex_;
+	std::mutex note_mutex_;
 	std::vector<Note> notes_;
 
 	struct AudioBus
@@ -443,4 +439,4 @@ private:
 	AudioBuses input_buses_;
 };
 
-} // ::hwm
+NS_HWM_END

@@ -1,6 +1,8 @@
 #pragma once
 
-namespace hwm {
+#include <vector>
+
+NS_HWM_BEGIN
 
 template<class T>
 struct Buffer
@@ -55,4 +57,4 @@ public:
 	size_t sample_;
 };
 
-}	// hwm
+NS_HWM_END

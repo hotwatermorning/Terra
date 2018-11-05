@@ -3,28 +3,24 @@
 #include <array>
 #include <memory>
 
-#include <boost/function.hpp>
-#include <boost/optional.hpp>
+#include <functional>
 
-#include <balor/String.hpp>
-
-#include <Windows.h>
-
-#include "vst3/pluginterfaces/gui/iplugview.h"
-#include "vst3/pluginterfaces/base/ipluginbase.h"
-#include "vst3/pluginterfaces/vst/ivstcomponent.h"
-#include "vst3/pluginterfaces/vst/ivsteditcontroller.h"
+#include "pluginterfaces/gui/iplugview.h"
+#include "pluginterfaces/base/ipluginbase.h"
+#include "pluginterfaces/vst/ivstcomponent.h"
+#include "pluginterfaces/vst/ivsteditcontroller.h"
 #include "./Vst3Utils.hpp"
 
+NS_HWM_BEGIN
+    
+using String = std::wstring;
 
-namespace hwm {
-
-//! VST3‚Ìƒvƒ‰ƒOƒCƒ“‚ğ•\‚·ƒNƒ‰ƒX
+//! VST3ã®ãƒ—ãƒ©ã‚°ã‚¤ãƒ³ã‚’è¡¨ã™ã‚¯ãƒ©ã‚¹
 /*!
-	Vst3PluginFactory‚©‚çì¬‰Â”\
-	Vst3PluginFactory‚É‚æ‚Á‚Äƒ[ƒh‚³‚ê‚½ƒ‚ƒWƒ…[ƒ‹i.vst3ƒtƒ@ƒCƒ‹j‚ªƒAƒ“ƒ[ƒh‚³‚ê‚Ä‚µ‚Ü‚¤‚½‚ßA
-	ì¬‚µ‚½Vst3Plugin‚ª”jŠü‚³‚ê‚é‚Ü‚ÅAVst3PluginFactory‚ğ”jŠü‚µ‚Ä‚Í‚È‚ç‚È‚¢B
-	=> ƒ‚ƒWƒ…[ƒ‹‚ğshared_ptr‚ÅŠÇ—‚µ‚Ä‚»‚ê‚¼‚ê‚ÌVst3Plugin‚É‚½‚¹‚Ä‚à‚¢‚¢‚©‚à‚µ‚ê‚È‚¢
+	Vst3PluginFactoryã‹ã‚‰ä½œæˆå¯èƒ½
+	Vst3PluginFactoryã«ã‚ˆã£ã¦ãƒ­ãƒ¼ãƒ‰ã•ã‚ŒãŸãƒ¢ã‚¸ãƒ¥ãƒ¼ãƒ«ï¼ˆ.vst3ãƒ•ã‚¡ã‚¤ãƒ«ï¼‰ãŒã‚¢ãƒ³ãƒ­ãƒ¼ãƒ‰ã•ã‚Œã¦ã—ã¾ã†ãŸã‚ã€
+	ä½œæˆã—ãŸVst3PluginãŒç ´æ£„ã•ã‚Œã‚‹ã¾ã§ã€Vst3PluginFactoryã‚’ç ´æ£„ã—ã¦ã¯ãªã‚‰ãªã„ã€‚
+	=> ãƒ¢ã‚¸ãƒ¥ãƒ¼ãƒ«ã‚’shared_ptrã§ç®¡ç†ã—ã¦ãã‚Œãã‚Œã®Vst3Pluginã«æŒãŸã›ã¦ã‚‚ã„ã„ã‹ã‚‚ã—ã‚Œãªã„
 */
 class Vst3Plugin
 {
@@ -54,15 +50,14 @@ public:
 	friend ParameterAccessor;
 
 public:
-	Vst3Plugin(std::unique_ptr<Impl> pimpl);
-	Vst3Plugin(Vst3Plugin &&rhs);
-	Vst3Plugin & operator=(Vst3Plugin &&rhs);
+	Vst3Plugin(std::unique_ptr<Impl> pimpl,
+               std::function<void(Vst3Plugin const *p)> on_destruction);
 	virtual ~Vst3Plugin();
 
 	ParameterAccessor &			GetParams();
 	ParameterAccessor const &	GetParams() const;
 
-	balor::String GetEffectName() const;
+	String GetEffectName() const;
 	size_t	GetNumOutputs() const;
 	void	Resume();
 	void	Suspend();
@@ -71,7 +66,7 @@ public:
 	void	SetSamplingRate(int sampling_rate);
 
 	bool	HasEditor		() const;
-	bool	OpenEditor		(HWND wnd, Steinberg::IPlugFrame *frame);
+	//bool	OpenEditor		(HWND wnd, Steinberg::IPlugFrame *frame);
 	void	CloseEditor		();
 	bool	IsEditorOpened	() const;
 	Steinberg::ViewRect
@@ -81,15 +76,14 @@ public:
 	void	AddNoteOff(int note_number);
 
 	size_t	GetProgramCount() const;
-	balor::String
-			GetProgramName(size_t index) const;
+	String  GetProgramName(size_t index) const;
 
 	size_t	GetProgramIndex() const;
 
 	void	SetProgramIndex(size_t index);
 
-	//! ƒpƒ‰ƒ[ƒ^‚Ì•ÏX‚ğŸ‰ñ‚ÌÄ¶ƒtƒŒ[ƒ€‚ÅAudioProcessor‚É‘—M‚µ‚Ä“K—p‚·‚é‚½‚ß‚ÉA
-	//! •ÏX‚·‚éî•ñ‚ğƒLƒ…[‚É’™‚ß‚é
+	//! ãƒ‘ãƒ©ãƒ¡ãƒ¼ã‚¿ã®å¤‰æ›´ã‚’æ¬¡å›ã®å†ç”Ÿãƒ•ãƒ¬ãƒ¼ãƒ ã§AudioProcessorã«é€ä¿¡ã—ã¦é©ç”¨ã™ã‚‹ãŸã‚ã«ã€
+	//! å¤‰æ›´ã™ã‚‹æƒ…å ±ã‚’ã‚­ãƒ¥ãƒ¼ã«è²¯ã‚ã‚‹
 	void	EnqueueParameterChange(Steinberg::Vst::ParamID id, Steinberg::Vst::ParamValue value);
 
 	void	RestartComponent(Steinberg::int32 flag);
@@ -105,6 +99,7 @@ private:
 
 	std::unique_ptr<ParameterAccessor>	parameters_;
 	std::unique_ptr<Impl>		pimpl_;
+    std::function<void(Vst3Plugin const *p)> on_destruction_;
 };
 
-}	//namespace
+NS_HWM_END

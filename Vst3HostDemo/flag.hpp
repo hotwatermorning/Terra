@@ -1,8 +1,8 @@
 #pragma once
 
-namespace hwm {
+NS_HWM_BEGIN
 
-//! 初期値がfalse、MoveするとMoveされた方の値がfalseになるようなBool型として使用可能な型。
+//! 蛻晄悄蛟､縺掲alse縲｀ove縺吶ｋ縺ｨMove縺輔ｌ縺滓婿縺ｮ蛟､縺掲alse縺ｫ縺ｪ繧九ｈ縺�縺ｪBool蝙九→縺励※菴ｿ逕ｨ蜿ｯ閭ｽ縺ｪ蝙九�
 struct Flag
 {
 	typedef Flag this_type;
@@ -79,4 +79,4 @@ inline void swap(Flag &lhs, Flag &rhs)
 	lhs.swap(rhs);
 }
 
-}	// hwm
+NS_HWM_END

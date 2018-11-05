@@ -1,13 +1,10 @@
 #include "./Vst3Plugin.hpp"
 #include "./Vst3Plugin/Vst3PluginImpl.hpp"
 
+#include <cassert>
 #include <memory>
 
-#include <boost/assert.hpp>
-
-#include "./debugger_output.hpp"
-
-namespace hwm {
+NS_HWM_BEGIN
 
 using namespace Steinberg;
 
@@ -58,28 +55,18 @@ Vst::ParameterInfo
 	return info;
 }
 
-Vst3Plugin::Vst3Plugin(std::unique_ptr<Impl> pimpl)
+Vst3Plugin::Vst3Plugin(std::unique_ptr<Impl> pimpl,
+                       std::function<void(Vst3Plugin const *p)> on_destruction)
 {
 	pimpl_ = std::move(pimpl);
 	parameters_ = std::make_unique<ParameterAccessor>(this);
-}
-
-Vst3Plugin::Vst3Plugin(Vst3Plugin &&rhs)
-	:	pimpl_(std::move(rhs.pimpl_))
-	,	parameters_()
-{
-	parameters_ = std::make_unique<ParameterAccessor>(this);
-}
-
-Vst3Plugin & Vst3Plugin::operator=(Vst3Plugin &&rhs)
-{
-	pimpl_ = std::move(rhs.pimpl_);
-	return *this;
+    on_destruction_ = on_destruction;
 }
 
 Vst3Plugin::~Vst3Plugin()
 {
 	pimpl_.reset();
+    on_destruction_(this);
 }
 
 Vst3Plugin::ParameterAccessor &
@@ -94,7 +81,7 @@ Vst3Plugin::ParameterAccessor const &
 		return *parameters_;
 }
 
-balor::String Vst3Plugin::GetEffectName() const
+String Vst3Plugin::GetEffectName() const
 {
 	return pimpl_->GetEffectName();
 }
@@ -121,13 +108,13 @@ bool Vst3Plugin::IsResumed() const
 
 void Vst3Plugin::SetBlockSize(int block_size)
 {
-	BOOST_ASSERT(!IsResumed());
+	assert(!IsResumed());
 	pimpl_->SetBlockSize(block_size);
 }
 
 void Vst3Plugin::SetSamplingRate(int sampling_rate)
 {
-	BOOST_ASSERT(!IsResumed());
+	assert(!IsResumed());
 	pimpl_->SetSamplingRate(sampling_rate);
 }
 
@@ -136,10 +123,10 @@ bool Vst3Plugin::HasEditor() const
 	return pimpl_->HasEditor();
 }
 
-bool Vst3Plugin::OpenEditor(HWND parent, Steinberg::IPlugFrame *frame)
-{
-	return pimpl_->OpenEditor(parent, frame);
-}
+//bool Vst3Plugin::OpenEditor(HWND parent, Steinberg::IPlugFrame *frame)
+//{
+//    return pimpl_->OpenEditor(parent, frame);
+//}
 
 void Vst3Plugin::CloseEditor()
 {
@@ -171,7 +158,7 @@ size_t			Vst3Plugin::GetProgramCount() const
 	return pimpl_->GetProgramCount();
 }
 
-balor::String	Vst3Plugin::GetProgramName(size_t index) const
+String	Vst3Plugin::GetProgramName(size_t index) const
 {
 	return pimpl_->GetProgramName(index);
 }
@@ -202,10 +189,16 @@ float ** Vst3Plugin::ProcessAudio(size_t frame_pos, size_t duration)
 }
 
 std::unique_ptr<Vst3Plugin>
-	CreatePlugin(IPluginFactory *factory, ClassInfo const &info, Vst3PluginFactory::host_context_type host_context)
+	CreatePlugin(IPluginFactory *factory,
+                 ClassInfo const &info,
+                 Vst3PluginFactory::host_context_type host_context,
+                 std::function<void(Vst3Plugin const *p)> on_destruction)
 {
-	auto impl = std::make_unique<Vst3Plugin::Impl>(factory, info, std::move(host_context));
-	return std::make_unique<Vst3Plugin>(std::move(impl));
+	auto impl = std::make_unique<Vst3Plugin::Impl>(factory,
+                                                   info,
+                                                   std::move(host_context));
+	return std::make_unique<Vst3Plugin>(std::move(impl),
+                                        on_destruction);
 }
 
-}	// ::hwm
+NS_HWM_END

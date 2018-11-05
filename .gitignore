@@ -1,12 +1,11 @@
 *.*
 !*.cpp
 !*.hpp
+!*.h
 !*.txt
-!*.sln
-!*.vcxproj
-!*.vcxproj.filters
-!*.gitignore
 !*.md
+!*.gitignore
+!*.gitmodule
 
-Debug/
-Release/
+build_debug
+build_release

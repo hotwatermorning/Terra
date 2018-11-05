@@ -1,5 +1,6 @@
 #include "Vst3PluginImpl.hpp"
 
+#include <cassert>
 #include <memory>
 #include <stdexcept>
 #include <unordered_map>
@@ -7,28 +8,19 @@
 #include <algorithm>
 #include <vector>
 
-#include <boost/scope_exit.hpp>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/lock_factories.hpp>
-
+#include "../StrCnv.hpp"
+#include "../ScopeExit.hpp"
 #include "../Vst3Utils.hpp"
 #include "../Vst3Plugin.hpp"
 #include "../Vst3PluginFactory.hpp"
-#include "../vst3/public.sdk/source/common/memorystream.h"
-#include "../vst3/public.sdk/source/vst/hosting/eventlist.h"
-#include "../vst3/public.sdk/source/vst/hosting/parameterchanges.h"
-
-
-#include "../debugger_output.hpp"
-
-namespace hwm {
 
 using namespace Steinberg;
 
-std::unique_ptr<Vst3Plugin>
-CreatePlugin(IPluginFactory *factory, ClassInfo const &info, Vst3PluginFactory::host_context_type host_context);
+NS_HWM_BEGIN
 
-Vst3Plugin::Impl::Impl(IPluginFactory *factory, ClassInfo const &info, host_context_type host_context)
+Vst3Plugin::Impl::Impl(IPluginFactory *factory,
+                       ClassInfo const &info,
+                       host_context_type host_context)
 	:	edit_controller_is_created_new_(false)
 	,	is_editor_opened_(false)
 	,	is_processing_started_(false)
@@ -83,7 +75,7 @@ Vst::IEditController2 *	Vst3Plugin::Impl::GetEditController2	() { return edit_co
 Vst::IEditController *	Vst3Plugin::Impl::GetEditController	() const { return edit_controller_.get(); }
 Vst::IEditController2 *	Vst3Plugin::Impl::GetEditController2	() const { return edit_controller2_.get(); }
 
-balor::String Vst3Plugin::Impl::GetEffectName() const
+String Vst3Plugin::Impl::GetEffectName() const
 {
 	return plugin_info_->name();
 }
@@ -95,34 +87,34 @@ size_t Vst3Plugin::Impl::GetNumOutputs() const
 
 bool Vst3Plugin::Impl::HasEditor() const
 {
-	BOOST_ASSERT(component_);
-	BOOST_ASSERT(is_resumed_);
+	assert(component_);
+	assert(is_resumed_);
 	return has_editor_.get();
 }
 
-bool Vst3Plugin::Impl::OpenEditor(HWND parent, IPlugFrame *frame)
-{
-	BOOST_ASSERT(HasEditor());
-
-	tresult res;
-		
-	res = plug_view_->isPlatformTypeSupported(kPlatformTypeHWND);
-	if(res != kResultOk) {
-		throw std::runtime_error("HWND is not supported.");
-	}
-
-	plug_view_->setFrame(frame);
-	res = plug_view_->attached((void *)parent, kPlatformTypeHWND);
-	bool const success = (res == kResultOk);
-	if(success) {
-		is_editor_opened_ = true;
-	} else {
-		MessageBox(NULL, L"Failed to attach", NULL, NULL);
-		is_editor_opened_ = false;
-	}
-
-	return success;
-}
+//bool Vst3Plugin::Impl::OpenEditor(HWND parent, IPlugFrame *frame)
+//{
+//    assert(HasEditor());
+//
+//    tresult res;
+//        
+//    res = plug_view_->isPlatformTypeSupported(kPlatformTypeHWND);
+//    if(res != kResultOk) {
+//        throw std::runtime_error("HWND is not supported.");
+//    }
+//
+//    plug_view_->setFrame(frame);
+//    res = plug_view_->attached((void *)parent, kPlatformTypeHWND);
+//    bool const success = (res == kResultOk);
+//    if(success) {
+//        is_editor_opened_ = true;
+//    } else {
+//        //MessageBox(NULL, L"Failed to attach", NULL, NULL);
+//        is_editor_opened_ = false;
+//    }
+//
+//    return success;
+//}
 
 void Vst3Plugin::Impl::CloseEditor()
 {
@@ -139,7 +131,7 @@ bool Vst3Plugin::Impl::IsEditorOpened() const
 
 ViewRect Vst3Plugin::Impl::GetPreferredRect() const
 {
-	BOOST_ASSERT(IsEditorOpened());
+	assert(IsEditorOpened());
 
 	ViewRect rect;
 	plug_view_->getSize(&rect);
@@ -148,7 +140,7 @@ ViewRect Vst3Plugin::Impl::GetPreferredRect() const
 
 void Vst3Plugin::Impl::Resume()
 {
-	BOOST_ASSERT(status_ == Status::kInitialized || status_ == Status::kSetupDone);
+	assert(status_ == Status::kInitialized || status_ == Status::kSetupDone);
 
 	tresult res;
 	if(status_ != Status::kSetupDone) {
@@ -225,7 +217,7 @@ void Vst3Plugin::Impl::SetSamplingRate(int sampling_rate)
 
 void	Vst3Plugin::Impl::AddNoteOn(int note_number)
 {
-	auto lock = boost::make_unique_lock(note_mutex_);
+    auto lock = std::unique_lock(note_mutex_);
 	Note note;
 	note.note_number_ = note_number;
 	note.note_state_ = Note::State::kNoteOn;
@@ -234,7 +226,7 @@ void	Vst3Plugin::Impl::AddNoteOn(int note_number)
 
 void	Vst3Plugin::Impl::AddNoteOff(int note_number)
 {
-	auto lock = boost::make_unique_lock(note_mutex_);
+	auto lock = std::unique_lock(note_mutex_);
 	Note note;
 	note.note_number_ = note_number;
 	note.note_state_ = Note::State::kNoteOff;
@@ -246,21 +238,21 @@ size_t	Vst3Plugin::Impl::GetProgramCount() const
 	return programs_.size();
 }
 
-balor::String Vst3Plugin::Impl::GetProgramName(size_t index) const
+String Vst3Plugin::Impl::GetProgramName(size_t index) const
 {
 	return programs_[index].name_;
 }
 
 /*!
 	@note
-	Voxengo‚ÌGlissEQ‚Å‚Í
+	Voxengoã®GlissEQã§ã¯
 	parameters_.GetInfoByID(parameter_for_program_).stepCount == GetProgramCount()-1
-	Waves‚Å‚ÍA
+	Wavesã§ã¯ã€
 	parameters_.GetInfoByID(parameter_for_program_).stepCount == GetProgramCount()
-	=> “–‰‚ÍGetProgramCount()-1‚ğstepCount‚Æ‚İ‚È‚µ‚ÄProgramIndex‚ğ•ÏŠ·‚µ‚æ‚¤‚Æv‚Á‚½‚ªA
-	ã‹L‚Ì’Ê‚èGetProgramCount()-1‚ÍstepCount‚ÆˆÙ‚È‚é‚±‚Æ‚ª‚ ‚èAWaves‚Ìƒvƒ‰ƒOƒCƒ“‚ÅProgramIndex‚Ìw’è‚ª‚¸‚ê‚Ä‚µ‚Ü‚¤‚½‚ßA
-	‚¿‚á‚ñ‚ÆstepCount‚ğŒ³‚É•ÏŠ·‚µ‚ÄA‚Ç‚¿‚ç‚Ìƒvƒ‰ƒOƒCƒ“‚Å‚à‘Î‰‚Å‚«‚é‚æ‚¤‚É‚µ‚½B
-	IEditController‚ÌnormalizedParamToPlain‚ğg—p‚µ‚Ä‚à‚¢‚¢‚©‚à‚µ‚ê‚È‚¢B
+	=> å½“åˆã¯GetProgramCount()-1ã‚’stepCountã¨ã¿ãªã—ã¦ProgramIndexã‚’å¤‰æ›ã—ã‚ˆã†ã¨æ€ã£ãŸãŒã€
+	ä¸Šè¨˜ã®é€šã‚ŠGetProgramCount()-1ã¯stepCountã¨ç•°ãªã‚‹ã“ã¨ãŒã‚ã‚Šã€Wavesã®ãƒ—ãƒ©ã‚°ã‚¤ãƒ³ã§ProgramIndexã®æŒ‡å®šãŒãšã‚Œã¦ã—ã¾ã†ãŸã‚ã€
+	ã¡ã‚ƒã‚“ã¨stepCountã‚’å…ƒã«å¤‰æ›ã—ã¦ã€ã©ã¡ã‚‰ã®ãƒ—ãƒ©ã‚°ã‚¤ãƒ³ã§ã‚‚å¯¾å¿œã§ãã‚‹ã‚ˆã†ã«ã—ãŸã€‚
+	IEditControllerã®normalizedParamToPlainã‚’ä½¿ç”¨ã—ã¦ã‚‚ã„ã„ã‹ã‚‚ã—ã‚Œãªã„ã€‚
 */
 Vst::ParamValue
 	Vst3Plugin::Impl::NormalizeProgramIndex(size_t index) const
@@ -310,7 +302,7 @@ void	Vst3Plugin::Impl::SetProgramIndex(size_t index)
 
 	param_value_changes_was_specified_ = false;
 
-	//! `Controller`‘¤A`Processor`‘¤‚»‚ê‚¼‚ê‚ÌƒRƒ“ƒ|[ƒlƒ“ƒg‚ÉƒvƒƒOƒ‰ƒ€•ÏX‚ğ’Ê’m
+	//! `Controller`å´ã€`Processor`å´ãã‚Œãã‚Œã®ã‚³ãƒ³ãƒãƒ¼ãƒãƒ³ãƒˆã«ãƒ—ãƒ­ã‚°ãƒ©ãƒ å¤‰æ›´ã‚’é€šçŸ¥
 	if(parameter_for_program_ == -1) {
 		GetEditController()->setParamNormalized(program.list_id_, normalized);
 		EnqueueParameterChange(program.list_id_, normalized);
@@ -322,7 +314,7 @@ void	Vst3Plugin::Impl::SetProgramIndex(size_t index)
 
 void Vst3Plugin::Impl::RestartComponent(Steinberg::int32 flags)
 {
-	//! `Controller`‘¤‚Ìƒpƒ‰ƒ[ƒ^‚ª•ÏX‚³‚ê‚½
+	//! `Controller`å´ã®ãƒ‘ãƒ©ãƒ¡ãƒ¼ã‚¿ãŒå¤‰æ›´ã•ã‚ŒãŸ
 	if((flags & Vst::RestartFlags::kParamValuesChanged)) {
 
 		// nothing to do
@@ -331,8 +323,8 @@ void Vst3Plugin::Impl::RestartComponent(Steinberg::int32 flags)
 
 		hwm::dout << "Should reload component" << std::endl;
 
-		//! ReloadComponent‚Ås‚¤“à—e‚Í‚±‚ê‚Å‡‚Á‚Ä‚¢‚é‚©‚Ç‚¤‚©•ª‚©‚ç‚È‚¢B
-		MemoryStream stream;
+        Steinberg::MemoryStream stream;
+		//! ReloadComponentã§è¡Œã†å†…å®¹ã¯ã“ã‚Œã§åˆã£ã¦ã„ã‚‹ã‹ã©ã†ã‹åˆ†ã‹ã‚‰ãªã„ã€‚
 		component_->getState(&stream);
 
 		bool const is_resumed = IsResumed();
@@ -359,7 +351,7 @@ float ** Vst3Plugin::Impl::ProcessAudio(size_t frame_pos, size_t duration)
 	process_context.timeSigNumerator = 4;
 
 	process_context.state =
-		Vst::ProcessContext::StatesAndFlags::kPlaying |
+		//Vst::ProcessContext::StatesAndFlags::kPlaying |
 		Vst::ProcessContext::StatesAndFlags::kProjectTimeMusicValid |
 		Vst::ProcessContext::StatesAndFlags::kTempoValid |
 		Vst::ProcessContext::StatesAndFlags::kTimeSigValid;
@@ -367,7 +359,7 @@ float ** Vst3Plugin::Impl::ProcessAudio(size_t frame_pos, size_t duration)
 	Vst::EventList input_event_list;
 	Vst::EventList output_event_list;
 	{
-		auto lock = boost::make_unique_lock(note_mutex_);
+        auto lock = std::unique_lock(note_mutex_);
 		for(auto &note: notes_) {
 			Vst::Event e;
 			e.busIndex = 0;
@@ -452,10 +444,10 @@ float ** Vst3Plugin::Impl::ProcessAudio(size_t frame_pos, size_t duration)
 	return output_buses_.data();
 }
 
-//! TakeParameterChanges‚Æ‚ÌŒÄ‚Ño‚µ‚ÍƒXƒŒƒbƒhƒZ[ƒt
+//! TakeParameterChangesã¨ã®å‘¼ã³å‡ºã—ã¯ã‚¹ãƒ¬ãƒƒãƒ‰ã‚»ãƒ¼ãƒ•
 void Vst3Plugin::Impl::EnqueueParameterChange(Vst::ParamID id, Vst::ParamValue value)
 {
-	auto lock = boost::make_unique_lock(parameter_queue_mutex_);
+	auto lock = std::unique_lock(parameter_queue_mutex_);
 	Steinberg::int32 parameter_index = 0;
 	param_changes_queue_.addParameterData(id, parameter_index);
 	auto *queue = param_changes_queue_.getParameterData(parameter_index);
@@ -463,17 +455,17 @@ void Vst3Plugin::Impl::EnqueueParameterChange(Vst::ParamID id, Vst::ParamValue v
 	queue->addPoint(0, value, point_index);
 }
 
-//! EnqueueParameterChange‚Æ‚ÌŒÄ‚Ño‚µ‚ÍƒXƒŒƒbƒhƒZ[ƒt
+//! EnqueueParameterChangeã¨ã®å‘¼ã³å‡ºã—ã¯ã‚¹ãƒ¬ãƒƒãƒ‰ã‚»ãƒ¼ãƒ•
 void Vst3Plugin::Impl::TakeParameterChanges(Vst::ParameterChanges &dest)
 {
-	auto lock = boost::make_unique_lock(parameter_queue_mutex_);
+	auto lock = std::unique_lock(parameter_queue_mutex_);
 
 	for(size_t i = 0; i < param_changes_queue_.getParameterCount(); ++i) {
 		auto *src_queue = param_changes_queue_.getParameterData(i);
 
-		//! Boz Digital Labs‚ÌPANIPULATOR‚Å‚Í‚±‚±‚Åsrc_queue‚ÌgetPointCount‚ª0‚É‚È‚é‚±‚Æ‚ª‚ ‚éB
-		//! ‚»‚Ì‚Í’P‚ÉaddParameterData‚Ådest‚ÉƒGƒ“ƒgƒŠ‚ª’Ç‰Á‚³‚ê‚é‚¾‚¯‚É‚È‚Á‚Äpoint‚Ìƒf[ƒ^‚ª’Ç‰Á‚³‚ê‚¸A
-		//! ParameterChanges::getParameterData‚ÅƒAƒNƒZƒXˆá”½‚ğ‚ª”­¶‚·‚éB
+		//! Boz Digital Labsã®PANIPULATORã§ã¯ã“ã“ã§src_queueã®getPointCountãŒ0ã«ãªã‚‹ã“ã¨ãŒã‚ã‚‹ã€‚
+		//! ãã®æ™‚ã¯å˜ã«addParameterDataã§destã«ã‚¨ãƒ³ãƒˆãƒªãŒè¿½åŠ ã•ã‚Œã‚‹ã ã‘ã«ãªã£ã¦pointã®ãƒ‡ãƒ¼ã‚¿ãŒè¿½åŠ ã•ã‚Œãšã€
+		//! ParameterChanges::getParameterDataã§ã‚¢ã‚¯ã‚»ã‚¹é•åã‚’ãŒç™ºç”Ÿã™ã‚‹ã€‚
 		if(src_queue->getPointCount() == 0) {
 			continue;
 		}
@@ -506,11 +498,7 @@ void Vst3Plugin::Impl::LoadPlugin(IPluginFactory *factory, ClassInfo const &info
 
 void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &info, Steinberg::FUnknown *host_context)
 {
-	Steinberg::int8 cid[16];
-	for(size_t i = 0; i < 16; ++i) {
-		cid[i] = info.cid()[i];
-	}
-
+    auto cid = FUID::fromTUID(info.cid());
 	auto maybe_component = createInstance<Vst::IComponent>(factory, cid);
 	if(!maybe_component.is_right()) {
 		throw Error(ErrorContext::kFactoryError, maybe_component.left());
@@ -529,12 +517,12 @@ void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &
 	}
 	status_ = Status::kInitialized;
 
-	BOOST_SCOPE_EXIT_ALL(&component) {
+    HWM_SCOPE_EXIT([&component] {
 		if(component) {
 			component->terminate();
 			component.reset();
 		}
-	};
+    });
 
 	auto maybe_audio_processor = queryInterface<Vst::IAudioProcessor>(component);
 	if(!maybe_audio_processor.is_right()) {
@@ -556,10 +544,10 @@ void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &
 	auto maybe_edit_controller = queryInterface<Vst::IEditController>(component);
 	bool edit_controller_is_created_new = false;
 	if(!maybe_edit_controller.is_right()) {
-		FUID controller_id;
+		TUID controller_id;
 		res = component->getControllerClassId(controller_id);
 		if(res == kResultOk) {
-			maybe_edit_controller = createInstance<Vst::IEditController>(factory, controller_id);
+            maybe_edit_controller = createInstance<Vst::IEditController>(factory, FUID::fromTUID(controller_id));
 			if(maybe_edit_controller.is_right()) {
 				edit_controller_is_created_new = true;
 			} else {
@@ -584,12 +572,12 @@ void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &
 		}
 	}
 
-	BOOST_SCOPE_EXIT_ALL(&edit_controller, edit_controller_is_created_new) {
+	HWM_SCOPE_EXIT([&edit_controller, edit_controller_is_created_new] {
 		if(edit_controller_is_created_new && edit_controller) {
 			edit_controller->terminate();
 			edit_controller.reset();
 		}
-	};
+	});
 
 	edit_controller2_ptr_t edit_controller2;
 	if(edit_controller) {
@@ -616,7 +604,7 @@ void Vst3Plugin::Impl::Initialize(std::unique_ptr<Vst::IComponentHandler, SelfRe
 		if(component_handler) {
 			res = edit_controller_->setComponentHandler(component_handler.get());
 			if(res != kResultOk) {
-				OutputDebugStringW(L"Can't set component handler");
+                hwm::dout << "Can't set component handler" << std::endl;
 			}
 		}
 
@@ -669,10 +657,10 @@ void Vst3Plugin::Impl::Initialize(std::unique_ptr<Vst::IComponentHandler, SelfRe
 		input_buses_.UpdateBufferHeads();
 		output_buses_.UpdateBufferHeads();
 
-		//! ‰Â”\‚Å‚ ‚ê‚Î‚±‚Ì‚ ‚½‚è‚ÅIPlugView‚ğæ“¾‚µ‚ÄA‚±‚Ìƒvƒ‰ƒOƒCƒ“‚ªƒGƒfƒBƒ^[‚ğ‚Á‚Ä‚¢‚é‚©‚Ç‚¤‚©‚ğ
-		//! ƒ`ƒFƒbƒN‚µ‚½‚©‚Á‚½‚ªA‚¢‚­‚Â‚©‚Ìƒvƒ‰ƒOƒCƒ“(e.g., TyrellN6, Podolski)‚Å‚Í
-		//! IComponent‚ªactivated‚³‚ê‚é‘O‚ÉIPlugView‚ğæ“¾‚·‚é‚ÆƒNƒ‰ƒbƒVƒ…‚µ‚½B
-		//! ‚»‚Ì‚½‚ßA‚±‚Ì’iŠK‚Å‚ÍIPlugView‚Íæ“¾‚µ‚È‚¢
+		//! å¯èƒ½ã§ã‚ã‚Œã°ã“ã®ã‚ãŸã‚Šã§IPlugViewã‚’å–å¾—ã—ã¦ã€ã“ã®ãƒ—ãƒ©ã‚°ã‚¤ãƒ³ãŒã‚¨ãƒ‡ã‚£ã‚¿ãƒ¼ã‚’æŒã£ã¦ã„ã‚‹ã‹ã©ã†ã‹ã‚’
+		//! ãƒã‚§ãƒƒã‚¯ã—ãŸã‹ã£ãŸãŒã€ã„ãã¤ã‹ã®ãƒ—ãƒ©ã‚°ã‚¤ãƒ³(e.g., TyrellN6, Podolski)ã§ã¯
+		//! IComponentãŒactivatedã•ã‚Œã‚‹å‰ã«IPlugViewã‚’å–å¾—ã™ã‚‹ã¨ã‚¯ãƒ©ãƒƒã‚·ãƒ¥ã—ãŸã€‚
+		//! ãã®ãŸã‚ã€ã“ã®æ®µéšã§ã¯IPlugViewã¯å–å¾—ã—ãªã„
 
 		PrepareParameters();
 		PrepareProgramList();
@@ -688,17 +676,16 @@ tresult Vst3Plugin::Impl::CreatePlugView()
 		return kNoInterface;
 	}
 
-	//! ƒvƒ‰ƒOƒCƒ“‚É‚æ‚Á‚Ä‚ÍAŠù‚É•Ê‚ÉPlugView‚ÌƒCƒ“ƒXƒ^ƒ“ƒX‚ªì¬‚³‚ê‚Ä‚¢‚é‚É
-	//! •Ê‚ÌPlugView‚ğì¬‚µ‚æ‚¤‚Æ‚·‚é‚ÆƒNƒ‰ƒbƒVƒ…‚·‚é‚±‚Æ‚ª‚ ‚éB
-	BOOST_ASSERT(!plug_view_);
+	//! ãƒ—ãƒ©ã‚°ã‚¤ãƒ³ã«ã‚ˆã£ã¦ã¯ã€æ—¢ã«åˆ¥ã«PlugViewã®ã‚¤ãƒ³ã‚¹ã‚¿ãƒ³ã‚¹ãŒä½œæˆã•ã‚Œã¦ã„ã‚‹æ™‚ã«
+	//! åˆ¥ã®PlugViewã‚’ä½œæˆã—ã‚ˆã†ã¨ã™ã‚‹ã¨ã‚¯ãƒ©ãƒƒã‚·ãƒ¥ã™ã‚‹ã“ã¨ãŒã‚ã‚‹ã€‚
+	assert(!plug_view_);
 
 	plug_view_ = to_unique(edit_controller_->createView(Vst::ViewType::kEditor));
-	FUnknown *un = plug_view_.get();
 
 	if(!plug_view_) {
-		auto maybe_view = std::move(queryInterface<IPlugView>(edit_controller_));
+		auto maybe_view = queryInterface<IPlugView>(edit_controller_);
 		if(maybe_view.is_right()) {
-			plug_view_ = std::move(maybe_view.right());
+            plug_view_ = std::move(maybe_view.right());
 		} else {
 			return maybe_view.left();
 		}
@@ -775,8 +762,8 @@ void Vst3Plugin::Impl::PrepareProgramList()
 
 	std::vector<ProgramInfo> tmp_programs;
 
-	//! g—p‚·‚éƒvƒƒOƒ‰ƒ€ƒŠƒXƒg‚ğ‘I‘ğ‚·‚é‚½‚ß‚ÉAÅ‰‚ÉprogramListId‚ª—LŒø‚ÈUnit‚ğæ“¾B
-	//! ‚½‚¾‚µÄ‹A“I‚ÉŒŸõ‚Í‚µ‚Ä‚¢‚È‚¢
+	//! ä½¿ç”¨ã™ã‚‹ãƒ—ãƒ­ã‚°ãƒ©ãƒ ãƒªã‚¹ãƒˆã‚’é¸æŠã™ã‚‹ãŸã‚ã«ã€æœ€åˆã«programListIdãŒæœ‰åŠ¹ãªUnitã‚’å–å¾—ã€‚
+	//! ãŸã ã—å†å¸°çš„ã«æ¤œç´¢ã¯ã—ã¦ã„ãªã„
 	Steinberg::Vst::ProgramListID program_list_id = Steinberg::Vst::kNoProgramListId;
 	for(int i = 0; i < unit_info_->getUnitCount(); ++i) {
 		Vst::UnitInfo uinfo;
@@ -795,7 +782,7 @@ void Vst3Plugin::Impl::PrepareProgramList()
 		hwm::dout << "No Program List assigned to Units." << std::endl;
 	}
 
-	//! g—p‚·‚éƒvƒƒOƒ‰ƒ€ƒŠƒXƒg‚ªŒˆ‚Ü‚Á‚½‚Ì‚Å‚»‚ÌƒŠƒXƒg‚©‚çprograms_‚ğ\’z
+	//! ä½¿ç”¨ã™ã‚‹ãƒ—ãƒ­ã‚°ãƒ©ãƒ ãƒªã‚¹ãƒˆãŒæ±ºã¾ã£ãŸã®ã§ãã®ãƒªã‚¹ãƒˆã‹ã‚‰programs_ã‚’æ§‹ç¯‰
 	size_t const prog_list_count = unit_info_->getProgramListCount();
 	for(size_t npl = 0; npl < prog_list_count; ++npl) {
 		Vst::ProgramListInfo plinfo;
@@ -811,7 +798,7 @@ void Vst3Plugin::Impl::PrepareProgramList()
 
 			ProgramInfo prginfo;
 
-			prginfo.name_ = name_buf;
+            prginfo.name_ = hwm::to_wstr(name_buf);
 			prginfo.list_id_ = plinfo.id;
 			prginfo.index_ = i;
 
@@ -827,6 +814,16 @@ void Vst3Plugin::Impl::UnloadPlugin()
 	if(status_ == Status::kActivated || status_ == Status::kProcessing) {
 		Suspend();
 	}
+    
+    auto maybe_cpoint_component = queryInterface<Vst::IConnectionPoint>(component_);
+    auto maybe_cpoint_edit_controller = queryInterface<Vst::IConnectionPoint>(edit_controller_);
+    
+    if (maybe_cpoint_component.is_right() && maybe_cpoint_edit_controller.is_right()) {
+        maybe_cpoint_component.right()->disconnect(maybe_cpoint_edit_controller.right().get());
+        maybe_cpoint_edit_controller.right()->disconnect(maybe_cpoint_component.right().get());
+    }
+    
+    edit_controller_->setComponentHandler(nullptr);
 
 	unit_info_.reset();
 	plug_view_.reset();
@@ -840,9 +837,9 @@ void Vst3Plugin::Impl::UnloadPlugin()
 	edit_controller_.reset();
 	audio_processor_.reset();
 
-	if(component_) {
-		component_->terminate();
-	}
+    if(component_) {
+        component_->terminate();
+    }
 	component_.reset();
 }
 
@@ -977,4 +974,4 @@ void Vst3Plugin::Impl::OutputBusInfo(Vst::IComponent *component, Vst::IEditContr
 	OutputBusInfoImpl(component, unit, Vst::MediaTypes::kEvent, Vst::BusDirections::kOutput);
 }
 
-} // ::hwm
+NS_HWM_END

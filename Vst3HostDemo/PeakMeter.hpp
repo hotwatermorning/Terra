@@ -1,10 +1,10 @@
 #pragma once
 
+#include <cassert>
 #include <iterator>
-#include <boost/swap.hpp>
-#include <boost/assert.hpp>
+#include <utility>
 
-namespace hwm {
+NS_HWM_BEGIN
 
 struct PeakMeter
 {
@@ -44,40 +44,40 @@ struct PeakMeter
 
 	void swap(PeakMeter &rhs)
 	{
-		boost::swap(minimum_dB_, rhs.minimum_dB_);
-		boost::swap(sampling_rate_, rhs.sampling_rate_);
-		boost::swap(hold_time_, rhs.hold_time_);
-		boost::swap(release_speed_, rhs.release_speed_);
-		boost::swap(peak_, rhs.peak_);
-		boost::swap(level_, rhs.level_);
-		boost::swap(release_level_per_sample_, rhs.release_level_per_sample_);
-		boost::swap(peak_release_level_per_sample_, rhs.peak_release_level_per_sample_);
-		boost::swap(highest_level_, rhs.highest_level_);
-		boost::swap(holding_, rhs.holding_);
-		boost::swap(hold_samples_, rhs.hold_samples_);
+		std::swap(minimum_dB_, rhs.minimum_dB_);
+		std::swap(sampling_rate_, rhs.sampling_rate_);
+		std::swap(hold_time_, rhs.hold_time_);
+		std::swap(release_speed_, rhs.release_speed_);
+		std::swap(peak_, rhs.peak_);
+		std::swap(level_, rhs.level_);
+		std::swap(release_level_per_sample_, rhs.release_level_per_sample_);
+		std::swap(peak_release_level_per_sample_, rhs.peak_release_level_per_sample_);
+		std::swap(highest_level_, rhs.highest_level_);
+		std::swap(holding_, rhs.holding_);
+		std::swap(hold_samples_, rhs.hold_samples_);
 	}
 
 	size_t	GetSamplingRate	() const { return sampling_rate_; }
 
 	Msec	GetHoldTime		() const { return hold_time_; }
 
-	//! ReleaseSpeed‚ÍAˆê•b‚ ‚½‚èƒs[ƒNƒŒƒxƒ‹‚ª‚Ç‚ê‚¾‚¯•Ï‰»‚·‚é‚©‚ğdB‚Å•\‚·B
-	//! -96.0‚Å‚ ‚ê‚ÎAˆê•b‚É-96dB‚Ü‚Åƒ[ƒ^‚ª‰º~‚·‚é
-	//! 0.0‚Å‚ ‚ê‚Îƒ[ƒ^[‚Í’£‚è•t‚¢‚½‚Ü‚Ü‰º~‚µ‚È‚¢
+	//! ReleaseSpeedã¯ã€ä¸€ç§’ã‚ãŸã‚Šãƒ”ãƒ¼ã‚¯ãƒ¬ãƒ™ãƒ«ãŒã©ã‚Œã ã‘å¤‰åŒ–ã™ã‚‹ã‹ã‚’dBã§è¡¨ã™ã€‚
+	//! -96.0ã§ã‚ã‚Œã°ã€ä¸€ç§’ã«-96dBã¾ã§ãƒ¡ãƒ¼ã‚¿ãŒä¸‹é™ã™ã‚‹
+	//! 0.0ã§ã‚ã‚Œã°ãƒ¡ãƒ¼ã‚¿ãƒ¼ã¯å¼µã‚Šä»˜ã„ãŸã¾ã¾ä¸‹é™ã—ãªã„
 	dB_t	GetReleaseSpeed	() const { return -release_speed_; }
 
-	//! Œ»İ‚Ìƒs[ƒN’l‚ğæ“¾‚·‚éB
-	//! ƒz[ƒ‹ƒhƒ^ƒCƒ€‚Ìİ’è‚É‚æ‚èA
-	//! ‚æ‚è‘å‚«‚Èƒs[ƒN’l‚ªİ’è‚³‚ê‚È‚¢ê‡‚Íƒs[ƒN’l‚ªˆÛ‚³‚ê‚éB
+	//! ç¾åœ¨ã®ãƒ”ãƒ¼ã‚¯å€¤ã‚’å–å¾—ã™ã‚‹ã€‚
+	//! ãƒ›ãƒ¼ãƒ«ãƒ‰ã‚¿ã‚¤ãƒ ã®è¨­å®šã«ã‚ˆã‚Šã€
+	//! ã‚ˆã‚Šå¤§ããªãƒ”ãƒ¼ã‚¯å€¤ãŒè¨­å®šã•ã‚Œãªã„å ´åˆã¯ãƒ”ãƒ¼ã‚¯å€¤ãŒç¶­æŒã•ã‚Œã‚‹ã€‚
 	dB_t	GetPeak			() const { return peak_; }
 
-	//! Œ»İ‚Ì‰¹—ÊƒŒƒxƒ‹’l‚ğæ“¾‚·‚éB
-	//! ƒŠƒŠ[ƒXƒ^ƒCƒ€‚Ìİ’è‚É‚æ‚èA
-	//! –³‰¹ó‘Ô‚É‚È‚Á‚Ä‚à‘¦À‚É0‚É‚È‚é‚í‚¯‚Å‚Í‚È‚¢B
+	//! ç¾åœ¨ã®éŸ³é‡ãƒ¬ãƒ™ãƒ«å€¤ã‚’å–å¾—ã™ã‚‹ã€‚
+	//! ãƒªãƒªãƒ¼ã‚¹ã‚¿ã‚¤ãƒ ã®è¨­å®šã«ã‚ˆã‚Šã€
+	//! ç„¡éŸ³çŠ¶æ…‹ã«ãªã£ã¦ã‚‚å³åº§ã«0ã«ãªã‚‹ã‚ã‘ã§ã¯ãªã„ã€‚
 	dB_t	GetLevel		() const { return level_; }
 
-	//! ƒŠƒZƒbƒgó‘Ô‚©‚ç‚ÌÅ‘å’l‚ğæ“¾‚·‚éB
-	//! ‚±‚Ì’l‚Í–¾¦“I‚ÉResetHighestLevel‚ğŒÄ‚Î‚È‚¢ŒÀ‚è0.0‚Ö‰Šú‰»‚³‚ê‚È‚¢B
+	//! ãƒªã‚»ãƒƒãƒˆçŠ¶æ…‹ã‹ã‚‰ã®æœ€å¤§å€¤ã‚’å–å¾—ã™ã‚‹ã€‚
+	//! ã“ã®å€¤ã¯æ˜ç¤ºçš„ã«ResetHighestLevelã‚’å‘¼ã°ãªã„é™ã‚Š0.0ã¸åˆæœŸåŒ–ã•ã‚Œãªã„ã€‚
 	dB_t	GetHighestLevel	() const { return highest_level_; }
 
 	dB_t	GetMinimumLevel	() const { return minimum_dB_; }
@@ -111,9 +111,9 @@ public:
 		highest_level_ = GetMinimumLevel();
 	}
 
-	//! Converter‚ÍAƒCƒeƒŒ[ƒ^‚Ìw‚·’l‚ğ[0.0 .. 0.1]‚Éƒ}ƒbƒsƒ“ƒO‚·‚é‚½‚ß‚Ég—p‚·‚éAdouble(std::iterator_traits<InputIterator>::reference)‚Æ‚¢‚¤ƒVƒOƒlƒ`ƒƒ‚ğ‚à‚Â
-	//! ŠÖ”‚âAŠÖ”ƒIƒuƒWƒFƒNƒg‚Å‚ ‚éB
-	//! ŒÄ‚Ño‚·‘¤‚ªIteratorAdaptor‚ğg—p‚·‚ê‚Î‚æ‚¢‚Ì‚¾‚ªAÀÛ‚»‚ê‚Í–Ê“|‚È‚Ì‚ÅA‚±‚±‚ÅConverter‚ğó‚¯‚é‚æ‚¤‚É‚µ‚Ä‚¢‚éB
+	//! Converterã¯ã€ã‚¤ãƒ†ãƒ¬ãƒ¼ã‚¿ã®æŒ‡ã™å€¤ã‚’[0.0 .. 0.1]ã«ãƒãƒƒãƒ”ãƒ³ã‚°ã™ã‚‹ãŸã‚ã«ä½¿ç”¨ã™ã‚‹ã€double(std::iterator_traits<InputIterator>::reference)ã¨ã„ã†ã‚·ã‚°ãƒãƒãƒ£ã‚’ã‚‚ã¤
+	//! é–¢æ•°ã‚„ã€é–¢æ•°ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã§ã‚ã‚‹ã€‚
+	//! å‘¼ã³å‡ºã™å´ãŒIteratorAdaptorã‚’ä½¿ç”¨ã™ã‚Œã°ã‚ˆã„ã®ã ãŒã€å®Ÿéš›ãã‚Œã¯é¢å€’ãªã®ã§ã€ã“ã“ã§Converterã‚’å—ã‘ã‚‹ã‚ˆã†ã«ã—ã¦ã„ã‚‹ã€‚
 	template<class InputIterator, class Converter>
 	void	SetSamples	(InputIterator begin, InputIterator end, Converter convert)
 	{
@@ -194,7 +194,7 @@ public:
 		double		operator*() const { return minimum_dB_; }
 
 		this_type &	operator++() {
-			BOOST_ASSERT(begin_ < end_);
+			assert(begin_ < end_);
 			begin_++;
 			return *this;
 		}
@@ -235,4 +235,4 @@ void swap(PeakMeter &lhs, PeakMeter &rhs)
 	lhs.swap(rhs);
 }
 
-}	//::hwm
+NS_HWM_END

@@ -1,20 +1,19 @@
 #pragma once
 
 #include <memory>
+#include <functional>
 
-#include <boost/function.hpp>
-
-#include "vst3/pluginterfaces/base/funknown.h"
-#include "vst3/pluginterfaces/vst/ivstparameterchanges.h"
-#include "vst3/public.sdk/source/vst/hosting/parameterchanges.h"
+#include "pluginterfaces/base/funknown.h"
+#include "pluginterfaces/vst/ivstparameterchanges.h"
+#include "public.sdk/source/vst/hosting/parameterchanges.h"
 #include "./Vst3Utils.hpp"
 
-namespace hwm {
+NS_HWM_BEGIN
 
 class Vst3HostCallback
 {
-	typedef boost::function<void(Steinberg::int32 flag)> request_to_restart_handler_t;
-	typedef boost::function<void(Steinberg::Vst::ParamID, Steinberg::Vst::ParamValue)> parameter_change_notification_handler_t;
+	typedef std::function<void(Steinberg::int32 flag)> request_to_restart_handler_t;
+	typedef std::function<void(Steinberg::Vst::ParamID, Steinberg::Vst::ParamValue)> parameter_change_notification_handler_t;
 
 public:
 	typedef std::unique_ptr<Steinberg::FUnknown, SelfReleaser> unknown_ptr;
@@ -35,4 +34,4 @@ private:
 	std::unique_ptr<Impl> pimpl_;
 };
 
-} // ::hwm
+NS_HWM_END

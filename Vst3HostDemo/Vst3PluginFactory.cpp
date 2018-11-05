@@ -4,42 +4,30 @@
 #include <memory>
 #include <stdexcept>
 #include <vector>
+#include <map>
 
-#include <boost/range/algorithm.hpp>
-
-#include <boost/assert.hpp>
-#include <balor/locale/Charset.hpp>
-
-#include <windows.h>
-
-#include "./vst3/pluginterfaces/base/ftypes.h"
+#include "./pluginterfaces/base/ftypes.h"
 #include "./Vst3Utils.hpp"
 #include "./Vst3Plugin.hpp"
-
-#include "debugger_output.hpp"
-
-namespace {
-	balor::locale::Charset converter = balor::locale::Charset::ascii();
-
-	std::wostream & operator<<(std::wostream &os, balor::String const &str)
-	{
-		os << str.c_str();
-		return os;
-	}
-}
-
-namespace hwm {
+#include "./Module.hpp"
+#include "./StrCnv.hpp"
 
 using namespace Steinberg;
 
+NS_HWM_BEGIN
+
 extern
 std::unique_ptr<Vst3Plugin>
-	CreatePlugin(IPluginFactory *factory, ClassInfo const &info, Vst3PluginFactory::host_context_type host_context);
+	CreatePlugin(IPluginFactory *factory,
+                 ClassInfo const &info,
+                 Vst3PluginFactory::host_context_type host_context,
+                 std::function<void(Vst3Plugin const *p)> on_destruction
+                 );
 
 FactoryInfo::FactoryInfo(PFactoryInfo const &info)
-	:	vendor_(converter.decode(info.vendor))
-	,	url_(converter.decode(info.url))
-	,	email_(converter.decode(info.email))
+    :	vendor_(hwm::to_wstr(info.vendor))
+	,	url_(hwm::to_wstr(info.url))
+	,	email_(hwm::to_wstr(info.email))
 	,	flags_(info.flags)
 {}
 
@@ -63,69 +51,69 @@ bool FactoryInfo::unicode					() const
 	return (flags_ & Steinberg::PFactoryInfo::FactoryFlags::kUnicode) != 0; 
 }
 
-balor::String	FactoryInfo::vendor	() const
+String	FactoryInfo::vendor	() const
 {
 	return vendor_;
 }
 
-balor::String	FactoryInfo::url		() const
+String	FactoryInfo::url		() const
 {
 	return url_;
 }
 
-balor::String	FactoryInfo::email	() const
+String	FactoryInfo::email	() const
 {
 	return email_;
 }
 
 ClassInfo2Data::ClassInfo2Data(Steinberg::PClassInfo2 const &info)
-	:	sub_categories_(converter.decode(info.subCategories))
-	,	vendor_(converter.decode(info.vendor))
-	,	version_(converter.decode(info.version))
-	,	sdk_version_(converter.decode(info.sdkVersion))
+	:	sub_categories_(hwm::to_wstr(info.subCategories))
+	,	vendor_(hwm::to_wstr(info.vendor))
+	,	version_(hwm::to_wstr(info.version))
+	,	sdk_version_(hwm::to_wstr(info.sdkVersion))
 {
 }
 
 ClassInfo2Data::ClassInfo2Data(Steinberg::PClassInfoW const &info)
-	:	sub_categories_(converter.decode(info.subCategories))
-	,	vendor_(info.vendor)
-	,	version_(info.version)
-	,	sdk_version_(info.sdkVersion)
+	:	sub_categories_(hwm::to_wstr(info.subCategories))
+	,	vendor_(hwm::to_wstr(info.vendor))
+	,	version_(hwm::to_wstr(info.version))
+	,	sdk_version_(hwm::to_wstr(info.sdkVersion))
 {
 }
 
 ClassInfo::ClassInfo(Steinberg::PClassInfo const &info)
 	:	cid_()
-	,	name_(converter.decode(info.name))
-	,	category_(converter.decode(info.category))
+	,	name_(hwm::to_wstr(info.name))
+	,	category_(hwm::to_wstr(info.category))
 	,	cardinality_(info.cardinality)
 {
-	boost::copy(info.cid, cid_.data());
+    std::copy(std::begin(info.cid), std::end(info.cid), cid_.begin());
 }
 
 ClassInfo::ClassInfo(Steinberg::PClassInfo2 const &info)
 	:	cid_()
-	,	name_(converter.decode(info.name))
-	,	category_(converter.decode(info.category))
+	,	name_(hwm::to_wstr(info.name))
+	,	category_(hwm::to_wstr(info.category))
 	,	cardinality_(info.cardinality)
 	,	classinfo2_data_(info)
 {
-	boost::copy(info.cid, cid_.data());
+	std::copy(std::begin(info.cid), std::end(info.cid), cid_.begin());
 }
 
 ClassInfo::ClassInfo(Steinberg::PClassInfoW const &info)
 	:	cid_()
-	,	name_(info.name)
-	,	category_(converter.decode(info.category))
+	,	name_(hwm::to_wstr(info.name))
+	,	category_(hwm::to_wstr(info.category))
 	,	cardinality_(info.cardinality)
 	,	classinfo2_data_(info)
 {
-	boost::copy(info.cid, cid_.data());
+	std::copy(std::begin(info.cid), std::end(info.cid), cid_.begin());
 }
 
 struct Vst3PluginFactory::Impl
 {
-	Impl(balor::String module_path);
+	Impl(String module_path);
 	~Impl();
 
 	size_t	GetComponentCount() { return class_info_list_.size(); }
@@ -140,25 +128,37 @@ struct Vst3PluginFactory::Impl
 	{
 		return factory_.get();
 	}
+    
+    void OnVst3PluginIsCreated(Vst3Plugin const *p) {
+        loaded_plugins_.push_back(p);
+    }
+        
+    void OnVst3PluginIsDestructed(Vst3Plugin const *p) {
+        auto found = std::find(loaded_plugins_.begin(), loaded_plugins_.end(), p);
+        assert(found != loaded_plugins_.end());
+        loaded_plugins_.erase(found);
+    }
 
 private:
-	module_holder module_;
-	typedef void (*SetupProc)();
+	Module module_;
+	typedef void (PLUGIN_API *SetupProc)();
 
 	typedef std::unique_ptr<IPluginFactory, SelfReleaser> factory_ptr;
 
 	factory_ptr				factory_;
 	FactoryInfo				factory_info_;
 	std::vector<ClassInfo>	class_info_list_;
+    std::vector<Vst3Plugin const *> loaded_plugins_;
 };
 
-balor::String FormatCid(Steinberg::int8 const *cid_array)
+String FormatCid(Steinberg::int8 const *cid_array)
 {
 	int const reg_str_len = 48; // including null-terminator
 	std::string reg_str(reg_str_len, '\0');
-	FUID(cid_array).toRegistryString(&reg_str[0]);
-	balor::String wstr(reg_str.c_str(), balor::locale::Charset::ascii());
-	return wstr;
+    FUID fuid;
+    fuid.fromTUID(cid_array);
+    fuid.toRegistryString(&reg_str[0]);
+    return hwm::to_wstr(reg_str.c_str());
 }
 
 std::wstring
@@ -212,21 +212,21 @@ void OutputFactoryInfo(FactoryInfo const &info)
 	hwm::wdout << FactoryInfoToString(info) << std::endl;
 }
 
-Vst3PluginFactory::Impl::Impl(balor::String module_path)
+Vst3PluginFactory::Impl::Impl(String module_path)
 {
-	module_holder mod(LoadLibrary(module_path.c_str()));
+    Module mod(module_path.c_str());
 	if(!mod) {
 		throw std::runtime_error("cannot load library");
 	}
 
-	auto init_dll = (SetupProc)GetProcAddress(mod.get(), "InitDll");
+    auto init_dll = reinterpret_cast<SetupProc>(mod.get_proc_address("InitDll"));
 	if(init_dll) {
 		init_dll();
 	}
 
-	//! GetPluginFactoryÇ∆Ç¢Ç§ñºëOÇ≈ÉGÉNÉXÉ|Å[ÉgÇ≥ÇÍÇƒÇ¢ÇÈÅA
-	//! FactoryéÊìæópÇÃä÷êîÇíTÇ∑ÅB
-	GetFactoryProc get_factory = (GetFactoryProc)GetProcAddress(mod.get(), "GetPluginFactory");
+	//! GetPluginFactory„Å®„ÅÑ„ÅÜÂêçÂâç„Åß„Ç®„ÇØ„Çπ„Éù„Éº„Éà„Åï„Çå„Å¶„ÅÑ„Çã„ÄÅ
+	//! FactoryÂèñÂæóÁî®„ÅÆÈñ¢Êï∞„ÇíÊé¢„Åô„ÄÇ
+	GetFactoryProc get_factory = (GetFactoryProc)mod.get_proc_address("GetPluginFactory");
 	if(!get_factory) {
 		throw std::runtime_error("not a vst3 module");
 	}
@@ -272,17 +272,18 @@ Vst3PluginFactory::Impl::Impl(balor::String module_path)
 
 Vst3PluginFactory::Impl::~Impl()
 {
+    assert(loaded_plugins_.empty());
 	factory_.reset();
 
 	if(module_) {
-		auto exit_dll = (SetupProc)GetProcAddress(module_.get(), "ExitDll");
+		auto exit_dll = (SetupProc)module_.get_proc_address("ExitDll");
 		if(exit_dll) {
 			exit_dll();
 		}
 	}
 }
 
-Vst3PluginFactory::Vst3PluginFactory(balor::String module_path)
+Vst3PluginFactory::Vst3PluginFactory(String module_path)
 {
 	pimpl_ = std::unique_ptr<Impl>(new Impl(module_path));
 }
@@ -296,7 +297,7 @@ FactoryInfo const &
 	return pimpl_->GetFactoryInfo();
 }
 
-//! PClassInfo::category Ç™ kVstAudioEffectClass ÇÃÇ‡ÇÃÇÃÇ›
+//! PClassInfo::category „Åå kVstAudioEffectClass „ÅÆ„ÇÇ„ÅÆ„ÅÆ„Åø
 size_t	Vst3PluginFactory::GetComponentCount() const
 {
 	return pimpl_->GetComponentCount();
@@ -311,7 +312,14 @@ ClassInfo const &
 std::unique_ptr<Vst3Plugin>
 		Vst3PluginFactory::CreateByIndex(size_t index, host_context_type host_context)
 {
-	return CreatePlugin(pimpl_->GetFactory(), GetComponentInfo(index), std::move(host_context));
+	auto p = CreatePlugin(pimpl_->GetFactory(),
+                          GetComponentInfo(index),
+                          std::move(host_context),
+                          [this](Vst3Plugin const *p) { pimpl_->OnVst3PluginIsDestructed(p); }
+                          );
+    pimpl_->OnVst3PluginIsCreated(p.get());
+    
+    return p;
 }
 
 std::unique_ptr<Vst3Plugin>
@@ -324,11 +332,33 @@ std::unique_ptr<Vst3Plugin>
 			);
 
 		if(is_equal) {
-			return CreateByIndex(i, std::move(host_context));
+            return CreateByIndex(i, std::move(host_context));
 		}
 	}
 
 	throw std::runtime_error("No specified id in this factory.");
 }
 
-} // ::hwm
+struct Vst3PluginFactoryList::Impl
+{
+    std::map<String, std::shared_ptr<Vst3PluginFactory>> table_;
+};
+
+Vst3PluginFactoryList::Vst3PluginFactoryList()
+:   pimpl_(std::make_unique<Impl>())
+{}
+
+Vst3PluginFactoryList::~Vst3PluginFactoryList()
+{}
+
+std::shared_ptr<Vst3PluginFactory> Vst3PluginFactoryList::FindOrCreateFactory(String module_path)
+{
+    auto found = pimpl_->table_.find(module_path);
+    if(found == pimpl_->table_.end()) {
+        found = pimpl_->table_.emplace(module_path, std::make_shared<Vst3PluginFactory>(module_path)).first;
+    }
+    
+    return found->second;
+}
+
+NS_HWM_END

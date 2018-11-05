@@ -2,14 +2,16 @@
 
 #include <iostream>
 #include <sstream>
+
+#if defined(_MSC_VER)
 #include <Windows.h>
 
-namespace hwm {
+NS_HWM_BEGIN
 
-//! OutputDebugString�֏o�͂���X�g���[���N���X
-//! ������operator<<���Ō�ɂ܂Ƃ߂ďo�͂��镔����
+//! OutputDebugStringへ出力するストリームクラス
+//! 複数のoperator<<を最後にまとめて出力する部分は
 //! http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2013/n3535.html
-//! ������Q�l�ɂ���
+//! これを参考にした
 
 template<class Char, class Traits = std::char_traits<Char>>
 struct basic_debugger_output;
@@ -158,4 +160,17 @@ private:
 __declspec(selectany) basic_debugger_output<char>		dout;
 __declspec(selectany) basic_debugger_output<wchar_t>	wdout;
 
-} // ::hwm
+NS_HWM_END
+
+#else
+
+NS_HWM_BEGIN
+
+namespace {
+    auto &dout = std::cout;
+    auto &wdout = std::wcout;
+}
+
+NS_HWM_END
+
+#endif

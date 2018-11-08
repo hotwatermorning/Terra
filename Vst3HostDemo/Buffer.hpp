@@ -5,8 +5,9 @@
 NS_HWM_BEGIN
 
 template<class T>
-struct Buffer
+class Buffer
 {
+public:
 	typedef T value_type;
 	Buffer()
 		:	channel_(0)
@@ -38,6 +39,11 @@ struct Buffer
 			buffer_heads_[i] = buffer_.data() + (i * num_samples);
 		}
 	}
+    
+    void fill(T value = T())
+    {
+        std::fill(buffer_.begin(), buffer_.end(), value);
+    }
 
 	void resize_samples(size_t num_samples)
 	{

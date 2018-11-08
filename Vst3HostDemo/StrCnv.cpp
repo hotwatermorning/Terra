@@ -1,6 +1,4 @@
 #include "StrCnv.hpp"
-#include <cstdlib>
-#include <sstream>
 #include <cwchar>
 #include <wx/wx.h>
 

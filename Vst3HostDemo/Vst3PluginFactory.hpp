@@ -11,13 +11,15 @@
 #include <pluginterfaces/vst/ivstcomponent.h>
 #include <pluginterfaces/vst/ivsteditcontroller.h>
 #include <public.sdk/source/vst/hosting/parameterchanges.h>
+
 #include "./Vst3Utils.hpp"
+#include "./Vst3HostContext.hpp"
 
 NS_HWM_BEGIN
 
 class Vst3Plugin;
 
-struct FactoryInfo
+class FactoryInfo
 {
 public:
 	bool discardable				() const;
@@ -40,8 +42,9 @@ private:
 	Steinberg::int32 flags_;
 };
 
-struct ClassInfo2Data
+class ClassInfo2Data
 {
+public:
 	ClassInfo2Data(Steinberg::PClassInfo2 const &info);
 	ClassInfo2Data(Steinberg::PClassInfoW const &info);
 
@@ -57,7 +60,7 @@ private:
 	String	sdk_version_;
 };
 
-struct ClassInfo
+class ClassInfo
 {
 public:
 	ClassInfo(Steinberg::PClassInfo const &info);
@@ -69,7 +72,7 @@ public:
 	String const &	category() const { return category_; }
 	Steinberg::int32        cardinality() const { return cardinality_; }
 
-	bool is_classinfo2_enabled() const { return static_cast<bool>(classinfo2_data_); }
+	bool has_classinfo2() const { return static_cast<bool>(classinfo2_data_); }
 	ClassInfo2Data const &
 			classinfo2() const { return *classinfo2_data_; }
 
@@ -82,7 +85,6 @@ private:
 };
 
 class Vst3PluginFactory
-:   std::enable_shared_from_this<Vst3PluginFactory>
 {
 public:
 	Vst3PluginFactory(String module_path);
@@ -97,19 +99,18 @@ public:
 	ClassInfo const &
 			GetComponentInfo(size_t index);
 
-	typedef std::unique_ptr<Steinberg::FUnknown, SelfReleaser> host_context_type;
 	std::unique_ptr<Vst3Plugin>
-			CreateByIndex(size_t index, host_context_type host_context);
+			CreateByIndex(size_t index);
 
 	std::unique_ptr<Vst3Plugin>
-			CreateByID(Steinberg::int8 const * component_id, host_context_type host_context);
+			CreateByID(Steinberg::int8 const * component_id);
 
 private:
-	struct Impl;
+	class Impl;
 	std::unique_ptr<Impl> pimpl_;
 };
     
-struct Vst3PluginFactoryList
+class Vst3PluginFactoryList
 {
     Vst3PluginFactoryList();
     virtual ~Vst3PluginFactoryList();
@@ -117,7 +118,7 @@ struct Vst3PluginFactoryList
     std::shared_ptr<Vst3PluginFactory> FindOrCreateFactory(String module_path);
     
 private:
-    struct Impl;
+    class Impl;
     std::unique_ptr<Impl> pimpl_;
 };
 

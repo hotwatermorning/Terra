@@ -18,9 +18,11 @@ using namespace Steinberg;
 
 NS_HWM_BEGIN
 
+extern void* GetWindowRef(NSView *view);
+
 Vst3Plugin::Impl::Impl(IPluginFactory *factory,
                        ClassInfo const &info,
-                       host_context_type host_context)
+                       FUnknown *host_context)
 	:	edit_controller_is_created_new_(false)
 	,	is_editor_opened_(false)
 	,	is_processing_started_(false)
@@ -32,6 +34,8 @@ Vst3Plugin::Impl::Impl(IPluginFactory *factory,
 	,	program_change_parameter_(-1)
 	,	status_(Status::kInvalid)
 {
+    assert(host_context);
+    
 	LoadPlugin(factory, info, std::move(host_context));
 
 	size_t const sampling_rate = 44100;
@@ -92,29 +96,31 @@ bool Vst3Plugin::Impl::HasEditor() const
 	return has_editor_.get();
 }
 
-//bool Vst3Plugin::Impl::OpenEditor(HWND parent, IPlugFrame *frame)
-//{
-//    assert(HasEditor());
-//
-//    tresult res;
-//        
-//    res = plug_view_->isPlatformTypeSupported(kPlatformTypeHWND);
-//    if(res != kResultOk) {
-//        throw std::runtime_error("HWND is not supported.");
-//    }
-//
-//    plug_view_->setFrame(frame);
-//    res = plug_view_->attached((void *)parent, kPlatformTypeHWND);
-//    bool const success = (res == kResultOk);
-//    if(success) {
-//        is_editor_opened_ = true;
-//    } else {
-//        //MessageBox(NULL, L"Failed to attach", NULL, NULL);
-//        is_editor_opened_ = false;
-//    }
-//
-//    return success;
-//}
+bool Vst3Plugin::Impl::OpenEditor(WindowHandle parent, IPlugFrame *frame)
+{
+    assert(HasEditor());
+
+    tresult res;
+    
+    if(frame) {
+        plug_view_->setFrame(frame);
+    }
+    
+#if defined(_MSC_VER)
+    res = plug_view_->attached((void *)parent, kPlatformTypeHWND);
+#else
+    if(plug_view_->isPlatformTypeSupported(kPlatformTypeNSView) == kResultOk) {
+        res = plug_view_->attached((void *)parent, kPlatformTypeNSView);
+    } else if(plug_view_->isPlatformTypeSupported(kPlatformTypeHIView) == kResultOk) {
+        res = plug_view_->attached(GetWindowRef(parent), kPlatformTypeHIView);
+    } else {
+        assert(false);
+    }
+#endif
+    
+    is_editor_opened_ = (res == kResultOk);
+    return is_editor_opened_;
+}
 
 void Vst3Plugin::Impl::CloseEditor()
 {
@@ -337,25 +343,24 @@ void Vst3Plugin::Impl::RestartComponent(Steinberg::int32 flags)
 	}
 }
 
-float ** Vst3Plugin::Impl::ProcessAudio(size_t frame_pos, size_t duration)
+float ** Vst3Plugin::Impl::ProcessAudio(TransportInfo const &info, SampleCount duration)
 {
-	ClassInfo &cinfo = *plugin_info_;
-	double const tempo = 120.0;
-	double beat_per_second = tempo / 60.0;
 	Vst::ProcessContext process_context = {};
 	process_context.sampleRate = sampling_rate_;
-	process_context.projectTimeSamples = frame_pos;
-	process_context.projectTimeMusic = frame_pos / 44100.0 * beat_per_second;
-	process_context.tempo = tempo;
-	process_context.timeSigDenominator = 4;
-	process_context.timeSigNumerator = 4;
+	process_context.projectTimeSamples = info.sample_pos_;
+    process_context.projectTimeMusic = info.ppq_pos_;
+	process_context.tempo = info.tempo_;
+	process_context.timeSigDenominator = info.time_sig_denom_;
+	process_context.timeSigNumerator = info.time_sig_numer_;
 
-	process_context.state =
-		//Vst::ProcessContext::StatesAndFlags::kPlaying |
-		Vst::ProcessContext::StatesAndFlags::kProjectTimeMusicValid |
-		Vst::ProcessContext::StatesAndFlags::kTempoValid |
-		Vst::ProcessContext::StatesAndFlags::kTimeSigValid;
-
+    using Flags = Vst::ProcessContext::StatesAndFlags;
+    
+	process_context.state
+    = (info.playing_ ? Flags::kPlaying : 0)
+    | Flags::kProjectTimeMusicValid
+    | Flags::kTempoValid
+    | Flags::kTimeSigValid;
+    
 	Vst::EventList input_event_list;
 	Vst::EventList output_event_list;
 	{
@@ -486,17 +491,17 @@ void Vst3Plugin::Impl::TakeParameterChanges(Vst::ParameterChanges &dest)
 	param_changes_queue_.clearQueue();
 }
 
-void Vst3Plugin::Impl::LoadPlugin(IPluginFactory *factory, ClassInfo const &info, host_context_type host_context)
+void Vst3Plugin::Impl::LoadPlugin(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context)
 {
-	LoadInterfaces(factory, info, host_context.get());
-	Initialize(
-		std::move(queryInterface<Vst::IComponentHandler>(host_context.get()).right())
-		);
-
-	//! End of use of host context, delete it here.
+	LoadInterfaces(factory, info, host_context);
+    
+    auto component_handler = queryInterface<Vst::IComponentHandler>(host_context);
+    assert(component_handler.is_right());
+    
+    Initialize(std::move(component_handler.right()));
 }
 
-void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &info, Steinberg::FUnknown *host_context)
+void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context)
 {
     auto cid = FUID::fromTUID(info.cid());
 	auto maybe_component = createInstance<Vst::IComponent>(factory, cid);
@@ -690,12 +695,29 @@ tresult Vst3Plugin::Impl::CreatePlugView()
 			return maybe_view.left();
 		}
 	}
-
+    
+#if defined(_MSC_VER)
+    if(plug_view_->isPlatformTypeSupported(kPlatformTypeHWND) == kResultOk) {
+        hwm::dout << "This plugin editor supports HWND" << std::endl;
+    } else {
+        return kNotImplemented;
+    }
+#else
+    if(plug_view_->isPlatformTypeSupported(kPlatformTypeNSView) == kResultOk) {
+        hwm::dout << "This plugin editor supports NS View" << std::endl;
+    } else if(plug_view_->isPlatformTypeSupported(kPlatformTypeHIView) == kResultOk) {
+        hwm::dout << "This plugin editor supports HI View" << std::endl;
+    } else {
+        return kNotImplemented;
+    }
+#endif
+    
 	return kResultOk;
 }
 
 void Vst3Plugin::Impl::DeletePlugView()
 {
+    assert(IsEditorOpened() == false);
 	plug_view_.reset();
 }
 

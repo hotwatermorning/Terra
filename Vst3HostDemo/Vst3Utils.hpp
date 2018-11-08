@@ -8,8 +8,9 @@
 
 NS_HWM_BEGIN
 
-struct SelfReleaser
+class SelfReleaser
 {
+public:
 	template<class T>
 	void operator() (T *p) {
 		if(p) {
@@ -29,8 +30,9 @@ std::unique_ptr<T, SelfReleaser>  to_unique(T *p)
 //! 失敗か成功かどちらかの状況を返すクラス
 //! is_right() == trueの時は成功の状況
 template<class Left, class Right>
-struct Either
+class Either
 {
+public:
 	Either(Left left) : left_(std::move(left)), right_(Right()), is_right_(false) {}
 	Either(Right right) : left_(Left()), right_(std::move(right)), is_right_(true) {}
 

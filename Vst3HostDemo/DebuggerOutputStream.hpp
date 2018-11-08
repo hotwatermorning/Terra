@@ -14,15 +14,16 @@ NS_HWM_BEGIN
 //! これを参考にした
 
 template<class Char, class Traits = std::char_traits<Char>>
-struct basic_debugger_output;
+class basic_debugger_output;
 
 template<class Char, class Traits = std::char_traits<Char>>
-struct basic_debugger_output_impl;
+class basic_debugger_output_impl;
 
 template<class Char, class Traits>
-struct basic_debugger_output_impl
-	:	std::basic_ostream<Char, Traits>
+class basic_debugger_output_impl
+:	public std::basic_ostream<Char, Traits>
 {
+public:
 	typedef basic_debugger_output<Char, Traits> owner_type;
 	typedef std::basic_ostream<Char, Traits> stream_type;
 	typedef basic_debugger_output_impl<Char, Traits> this_type;
@@ -84,9 +85,10 @@ private:
 };
 
 template<class Char, class Traits>
-struct basic_debugger_output
-	:	std::basic_ostream<Char, Traits>
+class basic_debugger_output
+:	public std::basic_ostream<Char, Traits>
 {
+public:
 	typedef basic_debugger_output<Char, Traits> this_type;
 	typedef basic_debugger_output_impl<Char, Traits> impl_type;
 	typedef std::basic_ostream<Char, Traits> stream_type;

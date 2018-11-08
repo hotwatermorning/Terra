@@ -6,8 +6,9 @@
 
 NS_HWM_BEGIN
 
-struct PeakMeter
+class PeakMeter
 {
+public:
 	typedef double dB_t;
 	typedef int Msec;
 

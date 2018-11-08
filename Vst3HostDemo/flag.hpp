@@ -3,8 +3,9 @@
 NS_HWM_BEGIN
 
 //! 初期値がfalse、MoveするとMoveされた方の値がfalseになるようなBool型として使用可能な型。
-struct Flag
+class Flag
 {
+public:
 	typedef Flag this_type;
 
 	explicit

@@ -15,8 +15,9 @@ void * get_proc_address(void *bundle, char const *function_name);
 
 #endif
 
-struct Module
+class Module
 {
+public:
 #if defined(_MSC_VER)
     typedef HMODULE platform_module_type;
     

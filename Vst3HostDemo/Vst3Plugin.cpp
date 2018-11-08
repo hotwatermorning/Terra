@@ -1,5 +1,6 @@
 #include "./Vst3Plugin.hpp"
 #include "./Vst3Plugin/Vst3PluginImpl.hpp"
+#include "./Vst3HostContext.hpp"
 
 #include <cassert>
 #include <memory>
@@ -56,16 +57,21 @@ Vst::ParameterInfo
 }
 
 Vst3Plugin::Vst3Plugin(std::unique_ptr<Impl> pimpl,
+                       std::unique_ptr<HostContext> host_context,
                        std::function<void(Vst3Plugin const *p)> on_destruction)
+:   pimpl_(std::move(pimpl))
+,   host_context_(std::move(host_context))
 {
-	pimpl_ = std::move(pimpl);
-	parameters_ = std::make_unique<ParameterAccessor>(this);
+    host_context_->SetVst3Plugin(this);
     on_destruction_ = on_destruction;
+    
+    parameters_ = std::make_unique<ParameterAccessor>(this);
 }
 
 Vst3Plugin::~Vst3Plugin()
 {
 	pimpl_.reset();
+    host_context_.reset();
     on_destruction_(this);
 }
 
@@ -98,6 +104,7 @@ void Vst3Plugin::Resume()
 
 void Vst3Plugin::Suspend()
 {
+    CloseEditor();
 	pimpl_->Suspend();
 }
 
@@ -118,18 +125,33 @@ void Vst3Plugin::SetSamplingRate(int sampling_rate)
 	pimpl_->SetSamplingRate(sampling_rate);
 }
 
+void Vst3Plugin::AddEditorCloseListener(EditorCloseListener *li)
+{
+    ec_listeners_.AddListener(li);
+}
+
+void Vst3Plugin::RemoveEditorCloseListener(EditorCloseListener *li)
+{
+    ec_listeners_.RemoveListener(li);
+}
+
 bool Vst3Plugin::HasEditor() const
 {
 	return pimpl_->HasEditor();
 }
 
-//bool Vst3Plugin::OpenEditor(HWND parent, Steinberg::IPlugFrame *frame)
-//{
-//    return pimpl_->OpenEditor(parent, frame);
-//}
+bool Vst3Plugin::OpenEditor(WindowHandle parent, Steinberg::IPlugFrame *frame)
+{
+    return pimpl_->OpenEditor(parent, frame);
+}
 
 void Vst3Plugin::CloseEditor()
 {
+    if(IsEditorOpened()) {
+        ec_listeners_.Invoke([this](auto li) {
+            li->OnEditorClosed(this);
+        });
+    }
 	pimpl_->CloseEditor();
 }
 
@@ -183,22 +205,21 @@ void Vst3Plugin::RestartComponent(Steinberg::int32 flags)
 	pimpl_->RestartComponent(flags);
 }
 
-float ** Vst3Plugin::ProcessAudio(size_t frame_pos, size_t duration)
+float ** Vst3Plugin::ProcessAudio(TransportInfo const &info, SampleCount length)
 {
-	return pimpl_->ProcessAudio(frame_pos, duration);
+	return pimpl_->ProcessAudio(info, length);
 }
 
 std::unique_ptr<Vst3Plugin>
 	CreatePlugin(IPluginFactory *factory,
                  ClassInfo const &info,
-                 Vst3PluginFactory::host_context_type host_context,
                  std::function<void(Vst3Plugin const *p)> on_destruction)
 {
-	auto impl = std::make_unique<Vst3Plugin::Impl>(factory,
-                                                   info,
-                                                   std::move(host_context));
-	return std::make_unique<Vst3Plugin>(std::move(impl),
-                                        on_destruction);
+    auto host_context = std::make_unique<Vst3Plugin::HostContext>(L"Vst3HostDemo");
+    auto impl = std::make_unique<Vst3Plugin::Impl>(factory, info, host_context->AsUnknownPtr().get());
+	auto plugin = std::make_unique<Vst3Plugin>(std::move(impl), std::move(host_context), on_destruction);
+    
+    return plugin;
 }
 
 NS_HWM_END

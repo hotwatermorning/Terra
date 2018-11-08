@@ -7,8 +7,9 @@ NS_HWM_BEGIN
 namespace detail {
     
 template <typename F>
-struct ScopeExit final
+class ScopeExit final
 {
+public:
     ScopeExit(F&& on_exit)
     : on_exit_(std::forward<F>(on_exit))
     , initialized_(true)
@@ -31,6 +32,7 @@ struct ScopeExit final
     
     ~ScopeExit() { if(initialized_) { on_exit_(); } }
     
+private:
     F on_exit_;
     bool initialized_;
 };

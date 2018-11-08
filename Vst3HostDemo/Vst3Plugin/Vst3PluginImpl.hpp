@@ -26,14 +26,14 @@
 
 #include "../Flag.hpp"
 #include "../Buffer.hpp"
-#include <experimental/optional>
 
 NS_HWM_BEGIN
 
 using namespace Steinberg;
 
-struct Vst3Plugin::Impl
+class Vst3Plugin::Impl
 {
+public:
 	typedef Impl this_type;
 
 	typedef std::unique_ptr<Vst::IComponent, SelfReleaser>			component_ptr_t;
@@ -62,9 +62,10 @@ struct Vst3Plugin::Impl
 		kProcessing,
 	};
 
-	struct Error
-		:	std::runtime_error
+	class Error
+    :	public std::runtime_error
 	{
+    public:
 		Error(ErrorContext error_context, tresult error_code)
 			:	std::runtime_error("VstPlugin::Error")
 			,	error_context_(error_context)
@@ -79,10 +80,9 @@ struct Vst3Plugin::Impl
 		ErrorContext	error_context_;
 	};
 
-	typedef Vst3PluginFactory::host_context_type host_context_type;
-
-	struct ParameterInfoList
+	class ParameterInfoList
 	{
+    public:
 		typedef Vst::ParameterInfo value_type;
 		typedef std::vector<value_type> container;
 		typedef container::iterator iterator;
@@ -145,12 +145,9 @@ struct Vst3Plugin::Impl
 public:
 	Impl(IPluginFactory *factory,
          ClassInfo const &info,
-         host_context_type host_context);
+         FUnknown *host_context);
 
     ~Impl();
-
-	Impl(Impl &&) = delete;
-	Impl &operator=(Impl &&) = delete;
 
 	bool HasEditController	() const;
 	bool HasEditController2	() const;
@@ -168,7 +165,7 @@ public:
 
 	bool HasEditor() const;
 
-	//bool OpenEditor(HWND parent, IPlugFrame *frame);
+	bool OpenEditor(WindowHandle parent, IPlugFrame *frame);
 
 	void CloseEditor();
 
@@ -205,7 +202,7 @@ public:
 
 	void	RestartComponent(Steinberg::int32 flags);
 
-	float ** ProcessAudio(size_t frame_pos, size_t duration);
+	float ** ProcessAudio(TransportInfo const &info, SampleCount duration);
 
 //! Parameter Change
 public:
@@ -217,9 +214,9 @@ private:
 	void TakeParameterChanges(Vst::ParameterChanges &dest);
 
 private:
-	void LoadPlugin(IPluginFactory *factory, ClassInfo const &info, host_context_type host_context);
+	void LoadPlugin(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context);
 
-	void LoadInterfaces(IPluginFactory *factory, ClassInfo const &info, Steinberg::FUnknown *host_context);
+	void LoadInterfaces(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context);
 
 	void Initialize(std::unique_ptr<Vst::IComponentHandler, SelfReleaser> component_handler);
 
@@ -298,8 +295,9 @@ private:
 	std::mutex note_mutex_;
 	std::vector<Note> notes_;
 
-	struct AudioBus
+	class AudioBus
 	{
+    public:
 		typedef Buffer<float> buffer_type;
 
 		AudioBus()
@@ -342,8 +340,9 @@ private:
 		Steinberg::uint64 speaker_arrangement_;
 	};
 
-	struct AudioBuses
+	class AudioBuses
 	{
+    public:
 		AudioBuses() 
 			:	block_size_(0)
 		{}

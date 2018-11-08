@@ -9,7 +9,10 @@
 #include "pluginterfaces/base/ipluginbase.h"
 #include "pluginterfaces/vst/ivstcomponent.h"
 #include "pluginterfaces/vst/ivsteditcontroller.h"
+
 #include "./Vst3Utils.hpp"
+#include "TransportInfo.hpp"
+#include "./ListenerService.hpp"
 
 NS_HWM_BEGIN
     
@@ -25,10 +28,12 @@ using String = std::wstring;
 class Vst3Plugin
 {
 public:
-	struct Impl;
+	class Impl;
+    class HostContext;
 
-	struct ParameterAccessor
+	class ParameterAccessor
 	{
+    public:
 		ParameterAccessor(Vst3Plugin *owner);
 
 		typedef Steinberg::Vst::ParamValue value_t;
@@ -51,7 +56,9 @@ public:
 
 public:
 	Vst3Plugin(std::unique_ptr<Impl> pimpl,
+               std::unique_ptr<HostContext> host_context,
                std::function<void(Vst3Plugin const *p)> on_destruction);
+    
 	virtual ~Vst3Plugin();
 
 	ParameterAccessor &			GetParams();
@@ -64,9 +71,31 @@ public:
 	bool	IsResumed() const;
 	void	SetBlockSize(int block_size);
 	void	SetSamplingRate(int sampling_rate);
+    
+    class EditorCloseListener
+    {
+    public:
+        virtual
+        ~EditorCloseListener() {}
+        
+        virtual
+        void OnEditorClosed(Vst3Plugin *plugin) = 0;
+    };
+    ListenerService<EditorCloseListener> ec_listeners_;
 
+    void AddEditorCloseListener(EditorCloseListener *li);
+    void RemoveEditorCloseListener(EditorCloseListener *li);
+    
 	bool	HasEditor		() const;
-	//bool	OpenEditor		(HWND wnd, Steinberg::IPlugFrame *frame);
+
+#if defined(_MSC_VER)
+    using WindowHandle = HWND;
+#else
+    using WindowHandle = NSView *;
+#endif
+    
+	bool	OpenEditor		(WindowHandle wnd, Steinberg::IPlugFrame *frame = nullptr);
+    
 	void	CloseEditor		();
 	bool	IsEditorOpened	() const;
 	Steinberg::ViewRect
@@ -88,18 +117,27 @@ public:
 
 	void	RestartComponent(Steinberg::int32 flag);
 
-	float ** ProcessAudio(size_t frame_pos, size_t num_samples);
-
+	float ** ProcessAudio(TransportInfo const &info, SampleCount length);
+    
 private:
-
-	//! deleted
-	Vst3Plugin(Vst3Plugin const &) = delete;
-	//! deleted
-	Vst3Plugin & operator=(Vst3Plugin const &) = delete;
-
 	std::unique_ptr<ParameterAccessor>	parameters_;
-	std::unique_ptr<Impl>		pimpl_;
+	std::unique_ptr<Impl> pimpl_;
+    std::unique_ptr<HostContext> host_context_;
     std::function<void(Vst3Plugin const *p)> on_destruction_;
 };
+
+//class PlugFrame
+//:   Steinberg::Vst::IPlugFrame
+//{
+//    OBJ_METHODS(PlugFrame, Steinberg::Vst::IPlugFrame)
+//    REFCOUNT_METHODS(Steinberg::Vst::IPlugFrame)
+//
+//public:
+//    DEFINE_INTERFACES
+//    DEF_INTERFACE(Steinberg::Vst::IPlugFrame)
+//    DEF_INTERFACE(Vst::IComponentHandler)
+//    DEF_INTERFACE(Vst::IComponentHandler2)
+//    END_DEFINE_INTERFACES(FObject)
+//};
 
 NS_HWM_END

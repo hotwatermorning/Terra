@@ -20,7 +20,6 @@ extern
 std::unique_ptr<Vst3Plugin>
 	CreatePlugin(IPluginFactory *factory,
                  ClassInfo const &info,
-                 Vst3PluginFactory::host_context_type host_context,
                  std::function<void(Vst3Plugin const *p)> on_destruction
                  );
 
@@ -111,8 +110,9 @@ ClassInfo::ClassInfo(Steinberg::PClassInfoW const &info)
 	std::copy(std::begin(info.cid), std::end(info.cid), cid_.begin());
 }
 
-struct Vst3PluginFactory::Impl
+class Vst3PluginFactory::Impl
 {
+public:
 	Impl(String module_path);
 	~Impl();
 
@@ -170,7 +170,7 @@ std::wstring
 		<< L", " << info.category()
 		<< L", " << info.cardinality();
 
-	if(info.is_classinfo2_enabled()) {
+	if(info.has_classinfo2()) {
 		ss	<< L", " << info.classinfo2().sub_categories()
 			<< L", " << info.classinfo2().vendor()
 			<< L", " << info.classinfo2().version()
@@ -310,11 +310,10 @@ ClassInfo const &
 }
 
 std::unique_ptr<Vst3Plugin>
-		Vst3PluginFactory::CreateByIndex(size_t index, host_context_type host_context)
+		Vst3PluginFactory::CreateByIndex(size_t index)
 {
 	auto p = CreatePlugin(pimpl_->GetFactory(),
                           GetComponentInfo(index),
-                          std::move(host_context),
                           [this](Vst3Plugin const *p) { pimpl_->OnVst3PluginIsDestructed(p); }
                           );
     pimpl_->OnVst3PluginIsCreated(p.get());
@@ -323,7 +322,7 @@ std::unique_ptr<Vst3Plugin>
 }
 
 std::unique_ptr<Vst3Plugin>
-		Vst3PluginFactory::CreateByID(Steinberg::int8 const * component_id, host_context_type host_context)
+		Vst3PluginFactory::CreateByID(Steinberg::int8 const * component_id)
 {
 	for(size_t i = 0; i < GetComponentCount(); ++i) {
 		bool const is_equal = std::equal<Steinberg::int8 const *, Steinberg::int8 const *>(
@@ -332,15 +331,16 @@ std::unique_ptr<Vst3Plugin>
 			);
 
 		if(is_equal) {
-            return CreateByIndex(i, std::move(host_context));
+            return CreateByIndex(i);
 		}
 	}
 
 	throw std::runtime_error("No specified id in this factory.");
 }
 
-struct Vst3PluginFactoryList::Impl
+class Vst3PluginFactoryList::Impl
 {
+public:
     std::map<String, std::shared_ptr<Vst3PluginFactory>> table_;
 };
 

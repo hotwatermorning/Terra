@@ -1,46 +1,35 @@
-# VstHostDemo
+# Vst3HostDemo
 
 ## What's this?
 
-[C++ Advent Calendar 2014](http://hwm.hatenablog.com/entry/2014/12/01/233320) のネタとして作成したVST3ホストアプリケーションです。
-VST3のプラグインををロードして、音を鳴らせます。
+A Demo application which hosts vst3 plugins.
 
-## 機能 
+現在は、OSX 10.13.4 & Xcode 9.3.1でのビルドを確認しています。
 
-ピアノの鍵盤画面を押すとノート情報を生成してプラグインに渡します。
-また、PCのキーボードにも反応します。
-Ableton Live方式で、A, W, S, ..., O, L, Pまでの範囲がソフトウェアキーボードとなり、ZとXでオクターブを変更できます。
+## 機能
 
-また、Spaceキーを押しながら鍵盤画面をドラッグすると鍵盤の見える範囲を動かせます。
-
-VST3プラグインをドラッグアンドドロップすると、そのプラグインをロードします。
-
-### 64bit版に対応しました。
-
-ただし、balorの64bit対応が必要です。
-現在64bit版に対応したライブラリは公開されていませんが、以下のようにして64bit版のライブラリを作成可能です。
-
- * 既存の32bit版のプロジェクト構成を複製して64bit版のプロジェクト構成を作る
- * ビルドしていくつかのコンパイルエラーを取り除く
+プラグインをロードし、ピアノの鍵盤画面を押すとそのプラグインで音を鳴らせます。
+また、Ableton Live方式で、PCのキーボードををソフトウェアキーボードとして使用できます。
+    * A, W, S, ..., O, L, Pまでの範囲をドレミ...に割り当てています。
+    * ZとXでオクターブを変更できます。
 
 ## プログラムのビルド方法
 
-Visual Studio 2013でビルドが可能なのを確認しています
-
-1. [Steinberg](http://japan.steinberg.net/)から、VST 3.6のSDKをダウンロードし、ソリューション内のvst3ディレクトリに展開したファイルをコピーする。
- 1. ちょうど、`base`, `pluginterfaces`, `public.sdk`がvst3ディレクトリの下に配置されるようにする
-
-2. [Boost](http://www.boost.org/)から、Boost.1.56.0をダウンロードしビルドする。（他のバージョンのBoostでも問題ないかもしれない）
-
-3. [balorライブラリの公式ブログ](http://d.hatena.ne.jp/syanji/20110731/1312105612)から、balor 1.0.1をダウンロードし、ビルドする。
-
-4. Vst3HostDemo.slnを開き、Boost, balorのインクルードディレクトリ、ライブラリディレクトリを設定する。
-
-5. Vst3HostDemoプロジェクトをビルドする。
+```
+cd ./gradle
+./gradlew build_app
+open build_debug/Debug/Vst3HostDemo
+```
 
 ## ライセンス
 
 このソースコードは、Boost Software License, Version 1.0で公開します。
+
+また、以下のライブラリを使用しています。
+
+* [wxWidgets](http://www.wxwidgets.org/)
+* [PortAudio](http://www.portaudio.com/)
+* [VST3 SDK](https://github.com/steinbergmedia/vst3sdk)
 
 -----
 

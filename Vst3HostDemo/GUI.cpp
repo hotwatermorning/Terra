@@ -512,7 +512,7 @@ private:
         for(int i = 0; i < num; ++i) {
             auto const &info = factory->GetComponentInfo(i);
             
-            std::cout << hwm::to_utf8(info.name()) << ", " << hwm::to_utf8(info.category()) << std::endl;
+            hwm::dout << hwm::to_utf8(info.name()) << ", " << hwm::to_utf8(info.category()) << std::endl;
             
             //! カテゴリがkVstAudioEffectClassなComponentを探索する。
             if(info.category() == hwm::to_wstr(kVstAudioEffectClass)) {
@@ -671,7 +671,7 @@ void MyFrame::OnAbout(wxCommandEvent& event)
 
 auto showError(PaError err) {
     if(err != paNoError) {
-        std::cout << Pa_GetErrorText(err) << std::endl;
+        hwm::dout << Pa_GetErrorText(err) << std::endl;
     }
 }
 

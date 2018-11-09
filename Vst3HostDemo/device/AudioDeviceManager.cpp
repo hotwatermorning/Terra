@@ -1,6 +1,6 @@
 #include "./AudioDeviceManager.hpp"
 #include <mutex>
-#include "./Buffer.hpp"
+#include "../misc/Buffer.hpp"
 
 NS_HWM_BEGIN
 

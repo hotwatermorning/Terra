@@ -5,14 +5,14 @@
 
 #include <functional>
 
-#include "pluginterfaces/gui/iplugview.h"
-#include "pluginterfaces/base/ipluginbase.h"
-#include "pluginterfaces/vst/ivstcomponent.h"
-#include "pluginterfaces/vst/ivsteditcontroller.h"
+#include <pluginterfaces/gui/iplugview.h>
+#include <pluginterfaces/base/ipluginbase.h>
+#include <pluginterfaces/vst/ivstcomponent.h>
+#include <pluginterfaces/vst/ivsteditcontroller.h>
 
-#include "./Vst3Utils.hpp"
-#include "TransportInfo.hpp"
-#include "./ListenerService.hpp"
+#include "Vst3Utils.hpp"
+#include "../../transport/TransportInfo.hpp"
+#include "../../misc/ListenerService.hpp"
 
 NS_HWM_BEGIN
     

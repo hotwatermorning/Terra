@@ -1,5 +1,29 @@
 cmake_minimum_required(VERSION 3.11)
 
+# IsXcodeとIsMSVCを有効にする
+message("Generator: ${CMAKE_GENERATOR}")
+if(${CMAKE_GENERATOR} STREQUAL "Xcode")
+    set(IsXcode "1")
+elseif(${CMAKE_GENERATOR} MATCHES "^Visual Studio .*")
+    set(IsMSVC "1")
+endif()
+
+# GeneratorがVisual Studioの場合、Win64指定されているかどうかでプラットフォーム指定を分岐
+# Xcodeでは常にx64を指定する
+if(IsMSVC)
+    if(${CMAKE_GENERATOR} MATCHES "Win64$")
+        set(PLATFORM "x64")
+        set(Isx64 "1")
+    else()
+        set(PLATFORM "x86")
+        set(Isx86 "1")
+    endif()
+elseif(IsXcode)
+    set(Isx64 "1")
+    set(PLATFORM "x64")
+endif()
+
+
 if(NOT DEFINED CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Debug")
 endif()
@@ -39,10 +63,37 @@ include_directories(
 set(CMAKE_CXX_FLAGS "-DHAVE_TYPE_TRAITS=1 ${WX_CXX_FLAGS} ${CMAKE_CXX_FLAGS} -std=c++17 -stdlib=libc++")
 set(CMAKE_EXE_LINKER_FLAGS "${WX_LIB_FLAGS} ${CMAKE_EXE_LINKER_FLAGS}")
 
-file(GLOB_RECURSE FILES "./Vst3HostDemo/*.cpp" "./Vst3HostDemo/*.hpp" "./Vst3HostDemo/*.h" "./Vst3HostDemo/*.mm")
-message("Files ${FILES}")
+set(SOURCE_DIR_LIST "./Vst3HostDemo")
+set(TARGET_EXTENSION_LIST "*.c" "*.cpp" "*.h" "*.hpp")
+set(BASE_DIR "./Vst3HostDemo")
+get_filename_component(BASE_DIR "${BASE_DIR}" ABSOLUTE)
 
-add_executable(${PROJECT_NAME} ${FILES})
+if(IsXcode)
+  list(APPEND TARGET_EXTENSION_LIST ${TARGET_EXTENSION_LIST} "*.mm")
+endif()
+
+# プロジェクトに含めるソースファイル／ヘッダーファイルを再帰的に検索
+foreach(DIR ${SOURCE_DIR_LIST})
+  foreach(EXT ${TARGET_EXTENSION_LIST})
+    list(APPEND PATTERNS ${PATTERNS} "${DIR}/${EXT}")
+  endforeach()
+
+  file(GLOB_RECURSE FILES ${PATTERNS})
+
+  # Define SourceGroup reflecting filesystem hierarchy.
+  foreach(FILE_PATH ${FILES})
+    get_filename_component(FILE_DIR "${FILE_PATH}" DIRECTORY)
+    file(RELATIVE_PATH GROUP_NAME "${BASE_DIR}" "${FILE_DIR}")
+    string(REPLACE "/" "\\" GROUP_NAME "${GROUP_NAME}")
+    source_group("${GROUP_NAME}" FILES "${FILE_PATH}")
+  endforeach()
+
+  list(APPEND SOURCE_FILES ${FILES})
+endforeach()
+
+message("Files ${SOURCE_FILES}")
+
+add_executable(${PROJECT_NAME} ${SOURCE_FILES})
 
 set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PREFIX_HEADER "Vst3HostDemo/prefix.hpp")
 set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PRECOMPILE_PREFIX_HEADER "YES")
@@ -50,7 +101,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PRECOMPILE_
 
 find_library(VST3_SDK_LIB "sdk" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}")
 find_library(VST3_BASE_LIB "base" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}")
-find_library(PORTAUDIO_LIB "portaudio" PATHS "./ext/portaudio/${BUILD_DIR_NAME}")
+find_library(PORTAUDIO_LIB "libportaudio.a" PATHS "./ext/portaudio/${BUILD_DIR_NAME}")
 link_directories("./ext/wxWidgets/${BUILD_DIR_NAME}/install/lib")
 
 target_link_libraries(

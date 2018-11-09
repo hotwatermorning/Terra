@@ -2,13 +2,13 @@
 
 #include "./Vst3HostContext.hpp"
 
-#include "./pluginterfaces/vst/ivsteditcontroller.h"
-#include "./public.sdk/source/vst/hosting/hostclasses.h"
-#include "./public.sdk/source/vst/hosting/parameterchanges.h"
+#include <pluginterfaces/vst/ivsteditcontroller.h>
+#include <public.sdk/source/vst/hosting/hostclasses.h>
+#include <public.sdk/source/vst/hosting/parameterchanges.h>
 
-#include "./Vst3Utils.hpp"
-#include "./Vst3Plugin.hpp"
-#include "./StrCnv.hpp"
+#include "Vst3Utils.hpp"
+#include "Vst3Plugin.hpp"
+#include "../../misc/StrCnv.hpp"
 
 NS_HWM_BEGIN
 
@@ -21,7 +21,7 @@ Vst3Plugin::HostContext::HostContext(hwm::String host_name)
 
 Vst3Plugin::HostContext::~HostContext()
 {
-    hwm::dout << L"Vst3Host::Impl is now deleted." << std::endl;
+    hwm::dout << L"Vst3Plugin::HostContext is now deleted." << std::endl;
 }
 
 std::unique_ptr<Steinberg::FUnknown, SelfReleaser>

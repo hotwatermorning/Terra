@@ -1,6 +1,6 @@
-#include "./Vst3Plugin.hpp"
-#include "./Vst3Plugin/Vst3PluginImpl.hpp"
-#include "./Vst3HostContext.hpp"
+#include "Vst3Plugin.hpp"
+#include "Vst3PluginImpl.hpp"
+#include "Vst3HostContext.hpp"
 
 #include <cassert>
 #include <memory>

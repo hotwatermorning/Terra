@@ -1,7 +1,7 @@
 #pragma once
 
 #include <portaudio.h>
-#include "./SingleInstance.hpp"
+#include "../misc/SingleInstance.hpp"
 
 NS_HWM_BEGIN
 

@@ -1,4 +1,4 @@
-#include "../Vst3Plugin.hpp"
+#include "Vst3Plugin.hpp"
 
 #include <memory>
 #include <stdexcept>
@@ -6,26 +6,26 @@
 #include <atomic>
 #include <vector>
 
-#include "pluginterfaces/base/ftypes.h"
-#include "pluginterfaces/base/ipluginbase.h"
-#include "pluginterfaces/vst/ivsteditcontroller.h"
-#include "pluginterfaces/vst/ivstcomponent.h"
-#include "pluginterfaces/vst/ivstaudioprocessor.h"
-#include "pluginterfaces/vst/ivstmessage.h"
-#include "pluginterfaces/vst/ivsthostapplication.h"
-#include "pluginterfaces/vst/ivstprocesscontext.h"
-#include "pluginterfaces/vst/ivstunits.h"
-#include "pluginterfaces/gui/iplugview.h"
-#include "pluginterfaces/vst/ivstevents.h"
-#include "pluginterfaces/base/ustring.h"
-#include "pluginterfaces/vst/vstpresetkeys.h"
+#include <pluginterfaces/base/ftypes.h>
+#include <pluginterfaces/base/ipluginbase.h>
+#include <pluginterfaces/vst/ivsteditcontroller.h>
+#include <pluginterfaces/vst/ivstcomponent.h>
+#include <pluginterfaces/vst/ivstaudioprocessor.h>
+#include <pluginterfaces/vst/ivstmessage.h>
+#include <pluginterfaces/vst/ivsthostapplication.h>
+#include <pluginterfaces/vst/ivstprocesscontext.h>
+#include <pluginterfaces/vst/ivstunits.h>
+#include <pluginterfaces/gui/iplugview.h>
+#include <pluginterfaces/vst/ivstevents.h>
+#include <pluginterfaces/base/ustring.h>
+#include <pluginterfaces/vst/vstpresetkeys.h>
 
-#include "../Vst3Utils.hpp"
-#include "../Vst3Plugin.hpp"
-#include "../Vst3PluginFactory.hpp"
+#include "Vst3Utils.hpp"
+#include "Vst3Plugin.hpp"
+#include "Vst3PluginFactory.hpp"
 
-#include "../Flag.hpp"
-#include "../Buffer.hpp"
+#include "../../misc/Flag.hpp"
+#include "../../misc/Buffer.hpp"
 
 NS_HWM_BEGIN
 

@@ -1,5 +1,5 @@
 #include "App.hpp"
-#include "GUI.hpp"
+#include "gui/GUI.hpp"
 
 #include <wx/cmdline.h>
 
@@ -58,13 +58,13 @@ bool MyApp::OnInit()
 {
     if(!wxApp::OnInit()) { return false; }
     
-    processor_ = std::make_shared<TestAudioProcessor>();
-    processor_->SetSequence(MakeSequence());
-    processor_->GetTransporter().SetLoopRange(0, 4 * kSampleRate);
-    processor_->GetTransporter().SetLoopEnabled(true);
+    project_ = std::make_shared<Project>();
+    project_->SetSequence(MakeSequence());
+    project_->GetTransporter().SetLoopRange(0, 4 * kSampleRate);
+    project_->GetTransporter().SetLoopEnabled(true);
     
     adm_ = std::make_unique<AudioDeviceManager>();
-    adm_->AddCallback(processor_.get());
+    adm_->AddCallback(project_.get());
     
     auto list = adm_->Enumerate();
     for(auto const &info: list) {
@@ -98,8 +98,8 @@ bool MyApp::OnInit()
 int MyApp::OnExit()
 {
     adm_->Close();
-    processor_->RemoveInstrument();
-    processor_.reset();
+    project_->RemoveInstrument();
+    project_.reset();
     plugin_.reset();
     factory_.reset();
     return 0;
@@ -107,7 +107,7 @@ int MyApp::OnExit()
 
 void MyApp::BeforeExit()
 {
-    processor_->RemoveInstrument();
+    project_->RemoveInstrument();
 }
 
 void MyApp::AddFactoryLoadListener(MyApp::FactoryLoadListener *li) { fl_listeners_.AddListener(li); }
@@ -152,7 +152,7 @@ bool MyApp::LoadVst3Plugin(int component_index)
         auto tmp_plugin = factory_->CreateByIndex(component_index);
         UnloadVst3Plugin();
         plugin_ = std::move(tmp_plugin);
-        processor_->SetInstrument(plugin_);
+        project_->SetInstrument(plugin_);
         vl_listeners_.Invoke([this](auto li) {
             li->OnVst3PluginLoaded(plugin_.get());
         });
@@ -166,7 +166,7 @@ bool MyApp::LoadVst3Plugin(int component_index)
 void MyApp::UnloadVst3Plugin()
 {
     if(plugin_) {
-        processor_->RemoveInstrument();
+        project_->RemoveInstrument();
         
         vl_listeners_.InvokeReversed([this](auto li) {
             li->OnVst3PluginUnloaded(plugin_.get());
@@ -191,9 +191,9 @@ Vst3Plugin * MyApp::GetPlugin()
     return plugin_.get();
 }
 
-TestAudioProcessor * MyApp::GetAudioProcessor()
+Project * MyApp::GetProject()
 {
-    return processor_.get();
+    return project_.get();
 }
 
 namespace {

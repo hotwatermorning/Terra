@@ -6,11 +6,11 @@
 #include <array>
 #include <atomic>
 
-#include "./Bypassable.hpp"
-#include "./LockFactory.hpp"
-#include "./AudioDeviceManager.hpp"
-#include "./Vst3Plugin.hpp"
-#include "./Transporter.hpp"
+#include "../misc/Bypassable.hpp"
+#include "../misc/LockFactory.hpp"
+#include "../device/AudioDeviceManager.hpp"
+#include "../plugin/vst3/Vst3Plugin.hpp"
+#include "../transport/Transporter.hpp"
 
 NS_HWM_BEGIN
 
@@ -32,15 +32,15 @@ struct Sequence
     std::vector<Note> notes_;
 };
 
-class TestAudioProcessor
+class Project final
 :   public IAudioDeviceCallback
-,   public SingleInstance<TestAudioProcessor>
+,   public SingleInstance<Project>
 {
 public:
     using PlayingNoteList = std::array<std::atomic<bool>, 128>;
     
-    TestAudioProcessor();
-    ~TestAudioProcessor();
+    Project();
+    ~Project();
     
     void SetInstrument(std::shared_ptr<Vst3Plugin> plugin);
     std::shared_ptr<Vst3Plugin> RemoveInstrument();

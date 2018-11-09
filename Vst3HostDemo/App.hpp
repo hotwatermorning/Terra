@@ -2,12 +2,12 @@
 
 #include <memory>
 
-#include "Vst3PluginFactory.hpp"
-#include "Vst3Plugin.hpp"
-#include "AudioDeviceManager.hpp"
-#include "TestAudioProcessor.hpp"
-#include "ListenerService.hpp"
-#include "SingleInstance.hpp"
+#include "plugin/vst3/Vst3PluginFactory.hpp"
+#include "plugin/vst3/Vst3Plugin.hpp"
+#include "device/AudioDeviceManager.hpp"
+#include "project/Project.hpp"
+#include "misc/ListenerService.hpp"
+#include "misc/SingleInstance.hpp"
 
 NS_HWM_BEGIN
 
@@ -67,14 +67,14 @@ public:
     
     Vst3PluginFactory * GetFactory();
     Vst3Plugin * GetPlugin();
-    TestAudioProcessor * GetAudioProcessor();
+    Project * GetProject();
     
 private:
     ListenerService<FactoryLoadListener> fl_listeners_;
     ListenerService<Vst3PluginLoadListener> vl_listeners_;
     std::unique_ptr<Vst3PluginFactory> factory_;
     std::shared_ptr<Vst3Plugin> plugin_;
-    std::shared_ptr<TestAudioProcessor> processor_;
+    std::shared_ptr<Project> project_;
     wxString device_name_;
     
     void OnInitCmdLine(wxCmdLineParser& parser) override;

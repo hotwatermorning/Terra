@@ -2,7 +2,7 @@
 
 #include <utility>
 #include <mutex>
-#include "LockFactory.hpp"
+#include "../misc/LockFactory.hpp"
 #include "TransportInfo.hpp"
 
 NS_HWM_BEGIN

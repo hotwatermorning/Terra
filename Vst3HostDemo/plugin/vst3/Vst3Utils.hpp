@@ -3,8 +3,8 @@
 #include <memory>
 #include <utility>
 
-#include "pluginterfaces/base/ftypes.h"
-#include "pluginterfaces/base/ipluginbase.h"
+#include <pluginterfaces/base/ftypes.h>
+#include <pluginterfaces/base/ipluginbase.h>
 
 NS_HWM_BEGIN
 

@@ -1,11 +1,11 @@
 #include "./GUI.hpp"
-#include "./App.hpp"
+#include "../App.hpp"
 
 #include <set>
 
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
 
-#include "StrCnv.hpp"
+#include "../misc/StrCnv.hpp"
 
 NS_HWM_BEGIN
 
@@ -278,9 +278,9 @@ public:
         if(note_number >= 128) { return; }
         
         auto app = MyApp::GetInstance();
-        auto proc = app->GetAudioProcessor();
+        auto proj = app->GetProject();
         
-        proc->AddInteractiveNote(note_number);
+        proj->AddInteractiveNote(note_number);
     }
     
     void OnKeyUp(wxKeyEvent const &ev)
@@ -294,9 +294,9 @@ public:
         if(note_number >= 128) { return; }
         
         auto app = MyApp::GetInstance();
-        auto proc = app->GetAudioProcessor();
+        auto proj = app->GetProject();
         
-        proc->RemoveInteractiveNote(note_number);
+        proj->RemoveInteractiveNote(note_number);
     }
     
     std::optional<int> PointToNoteNumber(wxPoint pt)
@@ -332,10 +332,10 @@ public:
     void OnTimer()
     {
         auto app = MyApp::GetInstance();
-        auto proc = app->GetAudioProcessor();
-        
-        std::vector<int> list_seq = proc->GetPlayingSequenceNotes();
-        std::vector<int> list_int = proc->GetPlayingInteractiveNotes();
+        auto proj = app->GetProject();
+
+        std::vector<int> list_seq = proj->GetPlayingSequenceNotes();
+        std::vector<int> list_int = proj->GetPlayingInteractiveNotes();
         
         PlayingNoteList tmp = {};
         auto set_playing_notes = [&tmp](auto const &list) {
@@ -359,9 +359,9 @@ private:
     {
         assert(0 <= note_number && note_number < 128);
         auto app = MyApp::GetInstance();
-        auto proc = app->GetAudioProcessor();
-        
-        proc->AddInteractiveNote(note_number);
+        auto proj = app->GetProject();
+
+        proj->AddInteractiveNote(note_number);
     }
     
     void SendNoteOff(int note_number)
@@ -369,9 +369,9 @@ private:
         assert(0 <= note_number && note_number < 128);
         
         auto app = MyApp::GetInstance();
-        auto proc = app->GetAudioProcessor();
-        
-        proc->RemoveInteractiveNote(note_number);
+        auto proj = app->GetProject();
+
+        proj->RemoveInteractiveNote(note_number);
     }
     
 private:
@@ -677,7 +677,7 @@ auto showError(PaError err) {
 
 void MyFrame::OnPlay(wxCommandEvent &ev)
 {
-    auto &tp = TestAudioProcessor::GetInstance()->GetTransporter();
+    auto &tp = Project::GetInstance()->GetTransporter();
     tp.SetPlaying(ev.IsChecked());
 }
 

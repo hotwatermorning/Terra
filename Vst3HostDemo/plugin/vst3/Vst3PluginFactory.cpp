@@ -1,4 +1,4 @@
-#include "./Vst3PluginFactory.hpp"
+#include "Vst3PluginFactory.hpp"
 
 #include <algorithm>
 #include <memory>
@@ -6,11 +6,11 @@
 #include <vector>
 #include <map>
 
-#include "./pluginterfaces/base/ftypes.h"
-#include "./Vst3Utils.hpp"
-#include "./Vst3Plugin.hpp"
-#include "./Module.hpp"
-#include "./StrCnv.hpp"
+#include <pluginterfaces/base/ftypes.h>
+#include "Vst3Utils.hpp"
+#include "Vst3Plugin.hpp"
+#include "../../misc/Module.hpp"
+#include "../../misc/StrCnv.hpp"
 
 using namespace Steinberg;
 

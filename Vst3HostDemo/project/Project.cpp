@@ -1,4 +1,4 @@
-#include "TestAudioProcessor.hpp"
+#include "Project.hpp"
 
 NS_HWM_BEGIN
 
@@ -8,17 +8,17 @@ void ClearPlayingNotes(Container &c)
     std::for_each(c.begin(), c.end(), [](auto &x) { x.store(false); });
 }
 
-TestAudioProcessor::TestAudioProcessor()
+Project::Project()
 {
     ClearPlayingNotes(playing_sequence_notes_);
     ClearPlayingNotes(added_interactive_notes_);
     ClearPlayingNotes(playing_interactive_notes_);
 }
 
-TestAudioProcessor::~TestAudioProcessor()
+Project::~Project()
 {}
 
-void TestAudioProcessor::SetInstrument(std::shared_ptr<Vst3Plugin> plugin)
+void Project::SetInstrument(std::shared_ptr<Vst3Plugin> plugin)
 {
     assert(plugin);
     
@@ -29,7 +29,7 @@ void TestAudioProcessor::SetInstrument(std::shared_ptr<Vst3Plugin> plugin)
     plugin_->Resume();
 }
 
-std::shared_ptr<Vst3Plugin> TestAudioProcessor::RemoveInstrument()
+std::shared_ptr<Vst3Plugin> Project::RemoveInstrument()
 {
     auto bypass = MakeScopedBypassRequest(bypass_, true);
     
@@ -47,13 +47,13 @@ std::shared_ptr<Vst3Plugin> TestAudioProcessor::RemoveInstrument()
     return plugin;
 }
 
-std::shared_ptr<Vst3Plugin> TestAudioProcessor::GetInstrument() const
+std::shared_ptr<Vst3Plugin> Project::GetInstrument() const
 {
     auto lock = lf_.make_lock();
     return plugin_;
 }
 
-void TestAudioProcessor::SetSequence(std::shared_ptr<Sequence> seq)
+void Project::SetSequence(std::shared_ptr<Sequence> seq)
 {
     auto bypass = MakeScopedBypassRequest(bypass_, true);
     
@@ -61,20 +61,20 @@ void TestAudioProcessor::SetSequence(std::shared_ptr<Sequence> seq)
     sequence_ = seq;
 }
 
-Transporter & TestAudioProcessor::GetTransporter()
+Transporter & Project::GetTransporter()
 {
     return tp_;
 }
 
-Transporter const & TestAudioProcessor::GetTransporter() const
+Transporter const & Project::GetTransporter() const
 {
     return tp_;
 }
 
-void TestAudioProcessor::StartProcessing(double sample_rate,
-                                         SampleCount max_block_size,
-                                         int num_input_channels,
-                                         int num_output_channels)
+void Project::StartProcessing(double sample_rate,
+                              SampleCount max_block_size,
+                              int num_input_channels,
+                              int num_output_channels)
 {
     sample_rate_ = sample_rate;
     block_size_ = max_block_size;
@@ -82,7 +82,7 @@ void TestAudioProcessor::StartProcessing(double sample_rate,
     num_device_outputs_ = num_output_channels;
 }
 
-std::vector<int> GetPlayingSequenceImpl(TestAudioProcessor::PlayingNoteList const &list)
+std::vector<int> GetPlayingSequenceImpl(Project::PlayingNoteList const &list)
 {
     std::vector<int> ret;
     for(int i = 0; i < list.size(); ++i) {
@@ -92,22 +92,22 @@ std::vector<int> GetPlayingSequenceImpl(TestAudioProcessor::PlayingNoteList cons
     return ret;
 }
 
-std::vector<int> TestAudioProcessor::GetPlayingSequenceNotes() const
+std::vector<int> Project::GetPlayingSequenceNotes() const
 {
     return GetPlayingSequenceImpl(playing_sequence_notes_);
 }
 
-std::vector<int> TestAudioProcessor::GetPlayingInteractiveNotes() const
+std::vector<int> Project::GetPlayingInteractiveNotes() const
 {
     return GetPlayingSequenceImpl(playing_interactive_notes_);
 }
 
-void TestAudioProcessor::AddInteractiveNote(int note_number)
+void Project::AddInteractiveNote(int note_number)
 {
     added_interactive_notes_[note_number] = true;
 }
 
-void TestAudioProcessor::RemoveInteractiveNote(int note_number)
+void Project::RemoveInteractiveNote(int note_number)
 {
     added_interactive_notes_[note_number] = false;
 }
@@ -133,7 +133,7 @@ TraversalCallback<F> MakeTraversalCallback(F f)
     return TraversalCallback<F>(std::forward<F>(f));
 }
 
-void TestAudioProcessor::Process(SampleCount block_size, float const * const * input, float **output)
+void Project::Process(SampleCount block_size, float const * const * input, float **output)
 {
     ScopedBypassGuard guard;
     
@@ -210,7 +210,7 @@ void TestAudioProcessor::Process(SampleCount block_size, float const * const * i
     tp_.Traverse(block_size, &cb);
 }
 
-void TestAudioProcessor::StopProcessing()
+void Project::StopProcessing()
 {
     
 }

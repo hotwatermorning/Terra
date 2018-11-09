@@ -8,11 +8,11 @@
 #include <algorithm>
 #include <vector>
 
-#include "../StrCnv.hpp"
-#include "../ScopeExit.hpp"
-#include "../Vst3Utils.hpp"
-#include "../Vst3Plugin.hpp"
-#include "../Vst3PluginFactory.hpp"
+#include "../../misc/StrCnv.hpp"
+#include "../../misc/ScopeExit.hpp"
+#include "Vst3Utils.hpp"
+#include "Vst3Plugin.hpp"
+#include "Vst3PluginFactory.hpp"
 
 using namespace Steinberg;
 

@@ -1,10 +1,10 @@
 #pragma once
 
-#include "./pluginterfaces/vst/ivsteditcontroller.h"
-#include "./public.sdk/source/vst/hosting/hostclasses.h"
-#include "./public.sdk/source/vst/hosting/parameterchanges.h"
+#include <pluginterfaces/vst/ivsteditcontroller.h>
+#include <public.sdk/source/vst/hosting/hostclasses.h>
+#include <public.sdk/source/vst/hosting/parameterchanges.h>
 
-#include "./Vst3Plugin.hpp"
+#include "Vst3Plugin.hpp"
 
 NS_HWM_BEGIN
 

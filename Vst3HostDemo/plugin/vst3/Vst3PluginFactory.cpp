@@ -143,7 +143,7 @@ private:
 	Module module_;
 	typedef void (PLUGIN_API *SetupProc)();
 
-	typedef std::unique_ptr<IPluginFactory, SelfReleaser> factory_ptr;
+    using factory_ptr = vstma_unique_ptr<IPluginFactory>;
 
 	factory_ptr				factory_;
 	FactoryInfo				factory_info_;

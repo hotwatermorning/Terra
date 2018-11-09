@@ -10,7 +10,6 @@
 #include <pluginterfaces/vst/ivstcomponent.h>
 #include <pluginterfaces/vst/ivsteditcontroller.h>
 
-#include "Vst3Utils.hpp"
 #include "../../transport/TransportInfo.hpp"
 #include "../../misc/ListenerService.hpp"
 

@@ -601,7 +601,7 @@ void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &
 	edit_controller_is_created_new_ = edit_controller_is_created_new;
 }
 
-void Vst3Plugin::Impl::Initialize(std::unique_ptr<Vst::IComponentHandler, SelfReleaser> component_handler)
+void Vst3Plugin::Impl::Initialize(vstma_unique_ptr<Vst::IComponentHandler> component_handler)
 {
 	tresult res;
 

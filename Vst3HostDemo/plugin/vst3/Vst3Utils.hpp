@@ -11,20 +11,21 @@ NS_HWM_BEGIN
 class SelfReleaser
 {
 public:
-	template<class T>
-	void operator() (T *p) {
+    void operator() (Steinberg::FUnknown *p) {
 		if(p) {
 			p->release();
 		}
 	}
 };
 
-typedef std::unique_ptr<Steinberg::IPluginFactory, SelfReleaser> factory_ptr;
-
 template<class T>
-std::unique_ptr<T, SelfReleaser>  to_unique(T *p)
+using vstma_unique_ptr = std::unique_ptr<T, SelfReleaser>;
+
+//! Make an FUnknown pointer auto-releasable.
+template<class T>
+vstma_unique_ptr<T>  to_unique(T *p)
 {
-	return std::unique_ptr<T, SelfReleaser>(p);
+	return vstma_unique_ptr<T>(p);
 }
 
 //! 失敗か成功かどちらかの状況を返すクラス
@@ -35,21 +36,6 @@ class Either
 public:
 	Either(Left left) : left_(std::move(left)), right_(Right()), is_right_(false) {}
 	Either(Right right) : left_(Left()), right_(std::move(right)), is_right_(true) {}
-
-	Either(Either &&rhs)
-		:	left_(std::move(rhs.left_))
-		,	right_(std::move(rhs.right_))
-		,	is_right_(std::move(rhs.is_right_))
-	{}
-
-	Either & operator=(Either &&rhs)
-	{
-		left_ = std::move(rhs.left_);
-		right_ = std::move(rhs.right_);
-		is_right_ = std::move(rhs.is_right_);
-
-		return *this;
-	}
 
 	bool is_right() const { return is_right_; }
 
@@ -78,40 +64,25 @@ public:
 	}
 
 	template<class F>
-	void visit(F f)
-	{
-		if(is_right()) {
-			visit_right(f);
-		} else {
-			visit_left(f);
-		}
-	}
-
-	template<class F>
-	void visit_left(F f) {
-		if(!is_right()) { f(left_); }
-	}
-
-	template<class F>
-	void visit_left(F f) const {
-		if(!is_right()) { f(left_); }
-	}
-
-	template<class F>
-	void visit_right(F f) {
-		if(is_right()) { f(right_); }
-	}
-
-	template<class F>
-	void visit_right(F f) const {
-		if(is_right()) { f(right_); }
-	}
+	void visit(F f) {
+        if(is_right()) { f(right()); }
+        else           { f(left()); }
+    }
+    
+    template<class F>
+    void visit(F f) const {
+        if(is_right()) { f(right()); }
+        else           { f(left()); }
+    }
 
 private:
-	bool is_right_;
 	Left left_;
 	Right right_;
+    bool is_right_;
 };
+
+template<class To>
+using maybe_vstma_unique_ptr = Either<Steinberg::tresult, vstma_unique_ptr<To>>;
 
 //! pに対してqueryInterfaceを呼び出し、その結果を返す。
 /*!
@@ -122,22 +93,24 @@ private:
 	@note 	失敗した時に、そのエラーコードが必要になることを考えて、Boost.Optionalではなく、Eitherを返すようにした
 */
 template<class To, class T>
-Either<Steinberg::tresult, std::unique_ptr<To, SelfReleaser>> queryInterface_impl(T *p, Steinberg::FIDString iid)
+maybe_vstma_unique_ptr<To> queryInterface_impl(T *p, Steinberg::FIDString iid)
 {
-	typedef Either<Steinberg::tresult, std::unique_ptr<To, SelfReleaser>> either_t;
+    assert(p);
+
 	To *obtained = nullptr;
 	Steinberg::tresult const res = p->queryInterface(iid, (void **)&obtained);
 	if(res == Steinberg::kResultTrue && obtained) {
-		return either_t(to_unique(obtained));
+        return { to_unique(obtained) };
 	} else {
 		if(res != Steinberg::kResultTrue) {
-			return either_t(res);
+            return { res };
 		} else {
-			return Steinberg::kNoInterface;
+            return { Steinberg::kNoInterface };
 		}
 	}
 }
 
+// もしPointerの名前空間内に、別のget_raw_pointerが定義されていても、こちらの関数が必ず使用されるようにする。
 namespace prevent_adl {
 
 	template<class T>
@@ -149,41 +122,41 @@ namespace prevent_adl {
 }	// prevent_adl
 
 template<class To, class Pointer>
-Either<Steinberg::tresult, std::unique_ptr<To, SelfReleaser>> queryInterface(Pointer const &p, Steinberg::FIDString iid)
+maybe_vstma_unique_ptr<To> queryInterface(Pointer const &p, Steinberg::FIDString iid)
 {
 	return queryInterface_impl<To>(prevent_adl::get_raw_pointer(p), iid);
 }
 
 template<class To, class Pointer>
-Either<Steinberg::tresult, std::unique_ptr<To, SelfReleaser>> queryInterface(Pointer const &p)
+maybe_vstma_unique_ptr<To> queryInterface(Pointer const &p)
 {
 	return queryInterface_impl<To>(prevent_adl::get_raw_pointer(p), To::iid);
 }
 
 template<class To, class Factory>
-Either<Steinberg::tresult, std::unique_ptr<To, SelfReleaser>> createInstance_impl(Factory *factory, Steinberg::FUID class_id, Steinberg::FIDString iid)
+maybe_vstma_unique_ptr<To> createInstance_impl(Factory *factory, Steinberg::FUID class_id, Steinberg::FIDString iid)
 {
-	typedef Either<Steinberg::tresult, std::unique_ptr<To, SelfReleaser>> either_t;
+    assert(factory);
 	To *obtained = nullptr;
 
 	Steinberg::tresult const res = factory->createInstance(class_id, iid, (void **)&obtained);
 	if(res == Steinberg::kResultTrue && obtained) {
-		return either_t(to_unique(obtained));
+        return { to_unique(obtained) };
 	} else {
-		return either_t(res);
+        return { res };
 	}
 }
 
 //! なんらかのファクトリクラスからあるコンポーネントを取得する。
 template<class To, class FactoryPointer>
-Either<Steinberg::tresult, std::unique_ptr<To, SelfReleaser>> createInstance(FactoryPointer const &factory, Steinberg::FUID class_id, Steinberg::FIDString iid)
+maybe_vstma_unique_ptr<To> createInstance(FactoryPointer const &factory, Steinberg::FUID class_id, Steinberg::FIDString iid)
 {
 	return createInstance_impl<To>(prevent_adl::get_raw_pointer(factory), class_id, iid);
 }
 
 //! なんらかのファクトリクラスからあるコンポーネントを取得する。
 template<class To, class FactoryPointer>
-Either<Steinberg::tresult, std::unique_ptr<To, SelfReleaser>> createInstance(FactoryPointer const &factory, Steinberg::FUID class_id)
+maybe_vstma_unique_ptr<To> createInstance(FactoryPointer const &factory, Steinberg::FUID class_id)
 {
 	return createInstance_impl<To>(prevent_adl::get_raw_pointer(factory), class_id, To::iid);
 }

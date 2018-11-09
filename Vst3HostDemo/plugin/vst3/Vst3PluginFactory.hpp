@@ -12,7 +12,6 @@
 #include <pluginterfaces/vst/ivsteditcontroller.h>
 #include <public.sdk/source/vst/hosting/parameterchanges.h>
 
-#include "Vst3Utils.hpp"
 #include "Vst3HostContext.hpp"
 
 NS_HWM_BEGIN

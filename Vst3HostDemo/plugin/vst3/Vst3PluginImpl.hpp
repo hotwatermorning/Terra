@@ -36,14 +36,14 @@ class Vst3Plugin::Impl
 public:
 	typedef Impl this_type;
 
-	typedef std::unique_ptr<Vst::IComponent, SelfReleaser>			component_ptr_t;
-	typedef std::unique_ptr<Vst::IAudioProcessor, SelfReleaser>		audio_processor_ptr_t;
-	typedef std::unique_ptr<Vst::IEditController, SelfReleaser>		edit_controller_ptr_t;
-	typedef std::unique_ptr<Vst::IEditController2, SelfReleaser>	edit_controller2_ptr_t;
-	typedef std::unique_ptr<Vst::IParameterChanges, SelfReleaser>	parameter_changes_ptr_t;
-	typedef std::unique_ptr<IPlugView, SelfReleaser>				plug_view_ptr_t;
-	typedef std::unique_ptr<Vst::IUnitInfo, SelfReleaser>			unit_info_ptr_t;
-	typedef std::unique_ptr<Vst::IProgramListData, SelfReleaser>	program_list_data_ptr_t;
+	using component_ptr_t           = vstma_unique_ptr<Vst::IComponent>;
+	using audio_processor_ptr_t     = vstma_unique_ptr<Vst::IAudioProcessor>;
+	using edit_controller_ptr_t     = vstma_unique_ptr<Vst::IEditController>;
+	using edit_controller2_ptr_t    = vstma_unique_ptr<Vst::IEditController2>;
+	using parameter_changes_ptr_t   = vstma_unique_ptr<Vst::IParameterChanges>;
+	using plug_view_ptr_t           = vstma_unique_ptr<IPlugView>;
+	using unit_info_ptr_t           = vstma_unique_ptr<Vst::IUnitInfo>;
+	using program_list_data_ptr_t   = vstma_unique_ptr<Vst::IProgramListData>;
 
 	enum ErrorContext {
 		kFactoryError,
@@ -218,7 +218,7 @@ private:
 
 	void LoadInterfaces(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context);
 
-	void Initialize(std::unique_ptr<Vst::IComponentHandler, SelfReleaser> component_handler);
+	void Initialize(vstma_unique_ptr<Vst::IComponentHandler> component_handler);
 
 	tresult CreatePlugView();
 

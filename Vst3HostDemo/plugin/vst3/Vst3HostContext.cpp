@@ -24,14 +24,6 @@ Vst3Plugin::HostContext::~HostContext()
     hwm::dout << L"Vst3Plugin::HostContext is now deleted." << std::endl;
 }
 
-std::unique_ptr<Steinberg::FUnknown, SelfReleaser>
-Vst3Plugin::HostContext::AsUnknownPtr()
-{
-    Steinberg::FUnknown *p = unknownCast();
-    p->addRef();
-    return std::unique_ptr<Steinberg::FUnknown, SelfReleaser>(p);
-}
-
 void Vst3Plugin::HostContext::SetVst3Plugin(Vst3Plugin *plugin)
 {
     plugin_ = plugin;

@@ -36,8 +36,6 @@ public:
     Vst3Plugin *plugin_ = nullptr;
     std::u16string host_name_;
     
-    std::unique_ptr<Steinberg::FUnknown, SelfReleaser> AsUnknownPtr();
-    
     void SetVst3Plugin(Vst3Plugin *plugin);
     
 protected:

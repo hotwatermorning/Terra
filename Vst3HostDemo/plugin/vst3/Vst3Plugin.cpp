@@ -216,7 +216,7 @@ std::unique_ptr<Vst3Plugin>
                  std::function<void(Vst3Plugin const *p)> on_destruction)
 {
     auto host_context = std::make_unique<Vst3Plugin::HostContext>(L"Vst3HostDemo");
-    auto impl = std::make_unique<Vst3Plugin::Impl>(factory, info, host_context->AsUnknownPtr().get());
+    auto impl = std::make_unique<Vst3Plugin::Impl>(factory, info, host_context->unknownCast());
 	auto plugin = std::make_unique<Vst3Plugin>(std::move(impl), std::move(host_context), on_destruction);
     
     return plugin;

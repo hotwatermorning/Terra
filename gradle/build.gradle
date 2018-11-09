@@ -114,6 +114,8 @@ task build_portaudio {
     execute("make -j", portaudio_build_dir)
   }
 }
+build_portaudio.mustRunAfter update_submodules
+
 
 task build_vst3sdk {
   doLast {
@@ -124,6 +126,7 @@ task build_vst3sdk {
     execute("make -j", vst3sdk_build_dir)
   }
 }
+build_vst3sdk.mustRunAfter update_submodules
 
 task build_wxwidgets {
   doLast {
@@ -149,6 +152,7 @@ task build_wxwidgets {
     execute("make install", wx_build_dir)
   }
 }
+build_wxwidgets.mustRunAfter update_submodules
 
 task build_submodules {
   dependsOn { [build_portaudio, build_vst3sdk, build_wxwidgets] }
@@ -161,7 +165,9 @@ task build_app {
     execute("cmake -GXcode -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir)
     execute("xcodebuild -configuration ${project.config}", build_dir)
   }
+
 }
+build_app.mustRunAfter build_submodules
 
 //! 指定したディレクトリの直下にあるディレクトリのうち、
 //! 現在のビルド構成によって決まるディレクトリ名と同じディレクトリがあれば、それを削除する。
@@ -192,8 +198,6 @@ task clean {
   dependsOn { [clean_submodules, clean_app] }
 }
 
-build_app.mustRunAfter build_submodules
-
 task build_all {
-  dependsOn { [build_submodules, build_app] }
+  dependsOn { [update_submodules, build_submodules, build_app] }
 }

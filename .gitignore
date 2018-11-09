@@ -4,8 +4,12 @@
 !*.h
 !*.txt
 !*.md
-!*.gitignore
-!*.gitmodule
+!.gitignore
+!.gitmodules
+!gradle/*
+!gradle/**/*
+gradle/.gradle
 
 build_debug
 build_release
+ext

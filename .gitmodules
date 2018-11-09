@@ -1,0 +1,9 @@
+[submodule "ext/vst3sdk"]
+	path = ext/vst3sdk
+	url = https://github.com/steinbergmedia/vst3sdk.git
+[submodule "ext/wxWidgets"]
+	path = ext/wxWidgets
+	url = https://github.com/wxWidgets/wxWidgets.git
+[submodule "ext/portaudio"]
+	path = ext/portaudio
+	url = https://git.assembla.com/portaudio.git

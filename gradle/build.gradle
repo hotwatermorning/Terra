@@ -1,0 +1,199 @@
+// ビルド構成の設定
+if(!project.hasProperty('config')) {
+  project.metaClass.config = "Debug"
+}
+
+assert(project.config == 'Debug' || project.config == 'Release')
+
+def isWindows() {
+  return System.properties['os.name'].toLowerCase().startsWith("windows")
+}
+
+ext {
+  build_dir_name = "build_${project.config.toLowerCase()}"
+}
+
+
+// 渡された文字列を空白で区切って、単語のリストとして返す。
+// ただし、引用符(`'` or `"`)で囲まれた範囲は空白で区切らずに一つの単語とみなす。
+// 引用符で囲まれた範囲内であっても、`\"`のようにエスケープされているものや、
+// 引用符の種類が異なるものは引用符の終わりとはみなさない。
+// ex) tokenize(/abc def "ghi \"jkl ' mno" pqr/) => [abc, def, ghi "jkl ' mno, pqr]
+def tokenize(String data)
+{
+  def separator_char = ' '
+  def escape_char = '\\'
+  def quote_chars = ['\'', '"']
+
+  String token = ""
+  def output = []
+  def in_esc = false
+  def found_quote = ""
+  def in_string = { found_quote != "" }
+
+  data.each {
+    if(in_string()) {
+      if(in_esc) {
+        in_esc = false
+      } else if(it == escape_char) {
+        in_esc = true
+        return
+      } else if(it == found_quote) {
+        found_quote = ""
+        return
+      }
+    } else {
+      if(quote_chars.contains(it)) {
+        found_quote = it
+        return
+      } else if(it == separator_char) {
+        if(token != "") {
+          output << token
+          token = ""
+        }
+        return
+      }
+    }
+
+    token += it
+  }
+
+  assert(in_esc == false)
+  assert(in_string() == false)
+
+  if(token != "") { output << token }
+  return output
+}
+
+//! @param params is executable and the parameters which are passed to the executable.
+//! @param working_dir is the working directory for the executable.
+//! @param env_vars is environment variables as a list of key:value pair. this parameter may be nil.
+def execute_with_exit_code(def params, String working_dir = ".", def env_vars = [:])
+{
+  if(isWindows()) {
+    params = "cmd /c chcp 65001 & " + params.toString()
+    def java_opts = (env_vars.get("JAVA_OPTS", "") + " -Dfile.encoding=UTF-8")
+    env_vars << ["JAVA_OPTS": java_opts.toString()]
+  }
+
+  def tmp = tokenize(params)
+  println "${tmp} @ '${working_dir}' (${env_vars})"
+
+  def pb = new ProcessBuilder(tokenize(params)).redirectErrorStream(true)
+    pb.directory(file(working_dir).getAbsoluteFile())
+
+    if(env_vars) {
+      def pb_env = pb.environment()
+        env_vars.each { key, value -> pb_env.put(key, value) }
+    }
+
+  def process = pb.start()
+    process.inputStream.eachLine { println it }
+  return process.waitFor()
+}
+
+//! similar to execute_with_exit_code but this function fails if the target command ends with exit code of non zero.
+def execute(def params, String working_dir = ".", def env_vars = [:])
+{
+  def exit_code = execute_with_exit_code(params, working_dir, env_vars)
+    assert (exit_code == 0)
+}
+
+task update_submodules {
+  doLast {
+    execute("git submodule update --init --recursive", "..")
+  }
+}
+
+task build_portaudio {
+  doLast {
+    // vst3sdk
+    def portaudio_build_dir = file("../ext/portaudio/${build_dir_name}").getAbsolutePath()
+    execute("mkdir -p ${portaudio_build_dir}")
+    execute("cmake -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ..", portaudio_build_dir)
+    execute("make -j", portaudio_build_dir)
+  }
+}
+
+task build_vst3sdk {
+  doLast {
+    // vst3sdk
+    def vst3sdk_build_dir = file("../ext/vst3sdk/${build_dir_name}").getAbsolutePath()
+    execute("mkdir -p ${vst3sdk_build_dir}")
+    execute("cmake -DCMAKE_BUILD_TYPE=${project.config} ..", vst3sdk_build_dir)
+    execute("make -j", vst3sdk_build_dir)
+  }
+}
+
+task build_wxwidgets {
+  doLast {
+    // wxwidgets
+    def wx_build_dir = file("../ext/wxWidgets/${build_dir_name}").getAbsolutePath()
+
+    def debug_flags = ""
+    if(project.config == "Debug") {
+      debug_flags = "--enable-debug --enable-debug-info --enable-debug-gdb"
+    }
+
+    execute("./autogen.sh", "../ext/wxWidgets")
+    execute("mkdir -p ${wx_build_dir}")
+    execute('../configure CXXFLAGS="-stdlib=libc++ -DHAVE_TYPE_TRAITS" OBJCXXFLAGS="-stdlib=libc++" ' +
+            'CPPFLAGS="-stdlib=libc++" LDFLAGS="-stdlib=libc++" ' +
+            '--with-macosx-version-min=10.7 --with-cocoa ' +
+            '--with-libjpeg=builtin --with-libpng=builtin --with-regex=builtin --with-libtiff=builtin ' +
+            '--with-zlib=builtin --with-expat=builtin ' +
+            '--enable-stl --enable-std_containers --enable-std_iostreams --enable-std_string ' +
+            "--disable-shared --enable-unicode ${debug_flags} --with-cxx=14 --prefix=${wx_build_dir}/install", wx_build_dir)
+    execute("make", wx_build_dir)
+    execute("make", "${wx_build_dir}/samples")
+    execute("make install", wx_build_dir)
+  }
+}
+
+task build_submodules {
+  dependsOn { [build_portaudio, build_vst3sdk, build_wxwidgets] }
+}
+
+task build_app {
+  doLast {
+    def build_dir = file("../${build_dir_name}").getAbsolutePath()
+    execute("mkdir -p ${build_dir}")
+    execute("cmake -GXcode -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir)
+    execute("xcodebuild -configuration ${project.config}", build_dir)
+  }
+}
+
+//! 指定したディレクトリの直下にあるディレクトリのうち、
+//! 現在のビルド構成によって決まるディレクトリ名と同じディレクトリがあれば、それを削除する。
+def delete_build_dir(def target_dir) {
+  file(target_dir).eachDir() {
+    if(it.getName() == build_dir_name) {
+      println "dir path to delete: ${it.getAbsolutePath()}"
+      it.deleteDir()
+    }
+  }
+}
+
+task clean_submodules {
+  doLast {
+    file("../ext").eachDir {
+      delete_build_dir(it)
+    }
+  }
+}
+
+task clean_app {
+  doLast {
+    delete_build_dir("..")
+  }
+}
+
+task clean {
+  dependsOn { [clean_submodules, clean_app] }
+}
+
+build_app.mustRunAfter build_submodules
+
+task build_all {
+  dependsOn { [build_submodules, build_app] }
+}

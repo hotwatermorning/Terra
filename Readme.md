@@ -17,7 +17,7 @@ A Demo application which hosts vst3 plugins.
 
 ```
 cd ./gradle
-./gradlew build_app
+./gradlew build_all
 open build_debug/Debug/Vst3HostDemo
 ```
 

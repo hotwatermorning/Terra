@@ -148,7 +148,6 @@ task build_wxwidgets {
             '--enable-stl --enable-std_containers --enable-std_iostreams --enable-std_string ' +
             "--disable-shared --enable-unicode ${debug_flags} --with-cxx=14 --prefix=${wx_build_dir}/install", wx_build_dir)
     execute("make", wx_build_dir)
-    execute("make", "${wx_build_dir}/samples")
     execute("make install", wx_build_dir)
   }
 }

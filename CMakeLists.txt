@@ -50,7 +50,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PRECOMPILE_
 
 find_library(VST3_SDK_LIB "sdk" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}")
 find_library(VST3_BASE_LIB "base" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}")
-find_library(PORTAUDIO_LIB "portaudio.a" PATHS "./ext/portaudio/${BUILD_DIR_NAME}")
+find_library(PORTAUDIO_LIB "portaudio" PATHS "./ext/portaudio/${BUILD_DIR_NAME}")
 link_directories("./ext/wxWidgets/${BUILD_DIR_NAME}/install/lib")
 
 target_link_libraries(

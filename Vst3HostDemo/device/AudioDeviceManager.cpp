@@ -1,8 +1,74 @@
-#include "./AudioDeviceManager.hpp"
 #include <mutex>
+#include <portaudio.h>
+
+#include "./AudioDeviceManager.hpp"
 #include "../misc/Buffer.hpp"
+#include "../misc/StrCnv.hpp"
 
 NS_HWM_BEGIN
+
+std::string to_string(AudioDriverType type)
+{
+    using A = AudioDriverType;
+    switch (type) {
+        case A::kDirectSound: return "DirectSound";
+        case A::kMME: return "MME";
+        case A::kASIO: return "ASIO";
+        case A::kWDMKS: return "WDM KS";
+        case A::kWASAPI: return "WASAPI";
+        case A::kCoreAudio: return "CoreAudio";
+        case A::kALSA: return "ALSA";
+        case A::kJACK: return "JACK";
+        default: return "Unknown";
+    }
+}
+
+std::wstring to_wstring(AudioDriverType type)
+{
+    return to_wstr(to_string(type));
+}
+
+std::string to_string(AudioDeviceIOType io)
+{
+    return io == AudioDeviceIOType::kInput ? "Input" : "Output";
+}
+
+std::wstring to_wstring(AudioDeviceIOType io)
+{
+    return to_wstr(to_string(io));
+}
+
+AudioDriverType ToAudioDriverType(PaHostApiIndex index)
+{
+    using A = AudioDriverType;
+    switch (index) {
+        case paDirectSound: return A::kDirectSound;
+        case paMME: return A::kMME;
+        case paASIO: return A::kASIO;
+        case paWDMKS: return A::kWDMKS;
+        case paWASAPI: return A::kWASAPI;
+        case paCoreAudio: return A::kCoreAudio;
+        case paALSA: return A::kALSA;
+        case paJACK: return A::kJACK;
+        default: return A::kUnknown;
+    }
+}
+
+PaHostApiIndex FromAudioDriverType(AudioDriverType type)
+{
+    using A = AudioDriverType;
+    switch (type) {
+        case A::kDirectSound: return paDirectSound;
+        case A::kMME: return paMME;
+        case A::kASIO: return paASIO;
+        case A::kWDMKS: return paWDMKS;
+        case A::kWASAPI: return paWASAPI;
+        case A::kCoreAudio: return paCoreAudio;
+        case A::kALSA: return paALSA;
+        case A::kJACK: return paJACK;
+        default: return paInDevelopment;
+    }
+}
 
 class AudioDeviceManager::Impl
 {
@@ -102,7 +168,7 @@ AudioDeviceManager::~AudioDeviceManager()
     ShowErrorMsg(err);
 }
 
-std::vector<PaDeviceInfo> AudioDeviceManager::Enumerate()
+std::vector<AudioDeviceInfo> AudioDeviceManager::Enumerate()
 {
     auto const device_count = Pa_GetDeviceCount();
 
@@ -111,17 +177,37 @@ std::vector<PaDeviceInfo> AudioDeviceManager::Enumerate()
         return {};
     }
 
-    std::vector<PaDeviceInfo> result;
+    std::vector<AudioDeviceInfo> result;
     for(PaDeviceIndex i = 0; i < device_count; ++i) {
         auto *info = Pa_GetDeviceInfo(i);
-        result.push_back(*info);
+        auto *host_api_info = Pa_GetHostApiInfo(info->hostApi);
+        
+        if(info->maxInputChannels >= 0) {
+            AudioDeviceInfo tmp {
+                ToAudioDriverType(host_api_info->type),
+                AudioDeviceIOType::kInput,
+                to_wstr(info->name),
+                info->maxInputChannels
+            };
+            result.push_back(tmp);
+        }
+        
+        if(info->maxOutputChannels >= 0) {
+            AudioDeviceInfo tmp {
+                ToAudioDriverType(host_api_info->type),
+                AudioDeviceIOType::kOutput,
+                to_wstr(info->name),
+                info->maxOutputChannels
+            };
+            result.push_back(tmp);
+        }
     }
     
     return result;
 }
 
-bool AudioDeviceManager::Open(PaDeviceInfo const *input_device,
-                              PaDeviceInfo const *output_device,
+bool AudioDeviceManager::Open(AudioDeviceInfo const *input_device,
+                              AudioDeviceInfo const *output_device,
                               double sample_rate,
                               SampleCount block_size)
 {
@@ -135,26 +221,29 @@ bool AudioDeviceManager::Open(PaDeviceInfo const *input_device,
     PaStreamParameters *pop = nullptr;
     PaStreamFlags flags = 0;
     
-    auto list = Enumerate();
-    auto find_index = [&list](auto const &info) -> int {
-        auto found = std::find_if(list.begin(), list.end(), [&info](auto const &x) {
-            return
-            std::string(info.name) == x.name &&
-            info.hostApi == x.hostApi;
-        });
-        if(found == list.end()) { return -1; }
-        else { return found - list.begin(); }
+    auto find_index = [](auto const &target) -> int {
+        int num = Pa_GetDeviceCount();
+        for(int i = 0; i < num; ++i) {
+            auto const *info = Pa_GetDeviceInfo(i);
+            auto const *host_api_info = Pa_GetHostApiInfo(info->hostApi);
+            if(target.name_ == to_wstr(info->name) &&
+               target.driver_ == ToAudioDriverType(host_api_info->type))
+            {
+                return i;
+            }
+        }
+        return -1;
     };
     
     if(input_device) {
-        ip.channelCount = input_device->maxInputChannels;
+        ip.channelCount = input_device->num_channels_;
         ip.device = find_index(*input_device);
         ip.sampleFormat = paFloat32;
         if(ip.device >= 0) { pip = &ip; }
     }
     
     if(output_device) {
-        op.channelCount = output_device->maxOutputChannels;
+        op.channelCount = output_device->num_channels_;
         op.device = find_index(*output_device);
         op.sampleFormat = paFloat32;
         if(op.device >= 0) { pop = &op; }
@@ -200,7 +289,7 @@ void AudioDeviceManager::Stop()
     
     if(!Pa_IsStreamStopped(pimpl_->stream_)) {
         Pa_StopStream(pimpl_->stream_);
-        pimpl_->ForEachCallbacks([this](auto *cb) {
+        pimpl_->ForEachCallbacks([](auto *cb) {
             cb->StopProcessing();
         });
     }

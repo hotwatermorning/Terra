@@ -1,9 +1,39 @@
 #pragma once
 
-#include <portaudio.h>
 #include "../misc/SingleInstance.hpp"
 
 NS_HWM_BEGIN
+
+enum class AudioDriverType {
+    kUnknown,
+    kDirectSound,
+    kMME,
+    kASIO,
+    kWDMKS,
+    kWASAPI,
+    kCoreAudio,
+    kALSA,
+    kJACK,
+};
+
+enum class AudioDeviceIOType {
+    kInput,
+    kOutput,
+};
+
+std::string to_string(AudioDriverType type);
+std::wstring to_wstring(AudioDriverType type);
+
+std::string to_string(AudioDeviceIOType io);
+std::wstring to_wstring(AudioDeviceIOType io);
+
+struct AudioDeviceInfo
+{
+    AudioDriverType driver_ = AudioDriverType::kUnknown;
+    AudioDeviceIOType io_type_ = AudioDeviceIOType::kOutput;
+    String name_;
+    int num_channels_ = 0;
+};
 
 class IAudioDeviceCallback
 {
@@ -35,11 +65,11 @@ public:
     AudioDeviceManager();
     ~AudioDeviceManager();
     
-    std::vector<PaDeviceInfo> Enumerate();
+    std::vector<AudioDeviceInfo> Enumerate();
 
     //! @pre IsOpened() == false
-    bool Open(PaDeviceInfo const *input_device,
-              PaDeviceInfo const *output_device,
+    bool Open(AudioDeviceInfo const *input_device,
+              AudioDeviceInfo const *output_device,
               double sample_rate,
               SampleCount block_size);
     

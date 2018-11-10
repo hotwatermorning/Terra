@@ -68,13 +68,14 @@ bool MyApp::OnInit()
     
     auto list = adm_->Enumerate();
     for(auto const &info: list) {
-        hwm::dout << info.name << " ( " << info.maxInputChannels << ", " << info.maxOutputChannels << " )" << std::endl;
+        hwm::wdout << info.name_ << L" - " << to_wstring(info.driver_) << L" ( " << info.num_channels_ << L" )" << std::endl;
     }
     
     auto selected = std::find_if(list.begin(), list.end(), [this](auto const &x) {
         return
-        (x.maxOutputChannels >= 2)
-        && (device_name_ == "" || device_name_ == x.name);
+        (x.num_channels_ >= 2)
+        && x.io_type_ == AudioDeviceIOType::kOutput
+        && (device_name_ == "" || device_name_ == x.name_);
     });
     
     if(selected == list.end()) {

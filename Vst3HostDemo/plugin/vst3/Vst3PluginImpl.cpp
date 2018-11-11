@@ -765,13 +765,13 @@ void Vst3Plugin::Impl::Initialize(vstma_unique_ptr<Vst::IComponentHandler> compo
         
         auto maybe_unit_info = queryInterface<Vst::IUnitInfo>(edit_controller_);
         if(maybe_unit_info.is_right()) {
-            unit_info_ = std::move(maybe_unit_info.right());
+            unit_handler_ = std::move(maybe_unit_info.right());
         } else {
             hwm::dout << "No UnitInfo Interface." << std::endl;
             return;
         }
 
-        OutputBusInfo(component_.get(), edit_controller_.get(), unit_info_.get());
+        OutputBusInfo(component_.get(), edit_controller_.get(), unit_handler_.get());
 
         input_buses_info_.Initialize(this, Vst::BusDirections::kInput);
         output_buses_info_.Initialize(this, Vst::BusDirections::kOutput);
@@ -853,11 +853,11 @@ void Vst3Plugin::Impl::PrepareProgramList()
 		}
 	}
 
-	OutputUnitInfo(unit_info_.get());
+	OutputUnitInfo(unit_handler_.get());
 
 	tresult res;
 
-	if(unit_info_->getUnitCount() == 0) {
+	if(unit_handler_->getUnitCount() == 0) {
 		hwm::dout << "No Unit Info." << std::endl;
 		return;
 	}
@@ -869,15 +869,15 @@ void Vst3Plugin::Impl::PrepareProgramList()
 	//! 使用するプログラムリストを選択するために、最初にprogramListIdが有効なUnitを取得。
 	//! ただし再帰的に検索はしていない
 	Steinberg::Vst::ProgramListID program_list_id = Steinberg::Vst::kNoProgramListId;
-	for(int i = 0; i < unit_info_->getUnitCount(); ++i) {
+	for(int i = 0; i < unit_handler_->getUnitCount(); ++i) {
 		Vst::UnitInfo uinfo;
-		res = unit_info_->getUnitInfo(i, uinfo);
+		res = unit_handler_->getUnitInfo(i, uinfo);
 
 		if(uinfo.programListId == Steinberg::Vst::kNoProgramListId) {
 			continue;
 		}
 
-		unit_info_->selectUnit(uinfo.id);
+		unit_handler_->selectUnit(uinfo.id);
 		program_list_id = uinfo.programListId;
 		break;
 	}
@@ -887,10 +887,10 @@ void Vst3Plugin::Impl::PrepareProgramList()
 	}
 
 	//! 使用するプログラムリストが決まったのでそのリストからprograms_を構築
-	size_t const prog_list_count = unit_info_->getProgramListCount();
+	size_t const prog_list_count = unit_handler_->getProgramListCount();
 	for(size_t npl = 0; npl < prog_list_count; ++npl) {
 		Vst::ProgramListInfo plinfo;
-		res = unit_info_->getProgramListInfo(npl, plinfo);
+		res = unit_handler_->getProgramListInfo(npl, plinfo);
 
 		if(plinfo.id != program_list_id) {
 			continue;
@@ -898,7 +898,7 @@ void Vst3Plugin::Impl::PrepareProgramList()
 
 		for(int i = 0; i < plinfo.programCount; ++i) {
 			Steinberg::Vst::String128 name_buf;
-			unit_info_->getProgramName(plinfo.id, i, name_buf);
+			unit_handler_->getProgramName(plinfo.id, i, name_buf);
 
 			ProgramInfo prginfo;
 
@@ -929,7 +929,7 @@ void Vst3Plugin::Impl::UnloadPlugin()
     
     edit_controller_->setComponentHandler(nullptr);
 
-	unit_info_.reset();
+	unit_handler_.reset();
 	plug_view_.reset();
 
 	if(edit_controller_ && edit_controller_is_created_new_) {

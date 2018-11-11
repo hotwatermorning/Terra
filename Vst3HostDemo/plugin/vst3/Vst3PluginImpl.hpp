@@ -285,7 +285,7 @@ private:
 	edit_controller_ptr_t	edit_controller_;
 	edit_controller2_ptr_t	edit_controller2_;
 	plug_view_ptr_t			plug_view_;
-	unit_info_ptr_t			unit_info_;
+	unit_info_ptr_t			unit_handler_;
 	program_list_data_ptr_t	program_list_data_;
 	Steinberg::int32		current_program_index_;
 	std::vector<ProgramInfo> programs_;

@@ -176,31 +176,6 @@ Vst3Plugin::Impl::Impl(IPluginFactory *factory,
     
 	LoadPlugin(factory, info, std::move(host_context));
 
-	size_t const sampling_rate = 44100;
-	size_t const length = sampling_rate * 2;
-	double const rad = 2 * 3.141592653589793;
-	double const amp = 2 / 3.141592653589793 * 0.125;
-
-	wave_data_.resize(length);
-	double const head_freq = 440;
-	double const last_freq = 220;
-	double const freq_angle = (last_freq - head_freq) / length;
-
-	double current_freq = head_freq;
-	double pos = 0;
-
-	for(size_t i = 0; i < length; ++i) {
-		for(int k = 1; k <= 30; ++k) {
-			wave_data_[i] += sin(rad * k * pos) / (double)(k);
-		}
-		wave_data_[i] *= amp;
-			
-		double const progress = current_freq / sampling_rate;
-		pos += progress;
-		current_freq += freq_angle;
-	}
-	wave_data_index_ = 0;
-
     input_events_.setMaxSize(128);
     output_events_.setMaxSize(128);
 }

@@ -178,9 +178,6 @@ public:
 	ParameterInfoList parameters_;
 	Steinberg::Vst::ParamID program_change_parameter_;
 
-	std::vector<double> wave_data_;
-	int wave_data_index_;
-
 	Status status_;
 
 	Vst::ParameterChanges input_params_;

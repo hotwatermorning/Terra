@@ -5,15 +5,73 @@
 
 #include <functional>
 
-#include <pluginterfaces/gui/iplugview.h>
-#include <pluginterfaces/base/ipluginbase.h>
-#include <pluginterfaces/vst/ivstcomponent.h>
-#include <pluginterfaces/vst/ivsteditcontroller.h>
-
 #include "../../transport/TransportInfo.hpp"
 #include "../../misc/ListenerService.hpp"
+#include "../../misc/Buffer.hpp"
+#include "../../misc/ArrayRef.hpp"
 
 NS_HWM_BEGIN
+
+struct Vst3Note
+{
+    enum class Type {
+        kNoteOn,
+        kNoteOff
+    };
+    
+    Vst3Note() = default;
+    Vst3Note(SampleCount offset, double ppq_pos, int channel, int pitch, int velocity, Type type)
+    {
+        SetOffset(offset);
+        SetPPQPos(ppq_pos);
+        SetChannel(channel);
+        SetPitch(pitch);
+        SetVelocity(velocity);
+        SetNoteType(type);
+    }
+    
+    SampleCount GetOffset() const { return offset_; }
+    
+    void SetOffset(SampleCount offset) {
+        assert(offset_ >= 0);
+        offset_ = offset;
+    }
+    
+    double GetPPQPos() const { return ppq_pos_; }
+    void SetPPQPos(double ppq_pos) { ppq_pos_ = ppq_pos; }
+    
+    int GetChannel() const { return channel_; }
+    void SetChannel(int channel) {
+        assert(0 <= channel && channel <= 15);
+        channel_ = channel;
+    }
+    
+    int GetPitch() const { return pitch_; }
+    void SetPitch(int pitch) {
+        assert(0 <= pitch && pitch <= 127);
+        pitch_ = pitch;
+    }
+    
+    int GetVelocity() const { return velocity_; }
+    void SetVelocity(int velocity) {
+        assert(0 <= velocity && velocity <= 127);
+        velocity_ = velocity;
+    }
+    
+    Type GetNoteType() const { return type_; }
+    void SetNoteType(Type type) { type_ = type; }
+    
+    bool IsNoteOn() const { return GetNoteType() == Type::kNoteOn; }
+    bool IsNoteOff() const { return GetNoteType() == Type::kNoteOff; }
+
+private:
+    SampleCount offset_ = 0;
+    double ppq_pos_ = 0;
+    int channel_ = 0;
+    int pitch_ = 0;
+    int velocity_ = 0;
+    Type type_ = Type::kNoteOff;
+};
     
 using String = std::wstring;
 
@@ -22,7 +80,6 @@ using String = std::wstring;
 	Vst3PluginFactoryから作成可能
 	Vst3PluginFactoryによってロードされたモジュール（.vst3ファイル）がアンロードされてしまうため、
 	作成したVst3Pluginが破棄されるまで、Vst3PluginFactoryを破棄してはならない。
-	=> モジュールをshared_ptrで管理してそれぞれのVst3Pluginに持たせてもいいかもしれない
 */
 class Vst3Plugin
 {
@@ -64,7 +121,8 @@ public:
 	ParameterAccessor const &	GetParams() const;
 
 	String GetEffectName() const;
-	size_t	GetNumOutputs() const;
+	size_t	GetNumInputs() const;
+    size_t  GetNumOutputs() const;
 	void	Resume();
 	void	Suspend();
 	bool	IsResumed() const;
@@ -100,9 +158,6 @@ public:
 	Steinberg::ViewRect
 			GetPreferredRect() const;
 
-	void	AddNoteOn(int note_number);
-	void	AddNoteOff(int note_number);
-
 	size_t	GetProgramCount() const;
 	String  GetProgramName(size_t index) const;
 
@@ -115,8 +170,24 @@ public:
 	void	EnqueueParameterChange(Steinberg::Vst::ParamID id, Steinberg::Vst::ParamValue value);
 
 	void	RestartComponent(Steinberg::int32 flag);
+    
+    template<class T>
+    struct ProcessBufferInfo
+    {
+        BufferRef<T> buffer_;
+        SampleCount sample_offset_ = 0;
+    };
+    
+    struct ProcessInfo
+    {
+        TransportInfo const *           ti_ = nullptr;
+        SampleCount                     frame_length_;
+        ArrayRef<Vst3Note>              notes_;
+        ProcessBufferInfo<float const>  input_;
+        ProcessBufferInfo<float>        output_;
+    };
 
-	float ** ProcessAudio(TransportInfo const &info, SampleCount length);
+	void Process(ProcessInfo &pi);
     
 private:
 	std::unique_ptr<ParameterAccessor>	parameters_;

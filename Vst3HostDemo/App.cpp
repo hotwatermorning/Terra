@@ -16,10 +16,11 @@ std::shared_ptr<Sequence> MakeSequence() {
         return (SampleCount)std::round(tick / 480.0 * 0.5 * kSampleRate);
     };
     
-    auto create_note = [](int tick_pos, int tick_length, int pitch) {
+    auto create_note = [](int tick_pos, int tick_length, UInt8 pitch, UInt8 velocity = 64, UInt8 off_velocity = 0) {
         auto sample_pos = tick_to_sample(tick_pos);
         auto sample_end_pos = tick_to_sample(tick_pos + tick_length);
-        return Sequence::Note { sample_pos, sample_end_pos - sample_pos, pitch, 64 };
+        UInt8 channel = 0;
+        return Sequence::Note { sample_pos, sample_end_pos - sample_pos, channel, pitch, velocity, off_velocity };
     };
     
     std::vector<Sequence::Note> notes {

@@ -127,6 +127,8 @@ public:
         Bind(wxEVT_MOTION, [this](auto &ev) { OnMotion(ev); });
         Bind(wxEVT_KEY_DOWN, [this](auto &ev) { OnKeyDown(ev); });
         Bind(wxEVT_KEY_UP, [this](auto &ev) { OnKeyUp(ev); });
+        
+        key_code_for_sample_note_.fill(0);
     }
     
     ~Keyboard()
@@ -156,16 +158,16 @@ public:
     
     std::vector<KeyProperty> const kKeyPropertyList {
         { kKeyWidth * 0, kWhiteKey, kWhiteKeyColor },
-        { int(kKeyWidth * 0.5 + 1), kBlackKey, kBlackKeyColor },
+        { int(kKeyWidth * 0.5 + 2), kBlackKey, kBlackKeyColor },
         { kKeyWidth * 1, kWhiteKey, kWhiteKeyColor },
-        { int(kKeyWidth * 1.5 + 1), kBlackKey, kBlackKeyColor },
+        { int(kKeyWidth * 1.5 + 2), kBlackKey, kBlackKeyColor },
         { kKeyWidth * 2, kWhiteKey, kWhiteKeyColor },
         { kKeyWidth * 3, kWhiteKey, kWhiteKeyColor },
-        { int(kKeyWidth * 3.5 + 1), kBlackKey, kBlackKeyColor },
+        { int(kKeyWidth * 3.5 + 2), kBlackKey, kBlackKeyColor },
         { kKeyWidth * 4, kWhiteKey, kWhiteKeyColor },
-        { int(kKeyWidth * 4.5 + 1), kBlackKey, kBlackKeyColor },
+        { int(kKeyWidth * 4.5 + 2), kBlackKey, kBlackKeyColor },
         { kKeyWidth * 5, kWhiteKey, kWhiteKeyColor },
-        { int(kKeyWidth * 5.5 + 1), kBlackKey, kBlackKeyColor },
+        { int(kKeyWidth * 5.5 + 2), kBlackKey, kBlackKeyColor },
         { kKeyWidth * 6, kWhiteKey, kWhiteKeyColor },
     };
     
@@ -233,7 +235,7 @@ public:
     void OnLeftUp(wxMouseEvent const &ev)
     {
         if(last_dragging_note_) {
-            SendNoteOff(*last_dragging_note_);
+            SendSampleNoteOff(*last_dragging_note_);
         }
         
         last_dragging_note_ = std::nullopt;
@@ -247,11 +249,11 @@ public:
         auto note = PointToNoteNumber(pt);
         
         if(last_dragging_note_ && last_dragging_note_ != note) {
-            SendNoteOff(*last_dragging_note_);
+            SendSampleNoteOff(*last_dragging_note_);
         }
         
         if(note) {
-            SendNoteOn(*note);
+            SendSampleNoteOn(*note);
         }
         
         last_dragging_note_ = note;
@@ -277,10 +279,8 @@ public:
         int note_number = key_base_ + (found - kKeyTable.begin());
         if(note_number >= 128) { return; }
         
-        auto app = MyApp::GetInstance();
-        auto proj = app->GetProject();
-        
-        proj->AddInteractiveNote(note_number);
+        key_code_for_sample_note_[note_number] = uc;
+        SendSampleNoteOn(note_number);
     }
     
     void OnKeyUp(wxKeyEvent const &ev)
@@ -288,15 +288,12 @@ public:
         auto uc = ev.GetUnicodeKey();
         if(uc == WXK_NONE ) { return; }
         
-        auto found = std::find(kKeyTable.begin(), kKeyTable.end(), uc);
-        if(found == kKeyTable.end()) { return; }
-        int note_number = key_base_ + (found - kKeyTable.begin());
-        if(note_number >= 128) { return; }
-        
-        auto app = MyApp::GetInstance();
-        auto proj = app->GetProject();
-        
-        proj->RemoveInteractiveNote(note_number);
+        for(int i = 0; i < key_code_for_sample_note_.size(); ++i) {
+            if(key_code_for_sample_note_[i] == uc) {
+                SendSampleNoteOff(i);
+                key_code_for_sample_note_[i] = 0;
+            }
+        }
     }
     
     std::optional<int> PointToNoteNumber(wxPoint pt)
@@ -334,20 +331,17 @@ public:
         auto app = MyApp::GetInstance();
         auto proj = app->GetProject();
 
-        std::vector<int> list_seq = proj->GetPlayingSequenceNotes();
-        std::vector<int> list_int = proj->GetPlayingInteractiveNotes();
+        std::vector<Project::PlayingNoteInfo> list_seq = proj->GetPlayingSequenceNotes();
+        std::vector<Project::PlayingNoteInfo> list_sample = proj->GetPlayingSampleNotes();
         
         PlayingNoteList tmp = {};
-        auto set_playing_notes = [&tmp](auto const &list) {
-            for(auto x: list) {
-                assert(0 <= x && x < tmp.size());
-                tmp[x] = true;
+        
+        for(auto &list: {list_seq, list_sample}) {
+            for(auto &note: list) {
+                tmp[note.pitch_] = true;
             }
-        };
-        
-        set_playing_notes(list_seq);
-        set_playing_notes(list_int);
-        
+        }
+                
         if(tmp != playing_notes_) {
             playing_notes_ = tmp;
             Refresh();
@@ -355,34 +349,47 @@ public:
     }
     
 private:
-    void SendNoteOn(int note_number)
+    void SendSampleNoteOn(UInt8 note_number)
     {
-        assert(0 <= note_number && note_number < 128);
-        auto app = MyApp::GetInstance();
-        auto proj = app->GetProject();
-
-        proj->AddInteractiveNote(note_number);
-    }
-    
-    void SendNoteOff(int note_number)
-    {
-        assert(0 <= note_number && note_number < 128);
+        assert(note_number < 128);
         
         auto app = MyApp::GetInstance();
         auto proj = app->GetProject();
 
-        proj->RemoveInteractiveNote(note_number);
+        proj->SendSampleNoteOn(sample_note_channel, note_number);
+    }
+    
+    void SendSampleNoteOff(UInt8 note_number)
+    {
+        assert(note_number < 128);
+        
+        auto app = MyApp::GetInstance();
+        auto proj = app->GetProject();
+
+        proj->SendSampleNoteOff(sample_note_channel, note_number);
+    }
+    
+    void SendSampleNoteOffForAllKeyDown()
+    {
+        for(int i = 0; i < key_code_for_sample_note_.size(); ++i) {
+            if(key_code_for_sample_note_[i] != 0) {
+                SendSampleNoteOff(i);
+            }
+        }
+        key_code_for_sample_note_.fill(0);
     }
     
 private:
     //std::optional<wxPoint> _;
     std::optional<int> last_dragging_note_;
+    std::array<wxChar, 128> key_code_for_sample_note_;
     wxTimer timer_;
     PlayingNoteList playing_notes_;
     int key_base_ = 48;
     constexpr static wxChar kOctaveDown = L'Z';
     constexpr static wxChar kOctaveUp = L'X';
     static std::vector<wxChar> const kKeyTable;
+    int sample_note_channel = 0;
 };
 
 std::vector<wxChar> const Keyboard::kKeyTable = {
@@ -390,7 +397,7 @@ std::vector<wxChar> const Keyboard::kKeyTable = {
 };
 
 wxSize const Keyboard::kWhiteKey { kKeyWidth, kWhiteKeyHeight };
-wxSize const Keyboard::kBlackKey { kKeyWidth-2, kBlackKeyHeight };
+wxSize const Keyboard::kBlackKey { kKeyWidth-4, kBlackKeyHeight };
 
 wxColor const Keyboard::kWhiteKeyColor { 0xFF, 0xFF, 0xF6 };
 wxColor const Keyboard::kBlackKeyColor { 0x00, 0x0D, 0x06 };
@@ -667,12 +674,6 @@ void MyFrame::OnAbout(wxCommandEvent& event)
 {
     wxMessageBox( "VST3HostDemo",
                  "created by hotwatermorning@gmail.com", wxOK | wxICON_INFORMATION );
-}
-
-auto showError(PaError err) {
-    if(err != paNoError) {
-        hwm::dout << Pa_GetErrorText(err) << std::endl;
-    }
 }
 
 void MyFrame::OnPlay(wxCommandEvent &ev)

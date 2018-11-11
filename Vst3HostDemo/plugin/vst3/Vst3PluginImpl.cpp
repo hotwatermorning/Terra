@@ -1,5 +1,7 @@
 #include "Vst3PluginImpl.hpp"
 
+#include <algorithm>
+#include <numeric>
 #include <cassert>
 #include <memory>
 #include <stdexcept>
@@ -13,12 +15,148 @@
 #include "Vst3Utils.hpp"
 #include "Vst3Plugin.hpp"
 #include "Vst3PluginFactory.hpp"
+#include "Vst3Debug.hpp"
 
 using namespace Steinberg;
 
 NS_HWM_BEGIN
 
 extern void* GetWindowRef(NSView *view);
+
+namespace {
+    std::array<float *, 32> kDummyChannelData;
+}
+
+void Vst3Plugin::Impl::AudioBusesInfo::Initialize(Impl *owner, Vst::BusDirection dir)
+{
+    owner_ = owner;
+    
+    auto &comp = owner_->component_;
+    auto &proc = owner_->audio_processor_;
+    
+    auto const media = Vst::MediaTypes::kAudio;
+    
+    size_t const num_buses = comp->getBusCount(media, dir);
+    bus_infos_.resize(num_buses);
+    
+    tresult ret = kResultTrue;
+    for(size_t i = 0; i < num_buses; ++i) {
+        Vst::BusInfo bi;
+        ret = comp->getBusInfo(media, dir, i, bi);
+        if(ret != kResultTrue) { throw std::runtime_error("Failed to get BusInfo"); }
+        
+        bus_infos_[i].bus_info_ = bi;
+        bus_infos_[i].is_active_ = (bi.flags & Vst::BusInfo::kDefaultActive) != 0;
+        
+        Vst::SpeakerArrangement arr;
+        auto ret = proc->getBusArrangement(dir, i, arr);
+        if(ret != kResultTrue) { throw std::runtime_error("Failed to get SpeakerArrangement"); }
+        bus_infos_[i].speaker_ = arr;
+    }
+    
+    UpdateBusBuffers();
+}
+
+size_t Vst3Plugin::Impl::AudioBusesInfo::GetNumBuses() const
+{
+    return bus_infos_.size();
+}
+
+Vst3Plugin::Impl::BusInfoEx const & Vst3Plugin::Impl::AudioBusesInfo::GetBusInfo(size_t bus_index) const
+{
+    assert(bus_index < GetNumBuses());
+    return bus_infos_[bus_index];
+}
+
+size_t Vst3Plugin::Impl::AudioBusesInfo::GetNumChannels() const
+{
+    return std::accumulate(bus_infos_.begin(),
+                           bus_infos_.end(),
+                           0,
+                           [](size_t sum, auto const &info) {
+                               return sum + info.bus_info_.channelCount;
+                           });
+}
+
+size_t Vst3Plugin::Impl::AudioBusesInfo::GetNumActiveChannels() const
+{
+    return std::accumulate(bus_infos_.begin(),
+                           bus_infos_.end(),
+                           0,
+                           [](size_t sum, auto const &info) {
+                               return sum + (info.is_active_ ? info.bus_info_.channelCount : 0);
+                           });
+}
+
+bool Vst3Plugin::Impl::AudioBusesInfo::IsActive(size_t bus_index) const
+{
+    return GetBusInfo(bus_index).is_active_;
+}
+
+void Vst3Plugin::Impl::AudioBusesInfo::SetActive(size_t bus_index, bool state)
+{
+    assert(bus_index < GetNumBuses());
+    
+    auto &comp = owner_->component_;
+    auto const result = comp->activateBus(Vst::MediaTypes::kAudio, dir_, bus_index, state);
+    if(result != kResultTrue) {
+        throw std::runtime_error("Failed to activate a bus");
+    }
+    
+    bus_infos_[bus_index].is_active_ = state;
+}
+
+//! @return true if this speaker arrangement is accepted to the plugin successfully,
+//! false otherwise.
+bool Vst3Plugin::Impl::AudioBusesInfo::SetSpeakerArrangement(size_t bus_index, Vst::SpeakerArrangement arr)
+{
+    assert(bus_index < GetNumBuses());
+    
+    auto get_speakers = [](AudioBusesInfo const &buses_info) {
+        std::vector<Vst::SpeakerArrangement> arrs;
+        size_t const num = buses_info.GetNumBuses();
+        for(size_t i = 0; i < num; ++i) {
+            arrs.push_back(buses_info.GetBusInfo(i).speaker_);
+        }
+        
+        return arrs;
+    };
+    
+    auto input_arrs = get_speakers(owner_->input_buses_info_);
+    auto output_arrs = get_speakers(owner_->output_buses_info_);
+    
+    auto &my_arrs = (dir_ == Vst::BusDirections::kInput ? input_arrs : output_arrs);
+    my_arrs[bus_index] = arr;
+    
+    auto &proc = owner_->audio_processor_;
+    auto const result = proc->setBusArrangements(input_arrs.data(), input_arrs.size(),
+                                                 output_arrs.data(), output_arrs.size());
+    
+    if(result != kResultTrue) {
+        hwm::dout << "setBusArrangement failed" << std::endl;
+        return false;
+    }
+    
+    bus_infos_[bus_index].speaker_ = arr;
+    UpdateBusBuffers();
+    return true;
+}
+
+Vst::AudioBusBuffers * Vst3Plugin::Impl::AudioBusesInfo::GetBusBuffers()
+{
+    return bus_buffers_.data();
+}
+
+void Vst3Plugin::Impl::AudioBusesInfo::UpdateBusBuffers()
+{
+    bus_buffers_.clear();
+    
+    for(auto const &bi: bus_infos_) {
+        Vst::AudioBusBuffers tmp = {};
+        tmp.numChannels = bi.bus_info_.channelCount;
+        bus_buffers_.push_back(tmp);
+    }
+}
 
 Vst3Plugin::Impl::Impl(IPluginFactory *factory,
                        ClassInfo const &info,
@@ -62,6 +200,9 @@ Vst3Plugin::Impl::Impl(IPluginFactory *factory,
 		current_freq += freq_angle;
 	}
 	wave_data_index_ = 0;
+
+    input_events_.setMaxSize(128);
+    output_events_.setMaxSize(128);
 }
 
 Vst3Plugin::Impl::~Impl()
@@ -84,9 +225,29 @@ String Vst3Plugin::Impl::GetEffectName() const
 	return plugin_info_->name();
 }
 
-size_t Vst3Plugin::Impl::GetNumOutputs() const
+Vst3Plugin::Impl::AudioBusesInfo & Vst3Plugin::Impl::GetInputBuses()
 {
-	return output_buses_.GetTotalChannels();
+    return input_buses_info_;
+}
+
+Vst3Plugin::Impl::AudioBusesInfo const & Vst3Plugin::Impl::GetInputBuses() const
+{
+    return input_buses_info_;
+}
+
+Vst3Plugin::Impl::AudioBusesInfo & Vst3Plugin::Impl::GetOutputBuses()
+{
+    return output_buses_info_;
+}
+
+Vst3Plugin::Impl::AudioBusesInfo const & Vst3Plugin::Impl::GetOutputBuses() const
+{
+    return output_buses_info_;
+}
+
+size_t Vst3Plugin::Impl::GetNumParameters() const
+{
+    return edit_controller_->getParameterCount();
 }
 
 bool Vst3Plugin::Impl::HasEditor() const
@@ -160,6 +321,27 @@ void Vst3Plugin::Impl::Resume()
 		if(res != kResultOk && res != kNotImplemented) { throw std::runtime_error("setupProcessing failed"); }
 		status_ = Status::kSetupDone;
 	}
+    
+    input_buffer_.resize(input_buses_info_.GetNumActiveChannels(), block_size_);
+    output_buffer_.resize(output_buses_info_.GetNumActiveChannels(), block_size_);
+    
+    auto prepare_bus_buffers = [&](AudioBusesInfo &buses, Buffer<float> &buffer) {
+        assert(buffer.channels() == buses.GetNumActiveChannels());
+        
+        auto data = buffer.data();
+        auto *bus_buffers = buses.GetBusBuffers();
+        for(int i = 0; i < buses.GetNumBuses(); ++i) {
+            if(buses.IsActive(i)) {
+                bus_buffers[i].channelBuffers32 = data;
+                data += bus_buffers[i].numChannels;
+            } else {
+                bus_buffers[i].channelBuffers32 = kDummyChannelData.data();
+            }
+        }
+    };
+    
+    prepare_bus_buffers(input_buses_info_, input_buffer_);
+    prepare_bus_buffers(output_buses_info_, output_buffer_);
 
 	res = GetComponent()->setActive(true);
 	if(res != kResultOk && res != kNotImplemented) { throw std::runtime_error("setActive failed"); }
@@ -209,34 +391,12 @@ bool Vst3Plugin::Impl::IsResumed() const
 
 void Vst3Plugin::Impl::SetBlockSize(int block_size)
 {
-	input_buses_.SetBlockSize(block_size);
-	input_buses_.UpdateBufferHeads();
-	output_buses_.SetBlockSize(block_size);
-	output_buses_.UpdateBufferHeads();
 	block_size_ = block_size;
 }
 
 void Vst3Plugin::Impl::SetSamplingRate(int sampling_rate)
 {
 	sampling_rate_ = sampling_rate;
-}
-
-void	Vst3Plugin::Impl::AddNoteOn(int note_number)
-{
-    auto lock = std::unique_lock(note_mutex_);
-	Note note;
-	note.note_number_ = note_number;
-	note.note_state_ = Note::State::kNoteOn;
-	notes_.push_back(note);
-}
-
-void	Vst3Plugin::Impl::AddNoteOff(int note_number)
-{
-	auto lock = std::unique_lock(note_mutex_);
-	Note note;
-	note.note_number_ = note_number;
-	note.note_state_ = Note::State::kNoteOff;
-	notes_.push_back(note);
 }
 
 size_t	Vst3Plugin::Impl::GetProgramCount() const
@@ -343,110 +503,104 @@ void Vst3Plugin::Impl::RestartComponent(Steinberg::int32 flags)
 	}
 }
 
-float ** Vst3Plugin::Impl::ProcessAudio(TransportInfo const &info, SampleCount duration)
+void Vst3Plugin::Impl::Process(ProcessInfo pi)
 {
+    assert(pi.ti_);
+    auto &ti = *pi.ti_;
 	Vst::ProcessContext process_context = {};
 	process_context.sampleRate = sampling_rate_;
-	process_context.projectTimeSamples = info.sample_pos_;
-    process_context.projectTimeMusic = info.ppq_pos_;
-	process_context.tempo = info.tempo_;
-	process_context.timeSigDenominator = info.time_sig_denom_;
-	process_context.timeSigNumerator = info.time_sig_numer_;
+	process_context.projectTimeSamples = ti.sample_pos_;
+    process_context.projectTimeMusic = ti.ppq_pos_;
+	process_context.tempo = ti.tempo_;
+	process_context.timeSigDenominator = ti.time_sig_denom_;
+	process_context.timeSigNumerator = ti.time_sig_numer_;
 
     using Flags = Vst::ProcessContext::StatesAndFlags;
     
 	process_context.state
-    = (info.playing_ ? Flags::kPlaying : 0)
+    = (ti.playing_ ? Flags::kPlaying : 0)
     | Flags::kProjectTimeMusicValid
     | Flags::kTempoValid
     | Flags::kTimeSigValid;
+
+    input_events_.clear();
+    output_events_.clear();
     
-	Vst::EventList input_event_list;
-	Vst::EventList output_event_list;
-	{
-        auto lock = std::unique_lock(note_mutex_);
-		for(auto &note: notes_) {
-			Vst::Event e;
-			e.busIndex = 0;
-			e.sampleOffset = 0;
-			e.ppqPosition = process_context.projectTimeMusic;
-			e.flags = Vst::Event::kIsLive;
-			if(note.note_state_ == Note::kNoteOn) {
-				e.type = Vst::Event::kNoteOnEvent;
-				e.noteOn.channel = 0;
-				e.noteOn.length = 0;
-				e.noteOn.pitch = note.note_number_;
-				e.noteOn.tuning = 0;
-				e.noteOn.noteId = -1;
-				e.noteOn.velocity = 100 / 127.0;
-			} else if(note.note_state_ == Note::kNoteOff) {
-				e.type = Vst::Event::kNoteOffEvent;
-				e.noteOff.channel = 0;
-				e.noteOff.pitch = note.note_number_;
-				e.noteOff.tuning = 0;
-				e.noteOff.noteId = -1;
-				e.noteOff.velocity = 100 / 127.0;
-			} else {
-				continue;
-			}
-			input_event_list.addEvent(e);
-		}
-		notes_.clear();
-	}
+    for(auto &note: pi.notes_) {
+        Vst::Event e;
+        e.busIndex = 0;
+        e.sampleOffset = note.GetOffset();
+        e.ppqPosition = process_context.projectTimeMusic;
+        e.flags = Vst::Event::kIsLive;
+        if(note.IsNoteOn()) {
+            e.type = Vst::Event::kNoteOnEvent;
+            e.noteOn.channel = note.GetChannel();
+            e.noteOn.length = 0;
+            e.noteOn.pitch = note.GetPitch();
+            e.noteOn.tuning = 0;
+            e.noteOn.noteId = -1;
+            e.noteOn.velocity = note.GetVelocity() / 127.0;
+        } else {
+            e.type = Vst::Event::kNoteOffEvent;
+            e.noteOff.channel = note.GetChannel();
+            e.noteOff.pitch = note.GetPitch();
+            e.noteOff.tuning = 0;
+            e.noteOff.noteId = -1;
+            e.noteOff.velocity = note.GetVelocity();
+        }
+        input_events_.addEvent(e);
+    }
+    
+    input_buffer_.fill();
+	
+    auto copy_buffer = [&](auto const &src, auto &dest,
+                           SampleCount length_to_copy,
+                           SampleCount src_offset, SampleCount dest_offset)
+    {
+        size_t const min_ch = std::min(src.channels(), dest.channels());
+        assert(src.samples() - src_offset >= length_to_copy);
+        assert(dest.samples() - dest_offset >= length_to_copy);
+        
+        for(size_t ch = 0; ch < min_ch; ++ch) {
+            std::copy_n(src.data()[ch] + src_offset, length_to_copy, dest.data()[ch] + dest_offset);
+        }
+    };
+    
+    copy_buffer(pi.input_.buffer_, input_buffer_,
+                pi.frame_length_,
+                pi.input_.sample_offset_, 0);
 
-	std::vector<Vst::AudioBusBuffers> inputs(input_buses_.GetBusCount());
-	for(size_t i = 0; i < inputs.size(); ++i) {
-		inputs[i].channelBuffers32 = input_buses_.GetBus(i).data();
-		inputs[i].numChannels = input_buses_.GetBus(i).channels();
-		inputs[i].silenceFlags = false;
+	input_params_.clearQueue();
+	output_params_.clearQueue();
 
-		if(inputs[i].numChannels != 0) {
-			for(int ch = 0; ch < inputs[i].numChannels; ++ch) {
-				for(int smp = 0; smp < duration; ++smp) {
-					inputs[i].channelBuffers32[ch][smp] = 
-						wave_data_[(wave_data_index_ + smp) % (int)process_context.sampleRate];
-				}
-			}
-			wave_data_index_ = (wave_data_index_ + duration) % (int)process_context.sampleRate;
-		}
-	}
-
-	std::vector<Vst::AudioBusBuffers> outputs(output_buses_.GetBusCount());
-	for(size_t i = 0; i < outputs.size(); ++i) {
-		outputs[i].channelBuffers32 = output_buses_.GetBus(i).data();
-		outputs[i].numChannels = output_buses_.GetBus(i).channels();
-		outputs[i].silenceFlags = false;
-	}
-
-	input_changes_.clearQueue();
-	output_changes_.clearQueue();
-
-	TakeParameterChanges(input_changes_);
+	TakeParameterChanges(input_params_);
 
 	Vst::ProcessData process_data;
 	process_data.processContext = &process_context;
 	process_data.processMode = Vst::ProcessModes::kRealtime;
 	process_data.symbolicSampleSize = Vst::SymbolicSampleSizes::kSample32;
-	process_data.numSamples = duration;
-	process_data.numInputs = inputs.size();
-	process_data.numOutputs = outputs.size();
-	process_data.inputs = inputs.data();
-	process_data.outputs = outputs.data();
-	process_data.inputEvents = &input_event_list;
-	process_data.outputEvents = &output_event_list;
-	process_data.inputParameterChanges = &input_changes_;
-	process_data.outputParameterChanges = &output_changes_;
+	process_data.numSamples = pi.frame_length_;
+    process_data.numInputs = input_buses_info_.GetNumBuses();
+	process_data.numOutputs = output_buses_info_.GetNumBuses();
+    process_data.inputs = input_buses_info_.GetBusBuffers();
+	process_data.outputs = output_buses_info_.GetBusBuffers();
+	process_data.inputEvents = &input_events_;
+	process_data.outputEvents = &output_events_;
+	process_data.inputParameterChanges = &input_params_;
+	process_data.outputParameterChanges = &output_params_;
 
 	GetAudioProcessor()->process(process_data);
+    
+    copy_buffer(output_buffer_, pi.output_.buffer_,
+                pi.frame_length_,
+                0, pi.output_.sample_offset_);
 
-	for(int i = 0; i < output_changes_.getParameterCount(); ++i) {
-		auto *queue = output_changes_.getParameterData(i);
+	for(int i = 0; i < output_params_.getParameterCount(); ++i) {
+		auto *queue = output_params_.getParameterData(i);
 		if(queue && queue->getPointCount() > 0) {
 			hwm::dout << "Output parameter count [" << i << "] : " << queue->getPointCount() << std::endl;
 		}
 	}
-
-	return output_buses_.data();
 }
 
 //! TakeParameterChangesとの呼び出しはスレッドセーフ
@@ -565,15 +719,17 @@ void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &
 		}
 	}
 
-	edit_controller_ptr_t edit_controller;
-	if(maybe_edit_controller.is_right()) {
-		edit_controller = std::move(maybe_edit_controller.right());
-	}
+    if(maybe_edit_controller.is_right() == false) {
+        //! this plugin has no edit controller. this host rejects such a plugin.
+        throw Error(ErrorContext::kComponentError, kNoInterface);
+    }
+    
+	edit_controller_ptr_t edit_controller = std::move(maybe_edit_controller.right());
 
 	if(edit_controller_is_created_new) {
 		res = edit_controller->initialize(host_context);
 		if(res != kResultOk) {
-			throw Error(ErrorContext::kEditControlError, res);
+			throw Error(ErrorContext::kEditControllerError, res);
 		}
 	}
 
@@ -629,49 +785,30 @@ void Vst3Plugin::Impl::Initialize(vstma_unique_ptr<Vst::IComponentHandler> compo
 			stream.seek(0, Steinberg::IBStream::IStreamSeekMode::kIBSeekSet, 0);
 			edit_controller_->setComponentState (&stream);
 		}
+        
+        auto maybe_unit_info = queryInterface<Vst::IUnitInfo>(edit_controller_);
+        if(maybe_unit_info.is_right()) {
+            unit_info_ = std::move(maybe_unit_info.right());
+        } else {
+            hwm::dout << "No UnitInfo Interface." << std::endl;
+            return;
+        }
 
-		OutputBusInfo(component_.get(), edit_controller_.get());
+        OutputBusInfo(component_.get(), edit_controller_.get(), unit_info_.get());
 
-		input_buses_.SetBusCount(component_->getBusCount(Vst::MediaTypes::kAudio, Vst::BusDirections::kInput));
-		for(size_t i = 0; i < input_buses_.GetBusCount(); ++i) {
-			Vst::BusInfo info;
-			Vst::SpeakerArrangement arr;
-			component_->getBusInfo(Vst::MediaTypes::kAudio, Vst::BusDirections::kInput, i, info);
-			audio_processor_->getBusArrangement(Vst::BusDirections::kInput, i, arr);
-			input_buses_.GetBus(i).SetChannels(info.channelCount, arr);
-			component_->activateBus(Vst::MediaTypes::kAudio, Vst::BusDirections::kInput, i, true);
-		}
-
-		output_buses_.SetBusCount(component_->getBusCount(Vst::MediaTypes::kAudio, Vst::BusDirections::kOutput));
-		for(size_t i = 0; i < output_buses_.GetBusCount(); ++i) {
-			Vst::BusInfo info;
-			Vst::SpeakerArrangement arr;
-			component_->getBusInfo(Vst::MediaTypes::kAudio, Vst::BusDirections::kOutput, i, info);
-			audio_processor_->getBusArrangement(Vst::BusDirections::kOutput, i, arr);
-			output_buses_.GetBus(i).SetChannels(info.channelCount, arr);
-			component_->activateBus(Vst::MediaTypes::kAudio, Vst::BusDirections::kOutput, i, true);
-		}
-
-		for(size_t i = 0; i < component_->getBusCount(Vst::MediaTypes::kEvent, Vst::BusDirections::kInput); ++i) {
-			component_->activateBus(Vst::MediaTypes::kEvent, Vst::BusDirections::kInput, i, true);
-		}
-		for(size_t i = 0; i < component_->getBusCount(Vst::MediaTypes::kEvent, Vst::BusDirections::kOutput); ++i) {
-			component_->activateBus(Vst::MediaTypes::kEvent, Vst::BusDirections::kOutput, i, true);
-		}
-
-		input_buses_.UpdateBufferHeads();
-		output_buses_.UpdateBufferHeads();
+        input_buses_info_.Initialize(this, Vst::BusDirections::kInput);
+        output_buses_info_.Initialize(this, Vst::BusDirections::kOutput);
 
 		//! 可能であればこのあたりでIPlugViewを取得して、このプラグインがエディターを持っているかどうかを
 		//! チェックしたかったが、いくつかのプラグイン(e.g., TyrellN6, Podolski)では
-		//! IComponentがactivatedされる前にIPlugViewを取得するとクラッシュした。
+		//! IComponentがactivateされる前にIPlugViewを取得するとクラッシュした。
 		//! そのため、この段階ではIPlugViewは取得しない
 
 		PrepareParameters();
 		PrepareProgramList();
 
-		input_changes_.setMaxParameters(parameters_.size());
-		output_changes_.setMaxParameters(parameters_.size());
+		input_params_.setMaxParameters(parameters_.size());
+		output_params_.setMaxParameters(parameters_.size());
 	}
 }
 
@@ -721,30 +858,6 @@ void Vst3Plugin::Impl::DeletePlugView()
 	plug_view_.reset();
 }
 
-std::wstring
-		Vst3Plugin::Impl::UnitInfoToString(Steinberg::Vst::UnitInfo const &info)
-{
-	std::wstringstream ss;
-	ss	<< info.id
-		<< L", " << info.name
-		<< L", " << L"Parent: " << info.parentUnitId
-		<< L", " << L"Program List ID: " << info.programListId;
-
-	return ss.str();
-}
-
-std::wstring
-		Vst3Plugin::Impl::ProgramListInfoToString(Steinberg::Vst::ProgramListInfo const &info)
-{
-	std::wstringstream ss;
-
-	ss	<< info.id
-		<< L", " << L"Program List Name: " << info.name
-		<< L", " << L"Program Count: " << info.programCount;
-
-	return ss.str();
-}
-
 void Vst3Plugin::Impl::PrepareParameters()
 {
 	for(Steinberg::int32 i = 0; i < edit_controller_->getParameterCount(); ++i) {
@@ -763,15 +876,7 @@ void Vst3Plugin::Impl::PrepareProgramList()
 		}
 	}
 
-	auto maybe_unit_info = queryInterface<Vst::IUnitInfo>(edit_controller_);
-	if(maybe_unit_info.is_right()) {
-		unit_info_ = std::move(maybe_unit_info.right());
-	} else {
-		hwm::dout << "No Unit Info Interface." << std::endl;
-		return;
-	}
-
-	OutputUnitInfo(*unit_info_);
+	OutputUnitInfo(unit_info_.get());
 
 	tresult res;
 
@@ -863,137 +968,6 @@ void Vst3Plugin::Impl::UnloadPlugin()
         component_->terminate();
     }
 	component_.reset();
-}
-
-void Vst3Plugin::Impl::OutputUnitInfo(Steinberg::Vst::IUnitInfo &info_interface)
-{
-	hwm::wdout << "--- Output Unit Info ---" << std::endl;
-
-	for(size_t i = 0; i < info_interface.getUnitCount(); ++i) {
-		Steinberg::Vst::UnitInfo unit_info {};
-		info_interface.getUnitInfo(i, unit_info);
-		hwm::wdout << L"[" << i << L"] " << UnitInfoToString(unit_info) << std::endl;
-	}
-
-	hwm::wdout << L"Selected Unit: " << info_interface.getSelectedUnit() << std::endl;
-
-	hwm::wdout << "--- Output Program List Info ---" << std::endl;
-
-	for(size_t i = 0; i < info_interface.getProgramListCount(); ++i) {
-		Steinberg::Vst::ProgramListInfo program_list_info {};
-		tresult res = info_interface.getProgramListInfo(i, program_list_info);
-		if(res != Steinberg::kResultOk) {
-			hwm::wdout << "Getting program list info failed." << std::endl;
-			break;
-		}
-
-		hwm::wdout << L"[" << i << L"] " << ProgramListInfoToString(program_list_info) << std::endl;
-
-		for(size_t program_index = 0; program_index < program_list_info.programCount; ++program_index) {
-
-			hwm::wdout << L"\t[" << program_index << L"] ";
-
-			Steinberg::Vst::String128 name;
-			info_interface.getProgramName(program_list_info.id, program_index, name);
-
-			hwm::wdout << name;
-
-			Steinberg::Vst::CString attrs[] { 
-				Steinberg::Vst::PresetAttributes::kPlugInName,
-				Steinberg::Vst::PresetAttributes::kPlugInCategory,
-				Steinberg::Vst::PresetAttributes::kInstrument,
-				Steinberg::Vst::PresetAttributes::kStyle,
-				Steinberg::Vst::PresetAttributes::kCharacter,
-				Steinberg::Vst::PresetAttributes::kStateType,
-				Steinberg::Vst::PresetAttributes::kFilePathStringType };
-
-			for(auto attr: attrs) {
-				Steinberg::Vst::String128 attr_value = {};
-				info_interface.getProgramInfo(program_list_info.id, program_index, attr, attr_value);
-
-				hwm::wdout << L", " << attr << L": " << attr_value;
-			}
-
-			if(info_interface.hasProgramPitchNames(program_list_info.id, program_index) == Steinberg::kResultTrue) {
-				Steinberg::Vst::String128 pitch_name = {};
-				Steinberg::int16 const pitch_center = 0x2000;
-				info_interface.getProgramPitchName(program_list_info.id, program_index, pitch_center, pitch_name);
-
-				hwm::wdout << L", " << pitch_name;
-			} else {
-				hwm::wdout << L", No Pitch Name";
-			}
-
-			hwm::wdout << std::endl;
-		}
-	}
-}
-
-std::wstring Vst3Plugin::Impl::BusInfoToString(Vst::BusInfo &bus)
-{
-	std::wstringstream ss;
-
-	ss	<< bus.name 
-		<< L", " << (bus.mediaType == Vst::MediaTypes::kAudio ? L"Audio" : L"Midi")
-		<< L", " << (bus.direction == Vst::BusDirections::kInput ? L"Input" : L"Output")
-		<< L", " << (bus.busType == Vst::BusTypes::kMain ? L"Main Bus" : L"Aux Bus")
-		<< L", " << L"Channel " << bus.channelCount
-		<< L", " << (((bus.flags & bus.kDefaultActive) != 0) ? L"Default Active" : L"Not Default Active");
-
-	return ss.str();
-}
-	
-std::wstring Vst3Plugin::Impl::BusUnitInfoToString(int bus_index, Vst::BusInfo &bus, Vst::IUnitInfo &unit)
-{
-	if(bus.channelCount == 0) {
-		return L"No channels for units";
-	}
-
-	std::wstringstream ss;
-	for(int ch = 0; ch < bus.channelCount; ++ch) {
-		Vst::UnitID unit_id;
-		tresult result = unit.getUnitByBus(bus.mediaType, bus.direction, bus_index, ch, unit_id);
-		if(result != kResultOk) {
-			ss.str(L"Can't get unit by bus");
-			break;
-		}
-		ss << L"[" << unit_id << L"]";
-	}
-	return ss.str();
-}
-
-void Vst3Plugin::Impl::OutputBusInfoImpl(Vst::IComponent *component, Vst::IUnitInfo *unit, Vst::MediaType media_type, Vst::BusDirection bus_direction)
-{
-	int32 const num_component = component->getBusCount(media_type, bus_direction);
-	if(num_component == 0) {
-		hwm::wdout << "No bus for this type." << std::endl;
-		return;
-	}
-	for(int32 i = 0; i < num_component; ++i) {
-		Vst::BusInfo info;
-		component->getBusInfo(media_type, bus_direction, i, info);
-
-		auto const bus_info_str = BusInfoToString(info);
-		auto const bus_unit_info_str =
-			(unit ? BusUnitInfoToString(i, info, *unit) : L"No Assigned Unit");
-		hwm::wdout << L"[" << i << L"] " << bus_info_str << L", " << bus_unit_info_str << std::endl;
-	}
-}
-
-void Vst3Plugin::Impl::OutputBusInfo(Vst::IComponent *component, Vst::IEditController *edit_controller)
-{
-	auto maybe_unit_info = queryInterface<Vst::IUnitInfo>(edit_controller_);
-	auto unit = (maybe_unit_info.is_right() ? maybe_unit_info.right().get() : nullptr);
-
-	hwm::dout << "-- output bus info --" << std::endl;
-	hwm::dout << "[Audio Input]" << std::endl;
-	OutputBusInfoImpl(component, unit, Vst::MediaTypes::kAudio, Vst::BusDirections::kInput);
-	hwm::dout << "[Audio Output]" << std::endl;
-	OutputBusInfoImpl(component, unit, Vst::MediaTypes::kAudio, Vst::BusDirections::kOutput);
-	hwm::dout << "[Event Input]" << std::endl;
-	OutputBusInfoImpl(component, unit, Vst::MediaTypes::kEvent, Vst::BusDirections::kInput);
-	hwm::dout << "[Event Output]" << std::endl;
-	OutputBusInfoImpl(component, unit, Vst::MediaTypes::kEvent, Vst::BusDirections::kOutput);
 }
 
 NS_HWM_END

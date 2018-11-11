@@ -49,8 +49,8 @@ public:
 		kFactoryError,
 		kComponentError,
 		kAudioProcessorError,
-		kEditControlError,
-		kEditControl2Error
+		kEditControllerError,
+		kEditController2Error
 	};
 
 	enum class Status {
@@ -130,6 +130,50 @@ public:
 		Vst::ProgramListID	list_id_;
 		Steinberg::int32	index_;
 	};
+    
+    struct BusInfoEx
+    {
+        Vst::BusInfo bus_info_;
+        Vst::SpeakerArrangement speaker_ = Vst::SpeakerArr::kEmpty;
+        bool is_active_ = false;
+    };
+    
+    struct AudioBusesInfo
+    {
+        void Initialize(Impl *owner, Vst::BusDirection dir);
+        
+        size_t GetNumBuses() const;
+        BusInfoEx const & GetBusInfo(size_t bus_index) const;
+        
+        //! すべてのバスのチャンネル数の総計
+        //! これは、各バスのSpeakerArrangement状態によって変化する。
+        //! バスのアクティブ状態には影響を受けない。
+        //!  (つまり、各バスがアクティブかそうでないかに関わらず、すべてのバスのチャンネルが足し合わされる。)
+        size_t GetNumChannels() const;
+
+        //! すべてのアクティブなバスのチャンネル数の総計
+        //! これは、各バスのアクティブ状態やSpeakerArrangement状態によって変化する。
+        size_t GetNumActiveChannels() const;
+        
+        bool IsActive(size_t bus_index) const;
+        void SetActive(size_t bus_index, bool state = true);
+        
+        //! @return true if this speaker arrangement is accepted to the plugin successfully,
+        //! false otherwise.
+        bool SetSpeakerArrangement(size_t bus_index, Vst::SpeakerArrangement arr);
+        
+        Vst::AudioBusBuffers * GetBusBuffers();
+        
+    private:
+        Impl *owner_ = nullptr;
+        std::vector<BusInfoEx> bus_infos_;
+        Vst::BusDirection dir_;
+        
+        //! bus_infos_でis_active_がtrueになっているバスの数だけ用意される。
+        std::vector<Vst::AudioBusBuffers> bus_buffers_;
+        
+        void UpdateBusBuffers();
+    };
 
 	ParameterInfoList parameters_;
 	Steinberg::Vst::ParamID program_change_parameter_;
@@ -139,8 +183,10 @@ public:
 
 	Status status_;
 
-	Vst::ParameterChanges input_changes_;
-	Vst::ParameterChanges output_changes_;
+	Vst::ParameterChanges input_params_;
+	Vst::ParameterChanges output_params_;
+    Vst::EventList input_events_;
+    Vst::EventList output_events_;
 
 public:
 	Impl(IPluginFactory *factory,
@@ -160,8 +206,13 @@ public:
 	Vst::IEditController2 *	GetEditController2	() const;
 
 	String GetEffectName() const;
-
-	size_t GetNumOutputs() const;
+    
+    AudioBusesInfo & GetInputBuses();
+    AudioBusesInfo const & GetInputBuses() const;
+    AudioBusesInfo & GetOutputBuses();
+    AudioBusesInfo const & GetOutputBuses() const;
+    
+    size_t GetNumParameters() const;
 
 	bool HasEditor() const;
 
@@ -183,10 +234,6 @@ public:
 
 	void SetSamplingRate(int sampling_rate);
 
-	void	AddNoteOn(int note_number);
-
-	void	AddNoteOff(int note_number);
-
 	size_t	GetProgramCount() const;
 
 	String GetProgramName(size_t index) const;
@@ -202,7 +249,7 @@ public:
 
 	void	RestartComponent(Steinberg::int32 flags);
 
-	float ** ProcessAudio(TransportInfo const &info, SampleCount duration);
+	void    Process(ProcessInfo pi);
 
 //! Parameter Change
 public:
@@ -230,24 +277,7 @@ private:
 
 	void UnloadPlugin();
 
-//! デバッグ用関数
 private:
-	std::wstring
-			UnitInfoToString(Steinberg::Vst::UnitInfo const &info);
-
-	std::wstring
-			ProgramListInfoToString(Steinberg::Vst::ProgramListInfo const &info);
-
-	std::wstring BusInfoToString(Vst::BusInfo &bus);
-	
-	std::wstring BusUnitInfoToString(int bus_index, Vst::BusInfo &bus, Vst::IUnitInfo &unit);
-
-	void OutputUnitInfo(Steinberg::Vst::IUnitInfo &info_interface);
-
-	void OutputBusInfoImpl(Vst::IComponent *component, Vst::IUnitInfo *unit, Vst::MediaType media_type, Vst::BusDirection bus_direction);
-
-	void OutputBusInfo(Vst::IComponent *component, Vst::IEditController *edit_controller);
-
 	std::mutex			parameter_queue_mutex_;
 	Vst::ParameterChanges	param_changes_queue_;
 
@@ -257,8 +287,6 @@ private:
 	audio_processor_ptr_t	audio_processor_;
 	edit_controller_ptr_t	edit_controller_;
 	edit_controller2_ptr_t	edit_controller2_;
-	parameter_changes_ptr_t input_parameter_changes_;
-	parameter_changes_ptr_t output_parameter_changes_;
 	plug_view_ptr_t			plug_view_;
 	unit_info_ptr_t			unit_info_;
 	program_list_data_ptr_t	program_list_data_;
@@ -275,167 +303,16 @@ private:
 
 	int	sampling_rate_;
 	int block_size_;
-
-	struct Note
-	{
-		enum State {
-			kNoteOn,
-			kNoteOff
-		};
-
-		Note()
-			: note_number_(-1)
-			, note_state_(State::kNoteOff)
-		{}
-
-		int note_number_;
-		State note_state_;
-	};
-
-	std::mutex note_mutex_;
-	std::vector<Note> notes_;
-
-	class AudioBus
-	{
-    public:
-		typedef Buffer<float> buffer_type;
-
-		AudioBus()
-			:	speaker_arrangement_(Steinberg::Vst::SpeakerArr::kEmpty)
-		{}
-
-		void SetBlockSize(size_t num_samples)
-		{
-			buffer_.resize_samples(num_samples);
-		}
-
-		void SetChannels(size_t num_channels, Steinberg::Vst::SpeakerArrangement speaker_arrangement)
-		{
-			buffer_.resize_channels(num_channels);
-			speaker_arrangement_ = speaker_arrangement;
-		}
-
-		size_t channels() const
-		{
-			return buffer_.channels();
-		}
-
-		float **data()
-		{
-			return buffer_.data();
-		}
-
-		float const * const * data() const 
-		{
-			return buffer_.data();
-		}
-
-		Steinberg::Vst::SpeakerArrangement GetSpeakerArrangement() const
-		{
-			return speaker_arrangement_;
-		}
-
-	private:
-		buffer_type buffer_;
-		Steinberg::uint64 speaker_arrangement_;
-	};
-
-	class AudioBuses
-	{
-    public:
-		AudioBuses() 
-			:	block_size_(0)
-		{}
-
-		AudioBuses(AudioBuses &&rhs)
-			:	buses_(std::move(rhs.buses_))
-			,	block_size_(rhs.block_size_)
-		{}
-
-		AudioBuses & operator=(AudioBuses &&rhs)
-		{
-			buses_ = std::move(rhs.buses_);
-			block_size_ = rhs.block_size_;
-
-			rhs.block_size_ = 0;
-			return *this;
-		}
-
-		size_t GetBusCount() const
-		{
-			return buses_.size();
-		}
-
-		void SetBusCount(size_t n)
-		{
-			buses_.resize(n);
-		}
-
-		size_t GetBlockSize() const
-		{
-			return block_size_;
-		}
-
-		void SetBlockSize(size_t num_samples)
-		{
-			for(auto &bus: buses_) {
-				bus.SetBlockSize(num_samples);
-			}
-			block_size_ = num_samples;
-		}
-
-		AudioBus & GetBus(size_t index)
-		{
-			return buses_[index];
-		}
-
-		AudioBus const & GetBus(size_t index) const
-		{
-			return buses_[index];
-		}
-
-		void UpdateBufferHeads()
-		{
-			int n = 0;
-			for(auto const &bus: buses_) {
-				n += bus.channels();
-			}
-
-			std::vector<float *> tmp_heads(n);
-			n = 0;
-			for(auto &bus: buses_) {
-				for(size_t i = 0; i < bus.channels(); ++i) {
-					tmp_heads[n] = bus.data()[i];
-					++n;
-				}
-			}
-
-			heads_ = std::move(tmp_heads);
-		}
-
-		float ** data()
-		{
-			return heads_.data();
-		}
-
-		float const * const * data() const
-		{
-			return heads_.data();
-		}
-
-		size_t GetTotalChannels() const
-		{
-			return heads_.size();
-		}
-
-	private:
-		size_t block_size_;
-		std::vector<AudioBus> buses_;
-		std::vector<float *> heads_;
-	};
-
-	AudioBuses output_buses_;
-	AudioBuses input_buses_;
+    
+    void UpdateBusBuffers();
+    
+    AudioBusesInfo input_buses_info_;
+    AudioBusesInfo output_buses_info_;
+    
+    // Vst3Plugin側にバッファを持たせないで、外側にあるバッファを使い回すほうが、コピーの手間が減っていいが、
+    // ちょっと設計がややこしくなるので、いまはここにバッファを持たせるようにしておく。
+    Buffer<float> input_buffer_;
+    Buffer<float> output_buffer_;
 };
 
 NS_HWM_END

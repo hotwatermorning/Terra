@@ -2,17 +2,136 @@
 
 NS_HWM_BEGIN
 
-template<class Container>
-void ClearPlayingNotes(Container &c)
+struct InternalPlayingNoteInfo
 {
-    std::for_each(c.begin(), c.end(), [](auto &x) { x.store(false); });
-}
+    InternalPlayingNoteInfo()
+    {}
+    
+    InternalPlayingNoteInfo(bool is_note_on, UInt8 velocity)
+    :   initialized_(true)
+    ,   is_note_on_(is_note_on)
+    ,   velocity_(velocity)
+    {}
+    
+    bool initialized_ = false;
+    bool is_note_on_ = false;
+    UInt8 velocity_ = 0; // may be an note off velocity.
+    
+    bool IsNoteOn() const {
+        assert(initialized());
+        return is_note_on_;
+    }
+    
+    bool IsNoteOff() const {
+        assert(initialized());
+        return is_note_on_ == false;
+    }
+    
+    explicit operator bool() const { return initialized_; }
+    bool initialized() const { return initialized_; }
+};
+
+struct PlayingNoteList
+{
+    static constexpr UInt8 kNumChannels = 16;
+    static constexpr UInt8 kNumPitches = 128;
+    
+    using value_type = InternalPlayingNoteInfo;
+    using ch_container = std::array<std::atomic<InternalPlayingNoteInfo>, kNumPitches>;
+    using container = std::array<ch_container, kNumChannels>;
+    
+    //! @tparam F is a functor where its signature is
+    //! `void(UInt8 channel, UInt8 pitch, std::atomic<std::optional<InternalPlayingNoteInfo> &)`
+    template<class F>
+    void Traverse(F f) { TraverseImpl(list_, f); }
+    
+    //! @tparam F is a functor where its signature is
+    //! `void(UInt8 channel, UInt8 pitch, std::atomic<std::optional<InternalPlayingNoteInfo> &)`
+    template<class F>
+    void Traverse(F f) const { TraverseImpl(list_, f); }
+    
+    void Clear()
+    {
+        Traverse([](auto ch, auto pi, auto &x) { x.store(InternalPlayingNoteInfo()); });
+    }
+    
+    std::vector<Project::PlayingNoteInfo> GetPlayingNotes() const
+    {
+        std::vector<Project::PlayingNoteInfo> tmp;
+        Traverse([&tmp](auto ch, auto pi, auto &x) {
+            auto note = x.load();
+            if(note && note.IsNoteOn()) {
+                tmp.emplace_back(ch, pi, note.velocity_);
+            }
+        });
+        return tmp;
+    }
+    
+    void SetNoteOn(UInt8 channel, UInt8 pitch, UInt8 velocity)
+    {
+        assert(channel < kNumChannels);
+        assert(pitch < kNumPitches);
+        list_[channel][pitch] = { true, velocity };
+    }
+    
+    void SetNoteOff(UInt8 channel, UInt8 pitch, UInt8 off_velocity)
+    {
+        assert(channel < kNumChannels);
+        assert(pitch < kNumPitches);
+        list_[channel][pitch] = { false, off_velocity };
+    }
+    
+    void ClearNote(UInt8 channel, UInt8 pitch)
+    {
+        assert(channel < kNumChannels);
+        assert(pitch < kNumPitches);
+        list_[channel][pitch] = InternalPlayingNoteInfo();
+    }
+    
+    InternalPlayingNoteInfo Get(UInt8 channel, UInt8 pitch) const
+    {
+        return list_[channel][pitch].load();
+    }
+    
+private:
+    template<class List, class F>
+    static
+    void TraverseImpl(List &list, F f)
+    {
+        for(UInt8 ch = 0; ch < kNumChannels; ++ch) {
+            for(UInt8 pi = 0; pi < kNumPitches; ++pi) {
+                f(ch, pi, list[ch][pi]);
+            }
+        }
+    }
+    
+    container list_;
+};
+
+struct Project::Impl
+{
+    LockFactory lf_;
+    std::shared_ptr<Vst3Plugin> plugin_;
+    std::vector<Vst3Note> vst3_notes_;
+    Transporter tp_;
+    double sample_rate_ = 0;
+    SampleCount block_size_ = 0;
+    BypassFlag bypass_;
+    int num_device_inputs_ = 0;
+    int num_device_outputs_ = 0;
+    std::shared_ptr<Sequence> sequence_;
+    PlayingNoteList playing_sequence_notes_;
+    PlayingNoteList requested_sample_notes_;
+    PlayingNoteList playing_sample_notes_;
+};
 
 Project::Project()
+:   pimpl_(std::make_unique<Impl>())
 {
-    ClearPlayingNotes(playing_sequence_notes_);
-    ClearPlayingNotes(added_interactive_notes_);
-    ClearPlayingNotes(playing_interactive_notes_);
+    pimpl_->playing_sequence_notes_.Clear();
+    pimpl_->requested_sample_notes_.Clear();
+    pimpl_->playing_sample_notes_.Clear();
+    pimpl_->vst3_notes_.reserve(128);
 }
 
 Project::~Project()
@@ -22,24 +141,36 @@ void Project::SetInstrument(std::shared_ptr<Vst3Plugin> plugin)
 {
     assert(plugin);
     
-    auto lock = lf_.make_lock();
-    plugin_ = plugin;
-    plugin_->SetBlockSize(block_size_);
-    plugin_->SetSamplingRate(sample_rate_);
-    plugin_->Resume();
+    RemoveInstrument();
+
+    //! sample_rate_とblock_size_が変更される処理は、再生スレッドの処理の前に完了している。
+    plugin->SetBlockSize(pimpl_->block_size_);
+    plugin->SetSamplingRate(pimpl_->sample_rate_);
+    plugin->Resume();
+    
+    //! フレーム処理中は実行しない。
+    //! (既存のpluginがフレーム処理の中だけで参照されて、リアルタイムスレッド上でdeleteされてしまうのを防ぐため)
+    auto bypass = MakeScopedBypassRequest(pimpl_->bypass_, true);
+    
+    auto lock = pimpl_->lf_.make_lock();
+    pimpl_->plugin_ = plugin;
 }
 
 std::shared_ptr<Vst3Plugin> Project::RemoveInstrument()
 {
-    auto bypass = MakeScopedBypassRequest(bypass_, true);
+    //! フレーム処理中は実行しない。
+    //! (seqがフレーム処理の中だけで参照されて、リアルタイムスレッド上でdeleteされてしまうのを防ぐため)
+    auto bypass = MakeScopedBypassRequest(pimpl_->bypass_, true);
     
-    auto lock = lf_.make_lock();
-    auto plugin = std::move(plugin_);
+    auto lock = pimpl_->lf_.make_lock();
+    auto plugin = std::move(pimpl_->plugin_);
     lock.unlock();
 
     bypass.reset();
 
-    ClearPlayingNotes(playing_sequence_notes_);
+    pimpl_->playing_sequence_notes_.Clear();
+    pimpl_->requested_sample_notes_.Clear();
+    pimpl_->playing_sample_notes_.Clear();
     if(plugin) {
         plugin->Suspend();
     }
@@ -49,26 +180,34 @@ std::shared_ptr<Vst3Plugin> Project::RemoveInstrument()
 
 std::shared_ptr<Vst3Plugin> Project::GetInstrument() const
 {
-    auto lock = lf_.make_lock();
-    return plugin_;
+    auto lock = pimpl_->lf_.make_lock();
+    return pimpl_->plugin_;
+}
+
+std::shared_ptr<Sequence> Project::GetSequence() const
+{
+    auto lock = pimpl_->lf_.make_lock();
+    return pimpl_->sequence_;
 }
 
 void Project::SetSequence(std::shared_ptr<Sequence> seq)
 {
-    auto bypass = MakeScopedBypassRequest(bypass_, true);
+    //! フレーム処理中は実行しない。
+    //! (seqがフレーム処理の中だけで参照されて、リアルタイムスレッド上でdeleteされてしまうのを防ぐため)
+    auto bypass = MakeScopedBypassRequest(pimpl_->bypass_, true);
     
-    auto lock = lf_.make_lock();
-    sequence_ = seq;
+    auto lock = pimpl_->lf_.make_lock();
+    pimpl_->sequence_ = seq;
 }
 
 Transporter & Project::GetTransporter()
 {
-    return tp_;
+    return pimpl_->tp_;
 }
 
 Transporter const & Project::GetTransporter() const
 {
-    return tp_;
+    return pimpl_->tp_;
 }
 
 void Project::StartProcessing(double sample_rate,
@@ -76,40 +215,48 @@ void Project::StartProcessing(double sample_rate,
                               int num_input_channels,
                               int num_output_channels)
 {
-    sample_rate_ = sample_rate;
-    block_size_ = max_block_size;
-    num_device_inputs_ = num_input_channels;
-    num_device_outputs_ = num_output_channels;
+    pimpl_->sample_rate_ = sample_rate;
+    pimpl_->block_size_ = max_block_size;
+    pimpl_->num_device_inputs_ = num_input_channels;
+    pimpl_->num_device_outputs_ = num_output_channels;
 }
 
-std::vector<int> GetPlayingSequenceImpl(Project::PlayingNoteList const &list)
+std::vector<Project::PlayingNoteInfo> Project::GetPlayingSequenceNotes() const
 {
-    std::vector<int> ret;
-    for(int i = 0; i < list.size(); ++i) {
-        if(list[i].load()) { ret.push_back(i); }
-    }
+    return pimpl_->playing_sequence_notes_.GetPlayingNotes();
+}
+
+std::vector<Project::PlayingNoteInfo> Project::GetPlayingSampleNotes() const
+{
+    return pimpl_->playing_sample_notes_.GetPlayingNotes();
+}
+
+void Project::SendSampleNoteOn(UInt8 channel, UInt8 pitch, UInt8 velocity)
+{
+    pimpl_->requested_sample_notes_.SetNoteOn(channel, pitch, velocity);
+}
+
+void Project::SendSampleNoteOff(UInt8 channel, UInt8 pitch, UInt8 off_velocity)
+{
+    pimpl_->requested_sample_notes_.SetNoteOff(channel, pitch, off_velocity);
+}
+
+double Project::SampleToPPQ(SampleCount sample_pos) const
+{
+    // tempo automations is not supported yet.
+    auto lock = pimpl_->lf_.make_lock();
+    auto info = pimpl_->tp_.GetCurrentState();
     
-    return ret;
+    return (sample_pos / info.sample_rate_) * (info.tempo_ / 60.0);
 }
 
-std::vector<int> Project::GetPlayingSequenceNotes() const
+SampleCount Project::PPQToSample(double ppq_pos) const
 {
-    return GetPlayingSequenceImpl(playing_sequence_notes_);
-}
-
-std::vector<int> Project::GetPlayingInteractiveNotes() const
-{
-    return GetPlayingSequenceImpl(playing_interactive_notes_);
-}
-
-void Project::AddInteractiveNote(int note_number)
-{
-    added_interactive_notes_[note_number] = true;
-}
-
-void Project::RemoveInteractiveNote(int note_number)
-{
-    added_interactive_notes_[note_number] = false;
+    // tempo automations is not supported yet.
+    auto lock = pimpl_->lf_.make_lock();
+    auto info = pimpl_->tp_.GetCurrentState();
+    
+    return (SampleCount)std::round(ppq_pos * (60.0 / info.tempo_) * info.sample_rate_);
 }
 
 template<class F>
@@ -138,7 +285,7 @@ void Project::Process(SampleCount block_size, float const * const * input, float
     ScopedBypassGuard guard;
     
     for(int i = 0; i < 50; ++i) {
-        guard = ScopedBypassGuard(bypass_);
+        guard = ScopedBypassGuard(pimpl_->bypass_);
         if(guard) { break; }
     }
     
@@ -154,60 +301,77 @@ void Project::Process(SampleCount block_size, float const * const * input, float
         auto const frame_end = ti.sample_pos_ + length;
         
         auto in_this_frame = [&](auto pos) { return frame_begin <= pos && pos < frame_end; };
-        auto in_rewound_frame = [&](auto pos) { return frame_begin <= pos && pos < ti.last_end_pos_; };
         
-        std::shared_ptr<Sequence> seq;
+        pimpl_->vst3_notes_.clear();
+        auto add_note = [&, this](SampleCount sample_pos, UInt8 channel, UInt8 pitch, UInt8 velocity, bool is_note_on)
         {
-            auto lock = lf_.make_lock();
-            seq = sequence_;
-        }
+            Vst3Note vn(sample_pos - ti.sample_pos_, SampleToPPQ(sample_pos) - ti.ppq_pos_,
+                        channel, pitch, velocity,
+                        (is_note_on ? Vst3Note::Type::kNoteOn : Vst3Note::Type::kNoteOff)
+                        );
+            pimpl_->vst3_notes_.push_back(vn);
+        };
+        
+        std::shared_ptr<Sequence> seq = GetSequence();
         
         bool const need_stop_all_sequence_notes
         = (ti.playing_ == false)
-        || (ti.playing_ && ti.sample_pos_ < ti.last_end_pos_);
+        || (ti.playing_ && ti.sample_pos_ != ti.last_end_pos_);
 
         if(need_stop_all_sequence_notes) {
-            for(int i = 0; i < playing_sequence_notes_.size(); ++i) {
-                if(playing_sequence_notes_[i].load()) {
-                    plugin->AddNoteOff(i);
-                    playing_sequence_notes_[i].store(false);
+            int x = 0;
+            x = 1;
+            
+            pimpl_->playing_sequence_notes_.Traverse([&](auto ch, auto pi, auto &x) {
+                auto note = x.load();
+                if(note) {
+                    assert(note.IsNoteOn());
+                    add_note(ti.sample_pos_, ch, pi, 0, false);
+                    x.store(InternalPlayingNoteInfo());
                 }
-            }
+            });
         }
         
         if(ti.playing_) {
             std::for_each(seq->notes_.begin(), seq->notes_.end(), [&](Sequence::Note const &note) {
                 if(in_this_frame(note.pos_)) {
-                    plugin->AddNoteOn(note.pitch_);
-                    playing_sequence_notes_[note.pitch_] = true;
+                    add_note(note.pos_, note.channel_, note.pitch_, note.velocity_, true);
+                    pimpl_->playing_sequence_notes_.SetNoteOn(note.channel_, note.pitch_, note.velocity_);
                 }
-                if(in_this_frame(note.GetEndPos())) {
-                    plugin->AddNoteOff(note.pitch_);
-                    playing_sequence_notes_[note.pitch_] = false;
+                if(in_this_frame(note.GetEndPos()-1)) {
+                    add_note(note.GetEndPos(), note.channel_, note.pitch_, note.off_velocity_, false);
+                    pimpl_->playing_sequence_notes_.ClearNote(note.channel_, note.pitch_);
                 }
             });
         }
         
-        for(int i = 0; i < added_interactive_notes_.size(); ++i) {
-            if(added_interactive_notes_[i] && !playing_interactive_notes_[i]) {
-                plugin->AddNoteOn(i);
-                playing_interactive_notes_[i] = true;
-            } else if(!added_interactive_notes_[i] && playing_interactive_notes_[i]) {
-                plugin->AddNoteOff(i);
-                playing_interactive_notes_[i] = false;
+        pimpl_->requested_sample_notes_.Traverse([&](auto ch, auto pi, auto &x) {
+            auto note = x.exchange(InternalPlayingNoteInfo());
+            auto playing_note = pimpl_->playing_sample_notes_.Get(ch, pi);
+            bool const playing = (playing_note && playing_note.IsNoteOn());
+            if(!note) { return; }
+            if(note.IsNoteOn() && !playing) {
+                add_note(ti.sample_pos_, ch, pi, note.velocity_, true);
+                pimpl_->playing_sample_notes_.SetNoteOn(ch, pi, note.velocity_);
+            } else if(note.IsNoteOff()) {
+                add_note(ti.sample_pos_, ch, pi, note.velocity_, false);
+                pimpl_->playing_sample_notes_.ClearNote(ch, pi);
             }
-        }
+        });
         
-        auto const result = plugin->ProcessAudio(ti, length);
-        auto num_channels_to_copy = std::min<int>(num_device_outputs_, plugin->GetNumOutputs());
-        
-        for(int ch = 0; ch < num_channels_to_copy; ++ch) {
-            std::copy_n(result[ch], length, output[ch] + num_processed);
-        }
+        Vst3Plugin::ProcessInfo pi;
+        pi.ti_ = &ti;
+        pi.frame_length_ = length;
+        pi.notes_ = { pimpl_->vst3_notes_.begin(), pimpl_->vst3_notes_.end() };
+        pi.input_ = { BufferRef<float const>(input, pimpl_->num_device_inputs_, block_size), num_processed };
+        pi.output_ = { BufferRef<float>(output, pimpl_->num_device_outputs_, block_size), num_processed };
+
+        plugin->Process(pi);
+
         num_processed += length;
     });
     
-    tp_.Traverse(block_size, &cb);
+    pimpl_->tp_.Traverse(block_size, &cb);
 }
 
 void Project::StopProcessing()

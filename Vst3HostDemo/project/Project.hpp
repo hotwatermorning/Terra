@@ -17,10 +17,27 @@ NS_HWM_BEGIN
 struct Sequence
 {
     struct Note {
-        SampleCount pos_;
-        SampleCount length_;
-        int pitch_;
-        int velocity_;
+        SampleCount pos_ = 0;
+        SampleCount length_ = 0;
+        UInt8 channel_ = 0;
+        UInt8 pitch_ = 0;
+        UInt8 velocity_ = 0;
+        UInt8 off_velocity_ = 0;
+        
+        Note() = default;
+        Note(SampleCount pos,
+             SampleCount length,
+             UInt8 channel,
+             UInt8 pitch,
+             UInt8 velocity,
+             UInt8 off_velocity = 0)
+        :   pos_(pos)
+        ,   length_(length)
+        ,   channel_(channel)
+        ,   pitch_(pitch)
+        ,   velocity_(velocity)
+        ,   off_velocity_(off_velocity)
+        {}
         
         SampleCount GetEndPos() const { return pos_ + length_; }
     };
@@ -37,15 +54,25 @@ class Project final
 ,   public SingleInstance<Project>
 {
 public:
-    using PlayingNoteList = std::array<std::atomic<bool>, 128>;
+    struct PlayingNoteInfo
+    {
+        PlayingNoteInfo(UInt8 channel, UInt8 pitch, UInt8 velocity)
+        :   channel_(channel), pitch_(pitch), velocity_(velocity)
+        {}
+        
+        UInt8 channel_ = 0;
+        UInt8 pitch_ = 0;
+        UInt8 velocity_ = 0;
+    };
     
     Project();
     ~Project();
     
     void SetInstrument(std::shared_ptr<Vst3Plugin> plugin);
     std::shared_ptr<Vst3Plugin> RemoveInstrument();
-    
     std::shared_ptr<Vst3Plugin> GetInstrument() const;
+    
+    std::shared_ptr<Sequence> GetSequence() const;
     void SetSequence(std::shared_ptr<Sequence> seq);
     
     Transporter & GetTransporter();
@@ -60,27 +87,22 @@ public:
     
     void StopProcessing() override;
     
-    //! 再生中のノート番号が昇順にvectorで返る。
-    //! (ex, C3, E3, G3が再生中のときは、{ 48, 52, 55 }が返る。)
-    std::vector<int> GetPlayingSequenceNotes() const;
-    std::vector<int> GetPlayingInteractiveNotes() const;
+
     
-    void AddInteractiveNote(int note_number);
-    void RemoveInteractiveNote(int note_number);
+    //! 再生中のシーケンスノート情報のリストが返る。
+    std::vector<PlayingNoteInfo> GetPlayingSequenceNotes() const;
+    //! 再生中のサンプルノート情報のリストが返る。
+    std::vector<PlayingNoteInfo> GetPlayingSampleNotes() const;
+    
+    void SendSampleNoteOn(UInt8 channel, UInt8 pitch, UInt8 velocity = 64);
+    void SendSampleNoteOff(UInt8 channel, UInt8 pitch, UInt8 off_velocity = 0);
+    
+    double SampleToPPQ(SampleCount sample_pos) const;
+    SampleCount PPQToSample(double ppq_pos) const;
     
 private:
-    LockFactory lf_;
-    std::shared_ptr<Vst3Plugin> plugin_;
-    Transporter tp_;
-    double sample_rate_ = 0;
-    SampleCount block_size_ = 0;
-    BypassFlag bypass_;
-    int num_device_inputs_ = 0;
-    int num_device_outputs_ = 0;
-    std::shared_ptr<Sequence> sequence_;
-    PlayingNoteList playing_sequence_notes_;
-    PlayingNoteList added_interactive_notes_;
-    PlayingNoteList playing_interactive_notes_;
+    struct Impl;
+    std::unique_ptr<Impl> pimpl_;
 };
 
 NS_HWM_END

@@ -92,9 +92,14 @@ String Vst3Plugin::GetEffectName() const
 	return pimpl_->GetEffectName();
 }
 
+size_t Vst3Plugin::GetNumInputs() const
+{
+    return pimpl_->GetInputBuses().GetNumActiveChannels();
+}
+
 size_t Vst3Plugin::GetNumOutputs() const
 {
-	return pimpl_->GetNumOutputs();
+	return pimpl_->GetOutputBuses().GetNumActiveChannels();
 }
 
 void Vst3Plugin::Resume()
@@ -165,16 +170,6 @@ ViewRect Vst3Plugin::GetPreferredRect() const
 	return pimpl_->GetPreferredRect();
 }
 
-void Vst3Plugin::AddNoteOn(int note_number)
-{
-	pimpl_->AddNoteOn(note_number);
-}
-
-void Vst3Plugin::AddNoteOff(int note_number)
-{
-	pimpl_->AddNoteOff(note_number);
-}
-
 size_t			Vst3Plugin::GetProgramCount() const
 {
 	return pimpl_->GetProgramCount();
@@ -205,9 +200,9 @@ void Vst3Plugin::RestartComponent(Steinberg::int32 flags)
 	pimpl_->RestartComponent(flags);
 }
 
-float ** Vst3Plugin::ProcessAudio(TransportInfo const &info, SampleCount length)
+void Vst3Plugin::Process(ProcessInfo &pi)
 {
-	return pimpl_->ProcessAudio(info, length);
+    pimpl_->Process(pi);
 }
 
 std::unique_ptr<Vst3Plugin>

@@ -10,7 +10,8 @@ NS_HWM_BEGIN
 class Transporter
 {
 public:
-    SampleCount GetCurrentPos() const;
+    TransportInfo GetCurrentState() const;
+    
     void MoveTo(SampleCount pos);
     bool IsPlaying() const;
     void SetPlaying(bool is_playing);

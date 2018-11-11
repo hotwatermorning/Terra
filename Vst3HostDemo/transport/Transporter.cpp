@@ -2,10 +2,10 @@
 
 NS_HWM_BEGIN
 
-SampleCount Transporter::GetCurrentPos() const
+TransportInfo Transporter::GetCurrentState() const
 {
     auto lock = lf_.make_lock();
-    return transport_info_.sample_pos_;
+    return transport_info_;
 }
 
 double GetPPQPos(TransportInfo const &info)

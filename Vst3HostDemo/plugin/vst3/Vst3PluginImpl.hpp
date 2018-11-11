@@ -279,7 +279,7 @@ private:
 	Vst::ParameterChanges	param_changes_queue_;
 
 private:
-    std::experimental::optional<ClassInfo> plugin_info_;
+    std::optional<ClassInfo> plugin_info_;
 	component_ptr_t			component_;
 	audio_processor_ptr_t	audio_processor_;
 	edit_controller_ptr_t	edit_controller_;

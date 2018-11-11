@@ -65,6 +65,8 @@ public:
     AudioDeviceManager();
     ~AudioDeviceManager();
     
+    AudioDriverType GetDefaultDriver() const;
+    
     std::vector<AudioDeviceInfo> Enumerate();
 
     //! @pre IsOpened() == false

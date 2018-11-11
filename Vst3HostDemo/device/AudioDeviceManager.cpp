@@ -168,6 +168,11 @@ AudioDeviceManager::~AudioDeviceManager()
     ShowErrorMsg(err);
 }
 
+AudioDriverType AudioDeviceManager::GetDefaultDriver() const
+{
+    return ToAudioDriverType(Pa_GetDefaultHostApi());
+}
+
 std::vector<AudioDeviceInfo> AudioDeviceManager::Enumerate()
 {
     auto const device_count = Pa_GetDeviceCount();

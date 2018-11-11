@@ -123,6 +123,7 @@ struct Project::Impl
     PlayingNoteList playing_sequence_notes_;
     PlayingNoteList requested_sample_notes_;
     PlayingNoteList playing_sample_notes_;
+    std::atomic<bool> inputs_enabled_ = { false };
 };
 
 Project::Project()
@@ -210,15 +211,21 @@ Transporter const & Project::GetTransporter() const
     return pimpl_->tp_;
 }
 
-void Project::StartProcessing(double sample_rate,
-                              SampleCount max_block_size,
-                              int num_input_channels,
-                              int num_output_channels)
+bool Project::CanInputsEnabled() const
 {
-    pimpl_->sample_rate_ = sample_rate;
-    pimpl_->block_size_ = max_block_size;
-    pimpl_->num_device_inputs_ = num_input_channels;
-    pimpl_->num_device_outputs_ = num_output_channels;
+    return pimpl_->num_device_inputs_ > 0;
+}
+
+bool Project::IsInputsEnabled() const
+{
+    return pimpl_->inputs_enabled_.load();
+}
+
+void Project::SetInputsEnabled(bool state)
+{
+    if(!CanInputsEnabled()) { return; }
+    
+    pimpl_->inputs_enabled_.store(state);
 }
 
 std::vector<Project::PlayingNoteInfo> Project::GetPlayingSequenceNotes() const
@@ -257,6 +264,17 @@ SampleCount Project::PPQToSample(double ppq_pos) const
     auto info = pimpl_->tp_.GetCurrentState();
     
     return (SampleCount)std::round(ppq_pos * (60.0 / info.tempo_) * info.sample_rate_);
+}
+
+void Project::StartProcessing(double sample_rate,
+                              SampleCount max_block_size,
+                              int num_input_channels,
+                              int num_output_channels)
+{
+    pimpl_->sample_rate_ = sample_rate;
+    pimpl_->block_size_ = max_block_size;
+    pimpl_->num_device_inputs_ = num_input_channels;
+    pimpl_->num_device_outputs_ = num_output_channels;
 }
 
 template<class F>
@@ -363,7 +381,9 @@ void Project::Process(SampleCount block_size, float const * const * input, float
         pi.ti_ = &ti;
         pi.frame_length_ = length;
         pi.notes_ = { pimpl_->vst3_notes_.begin(), pimpl_->vst3_notes_.end() };
-        pi.input_ = { BufferRef<float const>(input, pimpl_->num_device_inputs_, block_size), num_processed };
+        if(pimpl_->inputs_enabled_) {
+            pi.input_ = { BufferRef<float const>(input, pimpl_->num_device_inputs_, block_size), num_processed };
+        }
         pi.output_ = { BufferRef<float>(output, pimpl_->num_device_outputs_, block_size), num_processed };
 
         plugin->Process(pi);

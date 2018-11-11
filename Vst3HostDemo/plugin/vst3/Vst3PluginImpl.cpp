@@ -533,6 +533,8 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
                            SampleCount src_offset, SampleCount dest_offset)
     {
         size_t const min_ch = std::min(src.channels(), dest.channels());
+        if(min_ch == 0) { return; }
+
         assert(src.samples() - src_offset >= length_to_copy);
         assert(dest.samples() - dest_offset >= length_to_copy);
         

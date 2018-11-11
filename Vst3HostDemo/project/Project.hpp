@@ -77,17 +77,10 @@ public:
     
     Transporter & GetTransporter();
     Transporter const & GetTransporter() const;
-    
-    void StartProcessing(double sample_rate,
-                         SampleCount max_block_size,
-                         int num_input_channels,
-                         int num_output_channels) override;
-    
-    void Process(SampleCount block_size, float const * const * input, float **output) override;
-    
-    void StopProcessing() override;
-    
-
+  
+    bool CanInputsEnabled() const;
+    bool IsInputsEnabled() const;
+    void SetInputsEnabled(bool state);
     
     //! 再生中のシーケンスノート情報のリストが返る。
     std::vector<PlayingNoteInfo> GetPlayingSequenceNotes() const;
@@ -103,6 +96,16 @@ public:
 private:
     struct Impl;
     std::unique_ptr<Impl> pimpl_;
+    
+    void StartProcessing(double sample_rate,
+                         SampleCount max_block_size,
+                         int num_input_channels,
+                         int num_output_channels) override;
+    
+    void Process(SampleCount block_size, float const * const * input, float **output) override;
+    
+    void StopProcessing() override;
+    
 };
 
 NS_HWM_END

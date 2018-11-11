@@ -72,18 +72,32 @@ bool MyApp::OnInit()
         hwm::wdout << info.name_ << L" - " << to_wstring(info.driver_) << L" ( " << info.num_channels_ << L" )" << std::endl;
     }
     
-    auto selected = std::find_if(list.begin(), list.end(), [this](auto const &x) {
-        return
-        (x.num_channels_ >= 2)
-        && x.io_type_ == AudioDeviceIOType::kOutput
-        && (device_name_ == "" || device_name_ == x.name_);
-    });
+    auto find_entry = [&list](auto io_type,
+                              auto min_channels,
+                              std::optional<AudioDriverType> driver = std::nullopt,
+                              std::optional<String> name = std::nullopt) -> AudioDeviceInfo const *
+    {
+        auto found = std::find_if(list.begin(), list.end(), [&](auto const &x) {
+            if(x.io_type_ != io_type)           { return false; }
+            if(name && name != x.name_)         { return false; }
+            if(driver && driver != x.driver_)   { return false; }
+            if(x.num_channels_ < min_channels)  { return false; }
+            return true;
+        });
+        if(found == list.end()) { return nullptr; }
+        else { return &*found; }
+    };
+
+    auto output_device = find_entry(AudioDeviceIOType::kOutput, 2, adm_->GetDefaultDriver());
+    if(!output_device) { output_device = find_entry(AudioDeviceIOType::kOutput, 2); }
     
-    if(selected == list.end()) {
+    if(!output_device) {
         throw std::runtime_error("No devices found");
     }
     
-    bool const opened = adm_->Open(nullptr, &*selected, kSampleRate, kBlockSize);
+    auto input_device = find_entry(AudioDeviceIOType::kInput, 2, output_device->driver_);
+    
+    bool const opened = adm_->Open(input_device, output_device, kSampleRate, kBlockSize);
     if(!opened) {
         throw std::runtime_error("Failed to open the device");
     }

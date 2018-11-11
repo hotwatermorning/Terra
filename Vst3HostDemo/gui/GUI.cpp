@@ -617,6 +617,7 @@ private:
 enum
 {
     ID_Play = 1,
+    ID_EnableInputs = 2,
 };
 
 MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
@@ -627,6 +628,11 @@ MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
     
     wxMenu *menuPlay = new wxMenu;
     menuPlay->Append(ID_Play, "&Play...\tCtrl-P", "Start playback", wxITEM_CHECK);
+    menuPlay->Append(ID_EnableInputs,
+                     "&Enable Mic Inputs...\tCtrl-I",
+                     "Input Mic Inputs",
+                     wxITEM_CHECK)
+    ->Enable(Project::GetInstance()->CanInputsEnabled());
 
     wxMenu *menuHelp = new wxMenu;
     menuHelp->Append(wxID_ABOUT);
@@ -640,6 +646,7 @@ MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
     Bind(wxEVT_MENU, [this](auto &ev) { OnExit(); }, wxID_EXIT);
     //Bind(wxEVT_CLOSE_WINDOW, [this](auto &ev) { OnExit(); });
     Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { OnPlay(ev); }, ID_Play);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { OnEnableInputs(ev); }, ID_EnableInputs);
     
     Bind(wxEVT_MENU, [this](auto &ev) { OnAbout(ev); }, wxID_ABOUT);
     
@@ -680,6 +687,12 @@ void MyFrame::OnPlay(wxCommandEvent &ev)
 {
     auto &tp = Project::GetInstance()->GetTransporter();
     tp.SetPlaying(ev.IsChecked());
+}
+
+void MyFrame::OnEnableInputs(wxCommandEvent &ev)
+{
+    auto *pj = Project::GetInstance();
+    pj->SetInputsEnabled(ev.IsChecked());
 }
 
 void MyFrame::OnTimer()

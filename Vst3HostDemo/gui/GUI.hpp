@@ -19,6 +19,7 @@ private:
     void OnExit();
     void OnAbout(wxCommandEvent& event);
     void OnPlay(wxCommandEvent& event);
+    void OnEnableInputs(wxCommandEvent& event);
     void OnTimer();
     
 private:

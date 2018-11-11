@@ -385,7 +385,7 @@ private:
     std::array<wxChar, 128> key_code_for_sample_note_;
     wxTimer timer_;
     PlayingNoteList playing_notes_;
-    int key_base_ = 48;
+    int key_base_ = 60;
     constexpr static wxChar kOctaveDown = L'Z';
     constexpr static wxChar kOctaveUp = L'X';
     static std::vector<wxChar> const kKeyTable;

@@ -8,17 +8,18 @@ A Demo application which hosts vst3 plugins.
 
 ## 機能
 
-プラグインをロードし、ピアノの鍵盤画面を押すとそのプラグインで音を鳴らせます。
-また、Ableton Live方式で、PCのキーボードををソフトウェアキーボードとして使用できます。
-    * A, W, S, ..., O, L, Pまでの範囲をドレミ...に割り当てています。
-    * ZとXでオクターブを変更できます。
+プラグインをロードし、ピアノの鍵盤画面をクリックするとそのプラグインで音を鳴らせます。
+また、Ableton Live方式で、PCのキーボードを鍵盤として使用できます。
+
+ * A, W, S, ..., O, L, Pまでの範囲をC3, C#3, D3, ..., C#4, D4, D#4に割り当てています。
+ * ZとXでオクターブを変更できます。
 
 ## プログラムのビルド方法
 
 ```
 cd ./gradle
 ./gradlew build_all
-open build_debug/Debug/Vst3HostDemo
+open build_debug/Debug/Vst3HostDemo -Pconfig=<Debug or Release>
 ```
 
 ## ライセンス
@@ -34,4 +35,5 @@ open build_debug/Debug/Vst3HostDemo
 -----
 
 https://twitter.com/hotwatermorning
+
 hotwatermorning@gmail.com

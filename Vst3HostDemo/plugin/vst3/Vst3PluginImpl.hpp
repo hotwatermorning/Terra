@@ -79,71 +79,16 @@ public:
 		tresult			error_code_;
 		ErrorContext	error_context_;
 	};
-
-	class ParameterInfoList
-	{
-    public:
-		typedef Vst::ParameterInfo value_type;
-		typedef std::vector<value_type> container;
-		typedef container::iterator iterator;
-		typedef container::const_iterator const_iterator;
-		typedef size_t size_type;
-
-		Vst::ParameterInfo const & GetInfoByID(Vst::ParamID id) const
-		{
-			return parameters_[IDToIndex(id)];
-		}
-
-		Vst::ParameterInfo const & GetInfoByIndex(size_type index) const
-		{
-			assert(index < parameters_.size());
-			return parameters_[index];
-		}
-
-		size_type
-			IDToIndex(Vst::ParamID id) const
-		{
-			assert(param_id_to_index_.find(id) != param_id_to_index_.end());
-			return param_id_to_index_.find(id)->second;
-		}
-
-		void AddInfo(Vst::ParameterInfo const &info)
-		{
-			parameters_.push_back(info);
-			param_id_to_index_[info.id] = parameters_.size()-1;
-		}
-
-		size_type size() const { return parameters_.size(); }
-		bool empty() const { return parameters_.empty(); }
-
-		const_iterator begin() const { return parameters_.begin(); }
-		const_iterator end() const { return parameters_.end(); }
-
-	private:
-		std::vector<Vst::ParameterInfo> parameters_;
-		std::unordered_map<Vst::ParamID, size_type> param_id_to_index_;
-	};
-
-	struct ProgramInfo
-	{
-		String		        name_;
-		Vst::ProgramListID	list_id_;
-		Steinberg::int32	index_;
-	};
     
-    struct BusInfoEx
-    {
-        Vst::BusInfo bus_info_;
-        Vst::SpeakerArrangement speaker_ = Vst::SpeakerArr::kEmpty;
-        bool is_active_ = false;
-    };
+    using ParameterInfoList = IdentifiedValueList<ParameterInfo>;
+    using UnitInfoList = IdentifiedValueList<UnitInfo>;
     
     struct AudioBusesInfo
     {
         void Initialize(Impl *owner, Vst::BusDirection dir);
         
         size_t GetNumBuses() const;
-        BusInfoEx const & GetBusInfo(size_t bus_index) const;
+        BusInfo const & GetBusInfo(UInt32 bus_index) const;
         
         //! すべてのバスのチャンネル数の総計
         //! これは、各バスのSpeakerArrangement状態によって変化する。
@@ -166,24 +111,14 @@ public:
         
     private:
         Impl *owner_ = nullptr;
-        std::vector<BusInfoEx> bus_infos_;
+        std::vector<BusInfo> bus_infos_;
         Vst::BusDirection dir_;
         
-        //! bus_infos_でis_active_がtrueになっているバスの数だけ用意される。
+        //! bus_infos_のis_active_状態によらず、定義されているすべてのバスと同じ数だけ用意される。
         std::vector<Vst::AudioBusBuffers> bus_buffers_;
         
         void UpdateBusBuffers();
     };
-
-	ParameterInfoList parameters_;
-	Steinberg::Vst::ParamID program_change_parameter_;
-
-	Status status_;
-
-	Vst::ParameterChanges input_params_;
-	Vst::ParameterChanges output_params_;
-    Vst::EventList input_events_;
-    Vst::EventList output_events_;
 
 public:
 	Impl(IPluginFactory *factory,
@@ -204,12 +139,21 @@ public:
 
 	String GetEffectName() const;
     
-    AudioBusesInfo & GetInputBuses();
-    AudioBusesInfo const & GetInputBuses() const;
-    AudioBusesInfo & GetOutputBuses();
-    AudioBusesInfo const & GetOutputBuses() const;
+    ParameterInfoList & GetParameterInfoList();
+    ParameterInfoList const & GetParameterInfoList() const;
     
-    size_t GetNumParameters() const;
+    UnitInfoList & GetUnitInfoList();
+    UnitInfoList const & GetUnitInfoList() const;
+    
+    AudioBusesInfo & GetBusesInfo(BusDirection dir);
+    AudioBusesInfo const & GetBusesInfo(BusDirection dir) const;
+    
+    UInt32 GetNumParameters() const;
+    Vst::ParamValue GetParameterValueByIndex(UInt32 index) const;
+    Vst::ParamValue GetParameterValueByID(Vst::ParamID id) const;
+    
+    UInt32  GetProgramIndex(Vst::UnitID unit_id = 0) const;
+    void    SetProgramIndex(UInt32 index, Vst::UnitID unit_id = 0);
 
 	bool HasEditor() const;
 
@@ -231,52 +175,31 @@ public:
 
 	void SetSamplingRate(int sampling_rate);
 
-	size_t	GetProgramCount() const;
-
-	String GetProgramName(size_t index) const;
-
-	Vst::ParamValue
-		NormalizeProgramIndex(size_t index) const;
-
-	size_t DiscretizeProgramIndex(Vst::ParamValue value) const;		
-
-	size_t	GetProgramIndex() const;
-
-	void	SetProgramIndex(size_t index);
-
 	void	RestartComponent(Steinberg::int32 flags);
 
 	void    Process(ProcessInfo pi);
 
 //! Parameter Change
 public:
-	//! TakeParameterChangesとの呼び出しはスレッドセーフ
-	void EnqueueParameterChange(Vst::ParamID id, Vst::ParamValue value);
-
+	//! PopFrontParameterChangesとの呼び出しはスレッドセーフ
+	void PushBackParameterChange(Vst::ParamID id, Vst::ParamValue value);
+    
 private:
-	//! EnqueueParameterChangeとの呼び出しはスレッドセーフ
-	void TakeParameterChanges(Vst::ParameterChanges &dest);
+    //! PushBackParameterChangeとの呼び出しはスレッドセーフ
+    void PopFrontParameterChanges(Vst::ParameterChanges &dest);
 
 private:
 	void LoadPlugin(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context);
-
 	void LoadInterfaces(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context);
-
 	void Initialize(vstma_unique_ptr<Vst::IComponentHandler> component_handler);
 
 	tresult CreatePlugView();
-
 	void DeletePlugView();
 
 	void PrepareParameters();
-
-	void PrepareProgramList();
+	void PrepareUnitInfo();
 
 	void UnloadPlugin();
-
-private:
-	std::mutex			parameter_queue_mutex_;
-	Vst::ParameterChanges	param_changes_queue_;
 
 private:
     std::optional<ClassInfo> plugin_info_;
@@ -286,10 +209,8 @@ private:
 	edit_controller2_ptr_t	edit_controller2_;
 	plug_view_ptr_t			plug_view_;
 	unit_info_ptr_t			unit_handler_;
-	program_list_data_ptr_t	program_list_data_;
-	Steinberg::int32		current_program_index_;
-	std::vector<ProgramInfo> programs_;
-	Steinberg::Vst::ParamID	parameter_for_program_; //Presetを表すParameterのID
+    UnitInfoList            unit_info_list_;
+    ParameterInfoList       parameter_info_list_;
 
 	Flag					is_processing_started_;
 	Flag					edit_controller_is_created_new_;
@@ -310,6 +231,17 @@ private:
     // ちょっと設計がややこしくなるので、いまはここにバッファを持たせるようにしておく。
     Buffer<float> input_buffer_;
     Buffer<float> output_buffer_;
+    
+    Status status_;
+    
+private:
+    std::mutex              parameter_queue_mutex_;
+    Vst::ParameterChanges   param_changes_queue_;
+    
+    Vst::ParameterChanges input_params_;
+    Vst::ParameterChanges output_params_;
+    Vst::EventList input_events_;
+    Vst::EventList output_events_;
 };
 
 NS_HWM_END

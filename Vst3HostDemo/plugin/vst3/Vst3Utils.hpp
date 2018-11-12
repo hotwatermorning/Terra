@@ -62,7 +62,7 @@ public:
 		assert(is_right());
 		return right_;
 	}
-
+    
 	template<class F>
 	void visit(F f) {
         if(is_right()) { f(right()); }

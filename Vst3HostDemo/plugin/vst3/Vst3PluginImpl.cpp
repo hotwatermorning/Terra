@@ -41,17 +41,25 @@ void Vst3Plugin::Impl::AudioBusesInfo::Initialize(Impl *owner, Vst::BusDirection
     
     tresult ret = kResultTrue;
     for(size_t i = 0; i < num_buses; ++i) {
-        Vst::BusInfo bi;
-        ret = comp->getBusInfo(media, dir, i, bi);
+        Vst::BusInfo vbi;
+        ret = comp->getBusInfo(media, dir, i, vbi);
         if(ret != kResultTrue) { throw std::runtime_error("Failed to get BusInfo"); }
         
-        bus_infos_[i].bus_info_ = bi;
-        bus_infos_[i].is_active_ = (bi.flags & Vst::BusInfo::kDefaultActive) != 0;
+        BusInfo bi;
+        bi.bus_type_ = vbi.busType;
+        bi.channel_count_ = vbi.channelCount;
+        bi.direction_ = vbi.direction;
+        bi.is_default_active_ = (vbi.flags & Vst::BusInfo::kDefaultActive) != 0;
+        bi.media_type_ = vbi.mediaType;
+        bi.name_ = to_wstr(vbi.name);
+        bi.is_active_ = bi.is_default_active_;
         
         Vst::SpeakerArrangement arr;
         auto ret = proc->getBusArrangement(dir, i, arr);
         if(ret != kResultTrue) { throw std::runtime_error("Failed to get SpeakerArrangement"); }
-        bus_infos_[i].speaker_ = arr;
+        bi.speaker_ = arr;
+        
+        bus_infos_[i] = bi;
     }
     
     UpdateBusBuffers();
@@ -62,7 +70,7 @@ size_t Vst3Plugin::Impl::AudioBusesInfo::GetNumBuses() const
     return bus_infos_.size();
 }
 
-Vst3Plugin::Impl::BusInfoEx const & Vst3Plugin::Impl::AudioBusesInfo::GetBusInfo(size_t bus_index) const
+Vst3Plugin::BusInfo const & Vst3Plugin::Impl::AudioBusesInfo::GetBusInfo(UInt32 bus_index) const
 {
     assert(bus_index < GetNumBuses());
     return bus_infos_[bus_index];
@@ -74,7 +82,7 @@ size_t Vst3Plugin::Impl::AudioBusesInfo::GetNumChannels() const
                            bus_infos_.end(),
                            0,
                            [](size_t sum, auto const &info) {
-                               return sum + info.bus_info_.channelCount;
+                               return sum + info.channel_count_;
                            });
 }
 
@@ -84,7 +92,7 @@ size_t Vst3Plugin::Impl::AudioBusesInfo::GetNumActiveChannels() const
                            bus_infos_.end(),
                            0,
                            [](size_t sum, auto const &info) {
-                               return sum + (info.is_active_ ? info.bus_info_.channelCount : 0);
+                               return sum + (info.is_active_ ? info.channel_count_ : 0);
                            });
 }
 
@@ -138,6 +146,7 @@ bool Vst3Plugin::Impl::AudioBusesInfo::SetSpeakerArrangement(size_t bus_index, V
     }
     
     bus_infos_[bus_index].speaker_ = arr;
+    bus_infos_[bus_index].channel_count_ = Vst::SpeakerArr::getChannelCount(arr);
     UpdateBusBuffers();
     return true;
 }
@@ -153,7 +162,7 @@ void Vst3Plugin::Impl::AudioBusesInfo::UpdateBusBuffers()
     
     for(auto const &bi: bus_infos_) {
         Vst::AudioBusBuffers tmp = {};
-        tmp.numChannels = bi.bus_info_.channelCount;
+        tmp.numChannels = bi.channel_count_;
         bus_buffers_.push_back(tmp);
     }
 }
@@ -168,8 +177,6 @@ Vst3Plugin::Impl::Impl(IPluginFactory *factory,
 	,	block_size_(2048)
 	,	sampling_rate_(44100)
 	,	has_editor_(false)
-	,	current_program_index_(-1)
-	,	program_change_parameter_(-1)
 	,	status_(Status::kInvalid)
 {
     assert(host_context);
@@ -200,29 +207,96 @@ String Vst3Plugin::Impl::GetEffectName() const
 	return plugin_info_->name();
 }
 
-Vst3Plugin::Impl::AudioBusesInfo & Vst3Plugin::Impl::GetInputBuses()
+Vst3Plugin::Impl::ParameterInfoList & Vst3Plugin::Impl::GetParameterInfoList()
 {
-    return input_buses_info_;
+    return parameter_info_list_;
 }
 
-Vst3Plugin::Impl::AudioBusesInfo const & Vst3Plugin::Impl::GetInputBuses() const
+Vst3Plugin::Impl::ParameterInfoList const & Vst3Plugin::Impl::GetParameterInfoList() const
 {
-    return input_buses_info_;
+    return parameter_info_list_;
 }
 
-Vst3Plugin::Impl::AudioBusesInfo & Vst3Plugin::Impl::GetOutputBuses()
+Vst3Plugin::Impl::UnitInfoList & Vst3Plugin::Impl::GetUnitInfoList()
 {
-    return output_buses_info_;
+    return unit_info_list_;
 }
 
-Vst3Plugin::Impl::AudioBusesInfo const & Vst3Plugin::Impl::GetOutputBuses() const
+Vst3Plugin::Impl::UnitInfoList const & Vst3Plugin::Impl::GetUnitInfoList() const
 {
-    return output_buses_info_;
+    return unit_info_list_;
 }
 
-size_t Vst3Plugin::Impl::GetNumParameters() const
+Vst3Plugin::Impl::AudioBusesInfo & Vst3Plugin::Impl::GetBusesInfo(Vst::BusDirection dir)
+{
+    if(dir == Vst::BusDirections::kInput) {
+        return input_buses_info_;
+    } else {
+        return output_buses_info_;
+    }
+}
+
+Vst3Plugin::Impl::AudioBusesInfo const & Vst3Plugin::Impl::GetBusesInfo(Vst::BusDirection dir) const
+{
+    if(dir == Vst::BusDirections::kInput) {
+        return input_buses_info_;
+    } else {
+        return output_buses_info_;
+    }
+}
+
+UInt32 Vst3Plugin::Impl::GetNumParameters() const
 {
     return edit_controller_->getParameterCount();
+}
+
+Vst::ParamValue Vst3Plugin::Impl::GetParameterValueByIndex(UInt32 index) const
+{
+    auto id = GetParameterInfoList().GetItemByIndex(index).id_;
+    return GetParameterValueByID(id);
+}
+
+Vst::ParamValue Vst3Plugin::Impl::GetParameterValueByID(Vst::ParamID id) const
+{
+    return edit_controller_->getParamNormalized(id);
+}
+
+UInt32 Vst3Plugin::Impl::GetProgramIndex(Vst::UnitID unit_id) const
+{
+    auto const &unit_info = GetUnitInfoList().GetItemByID(unit_id);
+    UInt32 const size = unit_info.program_list_.programs_.size();
+    ParamID const param_id = unit_info.program_change_param_;
+    
+    if(param_id == Vst::kNoParamId || size == 0) {
+        return -1;
+    }
+    
+    auto const normalized_value = GetEditController()->getParamNormalized(param_id);
+    auto const plain = (UInt32)std::round(normalized_value * (size-1));
+    assert(plain < size);
+    
+    return plain;
+}
+
+void Vst3Plugin::Impl::SetProgramIndex(UInt32 index, Vst::UnitID unit_id)
+{
+    auto const &unit_info = GetUnitInfoList().GetItemByID(unit_id);
+    UInt32 const size = unit_info.program_list_.programs_.size();
+    ParamID const param_id = unit_info.program_change_param_;
+    
+    assert(index < size);
+    
+    if(param_id == Vst::kNoParamId || size == 0) {
+        return;
+    }
+    
+    // Wavesでは、このパラメータに対するstepCountがsizeと同一になっていて、
+    // VST3のドキュメントにあるようにstepCount+1でnormalied_valueを計算すると、ズレが発生してしまう。
+    // そのため、プログラムのindexに関してはstepCountは使用せず、プログラム数からnormalized_valueを計算する。
+    auto const normalized_value = index / (double)size;
+    
+    GetEditController()->setParamNormalized(unit_info.program_change_param_, normalized_value);
+    PushBackParameterChange(unit_info.program_change_param_, normalized_value);
 }
 
 bool Vst3Plugin::Impl::HasEditor() const
@@ -374,85 +448,6 @@ void Vst3Plugin::Impl::SetSamplingRate(int sampling_rate)
 	sampling_rate_ = sampling_rate;
 }
 
-size_t	Vst3Plugin::Impl::GetProgramCount() const
-{
-	return programs_.size();
-}
-
-String Vst3Plugin::Impl::GetProgramName(size_t index) const
-{
-	return programs_[index].name_;
-}
-
-/*!
-	@note
-	VoxengoのGlissEQでは
-	parameters_.GetInfoByID(parameter_for_program_).stepCount == GetProgramCount()-1
-	Wavesでは、
-	parameters_.GetInfoByID(parameter_for_program_).stepCount == GetProgramCount()
-	=> 当初はGetProgramCount()-1をstepCountとみなしてProgramIndexを変換しようと思ったが、
-	上記の通りGetProgramCount()-1はstepCountと異なることがあり、WavesのプラグインでProgramIndexの指定がずれてしまうため、
-	ちゃんとstepCountを元に変換して、どちらのプラグインでも対応できるようにした。
-	IEditControllerのnormalizedParamToPlainを使用してもいいかもしれない。
-*/
-Vst::ParamValue
-	Vst3Plugin::Impl::NormalizeProgramIndex(size_t index) const
-{
-	int step_count =
-		(parameter_for_program_ != -1)
-		?	parameters_.GetInfoByID(parameter_for_program_).stepCount
-		:	GetProgramCount() - 1;
-
-	return index / static_cast<Vst::ParamValue>(step_count);
-}
-
-size_t Vst3Plugin::Impl::DiscretizeProgramIndex(Vst::ParamValue value) const
-{
-	int step_count =
-		(parameter_for_program_ != -1)
-		?	parameters_.GetInfoByID(parameter_for_program_).stepCount
-		:	GetProgramCount() - 1;
-
-	return static_cast<size_t>(
-		floor(std::min<Vst::ParamValue>(step_count, value * (step_count + 1)))
-		);
-}		
-
-size_t	Vst3Plugin::Impl::GetProgramIndex() const
-{
-	return current_program_index_;
-}
-
-void	Vst3Plugin::Impl::SetProgramIndex(size_t index)
-{
-	if(parameter_for_program_ == -1) {
-		//nothing to do
-	} else {
-		current_program_index_ = 
-			DiscretizeProgramIndex(GetEditController()->getParamNormalized(parameter_for_program_));
-	}
-
-	if(index == current_program_index_) {
-		return;
-	}
-
-	current_program_index_ = index;
-
-	auto const &program = programs_[current_program_index_];
-	auto const normalized = NormalizeProgramIndex(current_program_index_);
-
-	param_value_changes_was_specified_ = false;
-
-	//! `Controller`側、`Processor`側それぞれのコンポーネントにプログラム変更を通知
-	if(parameter_for_program_ == -1) {
-		GetEditController()->setParamNormalized(program.list_id_, normalized);
-		EnqueueParameterChange(program.list_id_, normalized);
-	} else {
-		GetEditController()->setParamNormalized(parameter_for_program_, normalized);
-		EnqueueParameterChange(parameter_for_program_, normalized);
-	}
-}
-
 void Vst3Plugin::Impl::RestartComponent(Steinberg::int32 flags)
 {
 	//! `Controller`側のパラメータが変更された
@@ -550,7 +545,7 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
 	input_params_.clearQueue();
 	output_params_.clearQueue();
 
-	TakeParameterChanges(input_params_);
+	PopFrontParameterChanges(input_params_);
 
 	Vst::ProcessData process_data;
 	process_data.processContext = &process_context;
@@ -580,42 +575,39 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
 	}
 }
 
-//! TakeParameterChangesとの呼び出しはスレッドセーフ
-void Vst3Plugin::Impl::EnqueueParameterChange(Vst::ParamID id, Vst::ParamValue value)
+void Vst3Plugin::Impl::PushBackParameterChange(Vst::ParamID id, Vst::ParamValue value)
 {
 	auto lock = std::unique_lock(parameter_queue_mutex_);
 	Steinberg::int32 parameter_index = 0;
-	param_changes_queue_.addParameterData(id, parameter_index);
-	auto *queue = param_changes_queue_.getParameterData(parameter_index);
-	Steinberg::int32 point_index = 0;
-	queue->addPoint(0, value, point_index);
+	auto *queue = param_changes_queue_.addParameterData(id, parameter_index);
+	Steinberg::int32 ref_point_index = 0;
+	queue->addPoint(0, value, ref_point_index);
+    (void)ref_point_index; // currently unused.
 }
 
-//! EnqueueParameterChangeとの呼び出しはスレッドセーフ
-void Vst3Plugin::Impl::TakeParameterChanges(Vst::ParameterChanges &dest)
+void Vst3Plugin::Impl::PopFrontParameterChanges(Vst::ParameterChanges &dest)
 {
 	auto lock = std::unique_lock(parameter_queue_mutex_);
 
 	for(size_t i = 0; i < param_changes_queue_.getParameterCount(); ++i) {
 		auto *src_queue = param_changes_queue_.getParameterData(i);
+        auto const src_id = src_queue->getParameterId();
+        
+        if(src_id == Vst::kNoParamId || src_queue->getPointCount() == 0) {
+            continue;
+        }
 
-		//! Boz Digital LabsのPANIPULATORではここでsrc_queueのgetPointCountが0になることがある。
-		//! その時は単にaddParameterDataでdestにエントリが追加されるだけになってpointのデータが追加されず、
-		//! ParameterChanges::getParameterDataでアクセス違反をが発生する。
-		if(src_queue->getPointCount() == 0) {
-			continue;
-		}
-
-		Steinberg::int32 index;
-		dest.addParameterData(src_queue->getParameterId(), index);
-		auto *dest_queue = dest.getParameterData(index);
+		Steinberg::int32 ref_queue_index;
+		auto dest_queue = dest.addParameterData(src_queue->getParameterId(), ref_queue_index);
 
 		for(size_t v = 0; v < src_queue->getPointCount(); ++v) {
-			Steinberg::int32 offset;
-			Vst::ParamValue value;
-			src_queue->getPoint(v, offset, value);
-			Steinberg::int32 point_index;
-			dest_queue->addPoint(offset, value, point_index);
+			Steinberg::int32 ref_offset;
+			Vst::ParamValue ref_value;
+			tresult result = src_queue->getPoint(v, ref_offset, ref_value);
+            if(result != kResultTrue) { continue; }
+            
+			Steinberg::int32 ref_point_index;
+			dest_queue->addPoint(ref_offset, ref_value, ref_point_index);
 		}
 	}
 
@@ -764,12 +756,12 @@ void Vst3Plugin::Impl::Initialize(vstma_unique_ptr<Vst::IComponentHandler> compo
 		}
         
         auto maybe_unit_info = queryInterface<Vst::IUnitInfo>(edit_controller_);
-        if(maybe_unit_info.is_right()) {
-            unit_handler_ = std::move(maybe_unit_info.right());
-        } else {
-            hwm::dout << "No UnitInfo Interface." << std::endl;
+        if(!maybe_unit_info.is_right()) {
+            throw std::runtime_error("Failed to get the UnitInfo Interface.");
             return;
         }
+        
+        unit_handler_ = std::move(maybe_unit_info.right());
 
         OutputBusInfo(component_.get(), edit_controller_.get(), unit_handler_.get());
 
@@ -782,10 +774,10 @@ void Vst3Plugin::Impl::Initialize(vstma_unique_ptr<Vst::IComponentHandler> compo
 		//! そのため、この段階ではIPlugViewは取得しない
 
 		PrepareParameters();
-		PrepareProgramList();
+		PrepareUnitInfo();
 
-		input_params_.setMaxParameters(parameters_.size());
-		output_params_.setMaxParameters(parameters_.size());
+		input_params_.setMaxParameters(parameter_info_list_.size());
+		output_params_.setMaxParameters(parameter_info_list_.size());
 	}
 }
 
@@ -795,8 +787,8 @@ tresult Vst3Plugin::Impl::CreatePlugView()
 		return kNoInterface;
 	}
 
-	//! プラグインによっては、既に別にPlugViewのインスタンスが作成されている時に
-	//! 別のPlugViewを作成しようとするとクラッシュすることがある。
+    //! 一つのプラグインから複数のPlugViewを構築してはいけない。
+    //! (実際TyrellやPodolskiなどいくつかのプラグインでクラッシュする)
 	assert(!plug_view_);
 
 	plug_view_ = to_unique(edit_controller_->createView(Vst::ViewType::kEditor));
@@ -838,79 +830,100 @@ void Vst3Plugin::Impl::DeletePlugView()
 void Vst3Plugin::Impl::PrepareParameters()
 {
 	for(Steinberg::int32 i = 0; i < edit_controller_->getParameterCount(); ++i) {
-		Vst::ParameterInfo info = {};
-		edit_controller_->getParameterInfo(i, info);
-		parameters_.AddInfo(info);
+		Vst::ParameterInfo vpi = {};
+		edit_controller_->getParameterInfo(i, vpi);
+        ParameterInfo pi;
+        pi.id_                  = vpi.id;
+        pi.title_               = to_wstr(vpi.title);
+        pi.short_title_         = to_wstr(vpi.shortTitle);
+        pi.units_               = to_wstr(vpi.units);
+        pi.step_count_          = vpi.stepCount;
+        pi.default_normalized_value_ = vpi.defaultNormalizedValue;
+        pi.unit_id_             = vpi.unitId;
+        pi.can_automate_        = (vpi.flags & Vst::ParameterInfo::kCanAutomate) != 0;
+        pi.is_readonly_         = (vpi.flags & Vst::ParameterInfo::kIsReadOnly) != 0;
+        pi.is_wrap_aound_       = (vpi.flags & Vst::ParameterInfo::kIsWrapAround) != 0;
+        pi.is_list_             = (vpi.flags & Vst::ParameterInfo::kIsList) != 0;
+        pi.is_program_change_   = (vpi.flags & Vst::ParameterInfo::kIsProgramChange) != 0;
+        pi.is_bypass_           = (vpi.flags & Vst::ParameterInfo::kIsBypass) != 0;
+        
+		parameter_info_list_.AddItem(pi);
 	}
 }
 
-void Vst3Plugin::Impl::PrepareProgramList()
-{
-	parameter_for_program_ = -1;
-	for(auto const &param_info: parameters_) {
-		if((param_info.flags & Vst::ParameterInfo::ParameterFlags::kIsProgramChange) != 0) {
-			parameter_for_program_ = param_info.id;
-		}
-	}
+Vst3Plugin::ProgramList CreateProgramList(Vst::IUnitInfo *unit_handler, Vst::ProgramListID program_list_id) {
+    Vst3Plugin::ProgramList pl;
+    auto num = unit_handler->getProgramListCount();
+    for(int i = 0; i < num; ++i) {
+        Vst::ProgramListInfo info;
+        unit_handler->getProgramListInfo(i, info);
+        if(info.id != program_list_id) { continue; }
+        
+        pl.id_ = program_list_id;
+        pl.name_ = to_wstr(info.name);
+        for(int pn = 0; pn < info.programCount; ++pn) {
+            Vst3Plugin::ProgramInfo info;
+            
+            Vst::String128 buf = {};
+            unit_handler->getProgramName(program_list_id, pn, buf);
+            info.name_ = to_wstr(buf);
+            
+            auto get_attr = [&](auto key) {
+                Vst::String128 buf = {};
+                unit_handler->getProgramInfo(program_list_id, pn, key, buf);
+                return to_wstr(buf);
+            };
+            
+            namespace PA = Vst::PresetAttributes;
+            info.plugin_name_ = get_attr(PA::kPlugInName);
+            info.plugin_category_ = get_attr(PA::kPlugInCategory);
+            info.instrument_ = get_attr(PA::kInstrument);
+            info.style_ = get_attr(PA::kStyle);
+            info.character_ = get_attr(PA::kCharacter);
+            info.state_type_ = get_attr(PA::kStateType);
+            info.file_path_string_type_ = get_attr(PA::kFilePathStringType);
+            info.file_name_ = get_attr(PA::kFileName);
+            pl.programs_.push_back(info);
+        }
+        break;
+    }
+    
+    return pl;
+};
 
+Vst::ParamID FindProgramChangeParam(Vst3Plugin::Impl::ParameterInfoList &list, Vst::UnitID unit_id)
+{
+    for(auto &entry: list) {
+        if(entry.unit_id_ == unit_id && entry.is_program_change_) {
+            return entry.id_;
+        }
+    }
+    
+    return Vst::kNoParamId;
+}
+
+void Vst3Plugin::Impl::PrepareUnitInfo()
+{
 	OutputUnitInfo(unit_handler_.get());
 
 	tresult res;
 
-	if(unit_handler_->getUnitCount() == 0) {
-		hwm::dout << "No Unit Info." << std::endl;
-		return;
-	}
+    size_t const num = unit_handler_->getUnitCount();
+    assert(num >= 1); // 少なくとも、unitID = 0のunitは用意されているはず。
 
-	std::vector<Steinberg::Vst::ProgramListInfo> program_list_info_list;
-
-	std::vector<ProgramInfo> tmp_programs;
-
-	//! 使用するプログラムリストを選択するために、最初にprogramListIdが有効なUnitを取得。
-	//! ただし再帰的に検索はしていない
-	Steinberg::Vst::ProgramListID program_list_id = Steinberg::Vst::kNoProgramListId;
-	for(int i = 0; i < unit_handler_->getUnitCount(); ++i) {
-		Vst::UnitInfo uinfo;
-		res = unit_handler_->getUnitInfo(i, uinfo);
-
-		if(uinfo.programListId == Steinberg::Vst::kNoProgramListId) {
-			continue;
-		}
-
-		unit_handler_->selectUnit(uinfo.id);
-		program_list_id = uinfo.programListId;
-		break;
-	}
-
-	if(program_list_id == Steinberg::Vst::kNoProgramListId) {
-		hwm::dout << "No Program List assigned to Units." << std::endl;
-	}
-
-	//! 使用するプログラムリストが決まったのでそのリストからprograms_を構築
-	size_t const prog_list_count = unit_handler_->getProgramListCount();
-	for(size_t npl = 0; npl < prog_list_count; ++npl) {
-		Vst::ProgramListInfo plinfo;
-		res = unit_handler_->getProgramListInfo(npl, plinfo);
-
-		if(plinfo.id != program_list_id) {
-			continue;
-		}
-
-		for(int i = 0; i < plinfo.programCount; ++i) {
-			Steinberg::Vst::String128 name_buf;
-			unit_handler_->getProgramName(plinfo.id, i, name_buf);
-
-			ProgramInfo prginfo;
-
-            prginfo.name_ = hwm::to_wstr(name_buf);
-			prginfo.list_id_ = plinfo.id;
-			prginfo.index_ = i;
-
-			tmp_programs.push_back(prginfo);
-		}
-	}
-
-	programs_.swap(tmp_programs);
+    for(size_t i = 0; i < num; ++i) {
+        Vst::UnitInfo vui;
+        unit_handler_->getUnitInfo(i, vui);
+        UnitInfo ui;
+        ui.id_ = vui.id;
+        ui.name_ = to_wstr(vui.name);
+        ui.parent_id_ = vui.parentUnitId;
+        if(vui.programListId != Vst::kNoProgramListId) {
+            ui.program_list_ = CreateProgramList(unit_handler_.get(), vui.programListId);
+            ui.program_change_param_ = FindProgramChangeParam(parameter_info_list_, vui.id);
+        }
+        unit_info_list_.AddItem(ui);
+    }
 }
 
 void Vst3Plugin::Impl::UnloadPlugin()

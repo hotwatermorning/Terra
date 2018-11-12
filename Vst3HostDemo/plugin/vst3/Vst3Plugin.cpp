@@ -9,53 +9,6 @@ NS_HWM_BEGIN
 
 using namespace Steinberg;
 
-Vst3Plugin::ParameterAccessor::ParameterAccessor(Vst3Plugin *owner)
-	:	owner_(owner)
-{}
-
-size_t Vst3Plugin::ParameterAccessor::size() const 
-{
-	return owner_->pimpl_->parameters_.size();
-}
-
-Vst3Plugin::ParameterAccessor::value_t
-		Vst3Plugin::ParameterAccessor::get_by_index(size_t index) const
-{
-	auto controller = owner_->pimpl_->GetEditController();
-	return
-		controller->getParamNormalized(owner_->pimpl_->parameters_.GetInfoByIndex(index).id);
-}
-
-void	Vst3Plugin::ParameterAccessor::set_by_index(size_t index, value_t value)
-{
-	auto controller = owner_->pimpl_->GetEditController();
-	controller->setParamNormalized(owner_->pimpl_->parameters_.GetInfoByIndex(index).id, value);
-}
-
-Vst3Plugin::ParameterAccessor::value_t
-		Vst3Plugin::ParameterAccessor::get_by_id(Vst::ParamID id) const
-{
-	auto controller = owner_->pimpl_->GetEditController();
-	return
-		controller->getParamNormalized(id);
-}
-
-void	Vst3Plugin::ParameterAccessor::set_by_id(Vst::ParamID id, value_t value)
-{
-	auto controller = owner_->pimpl_->GetEditController();
-	controller->setParamNormalized(id, value);
-}
-
-Vst::ParameterInfo
-		Vst3Plugin::ParameterAccessor::info(size_t index) const
-{
-	auto controller = owner_->pimpl_->GetEditController();
-
-	Vst::ParameterInfo info = {};
-	controller->getParameterInfo(index, info);
-	return info;
-}
-
 Vst3Plugin::Vst3Plugin(std::unique_ptr<Impl> pimpl,
                        std::unique_ptr<HostContext> host_context,
                        std::function<void(Vst3Plugin const *p)> on_destruction)
@@ -64,8 +17,6 @@ Vst3Plugin::Vst3Plugin(std::unique_ptr<Impl> pimpl,
 {
     host_context_->SetVst3Plugin(this);
     on_destruction_ = on_destruction;
-    
-    parameters_ = std::make_unique<ParameterAccessor>(this);
 }
 
 Vst3Plugin::~Vst3Plugin()
@@ -75,18 +26,6 @@ Vst3Plugin::~Vst3Plugin()
     on_destruction_(this);
 }
 
-Vst3Plugin::ParameterAccessor &
-	Vst3Plugin::GetParams()
-{
-		return *parameters_;
-}
-
-Vst3Plugin::ParameterAccessor const &
-	Vst3Plugin::GetParams() const
-{
-		return *parameters_;
-}
-
 String Vst3Plugin::GetEffectName() const
 {
 	return pimpl_->GetEffectName();
@@ -94,12 +33,81 @@ String Vst3Plugin::GetEffectName() const
 
 size_t Vst3Plugin::GetNumInputs() const
 {
-    return pimpl_->GetInputBuses().GetNumActiveChannels();
+    return pimpl_->GetBusesInfo(Vst::BusDirections::kInput).GetNumActiveChannels();
 }
 
 size_t Vst3Plugin::GetNumOutputs() const
 {
-	return pimpl_->GetOutputBuses().GetNumActiveChannels();
+	return pimpl_->GetBusesInfo(Vst::BusDirections::kInput).GetNumActiveChannels();
+}
+
+UInt32  Vst3Plugin::GetNumParams() const
+{
+    return pimpl_->GetParameterInfoList().size();
+}
+
+Vst3Plugin::ParameterInfo const & Vst3Plugin::GetParameterInfoByIndex(UInt32 index) const
+{
+    return pimpl_->GetParameterInfoList().GetItemByIndex(index);
+}
+Vst3Plugin::ParameterInfo const & Vst3Plugin::GetParameterInfoByID(ParamID id) const
+{
+    return pimpl_->GetParameterInfoList().GetItemByID(id);
+}
+
+UInt32  Vst3Plugin::GetNumUnitInfo() const
+{
+    return pimpl_->GetUnitInfoList().size();
+}
+
+Vst3Plugin::UnitInfo const & Vst3Plugin::GetUnitInfoByIndex(UInt32 index) const
+{
+    return pimpl_->GetUnitInfoList().GetItemByIndex(index);
+}
+
+Vst3Plugin::UnitInfo const & Vst3Plugin::GetUnitInfoByID(UnitID id) const
+{
+    return pimpl_->GetUnitInfoList().GetItemByID(id);
+}
+
+UInt32  Vst3Plugin::GetNumBuses(BusDirection dir) const
+{
+    return pimpl_->GetBusesInfo(dir).GetNumBuses();
+}
+
+Vst3Plugin::BusInfo const & Vst3Plugin::GetBusInfoByIndex(BusDirection dir, UInt32 index) const
+{
+    return pimpl_->GetBusesInfo(dir).GetBusInfo(index);
+}
+
+Vst3Plugin::ParamValue Vst3Plugin::GetParameterValueByIndex(UInt32 index) const
+{
+    return pimpl_->GetParameterValueByIndex(index);
+}
+
+Vst3Plugin::ParamValue Vst3Plugin::GetParameterValueByID(ParamID id) const
+{
+    return pimpl_->GetParameterValueByID(id);
+}
+
+bool Vst3Plugin::IsBusActive(BusDirection dir, UInt32 index) const
+{
+    return pimpl_->GetBusesInfo(dir).GetBusInfo(index).is_active_;
+}
+
+void Vst3Plugin::SetBusActive(BusDirection dir, UInt32 index, bool state)
+{
+    pimpl_->GetBusesInfo(dir).SetActive(index, state);
+}
+
+Vst3Plugin::SpeakerArrangement Vst3Plugin::GetSpeakerArrangementForBus(BusDirection dir, UInt32 index) const
+{
+    return pimpl_->GetBusesInfo(dir).GetBusInfo(index).speaker_;
+}
+
+bool Vst3Plugin::SetSpeakerArrangement(BusDirection dir, UInt32 index, SpeakerArrangement arr)
+{
+    return pimpl_->GetBusesInfo(dir).SetSpeakerArrangement(index, arr);
 }
 
 void Vst3Plugin::Resume()
@@ -170,29 +178,19 @@ ViewRect Vst3Plugin::GetPreferredRect() const
 	return pimpl_->GetPreferredRect();
 }
 
-size_t			Vst3Plugin::GetProgramCount() const
+UInt32 Vst3Plugin::GetProgramIndex(UnitID id) const
 {
-	return pimpl_->GetProgramCount();
+	return pimpl_->GetProgramIndex(id);
 }
 
-String	Vst3Plugin::GetProgramName(size_t index) const
+void Vst3Plugin::SetProgramIndex(UInt32 index, UnitID id)
 {
-	return pimpl_->GetProgramName(index);
-}
-
-size_t			Vst3Plugin::GetProgramIndex() const
-{
-	return pimpl_->GetProgramIndex();
-}
-
-void			Vst3Plugin::SetProgramIndex(size_t index)
-{
-	pimpl_->SetProgramIndex(index);
+	pimpl_->SetProgramIndex(index, id);
 }
 
 void Vst3Plugin::EnqueueParameterChange(Vst::ParamID id, Vst::ParamValue value)
 {
-	pimpl_->EnqueueParameterChange(id, value);
+	pimpl_->PushBackParameterChange(id, value);
 }
 
 void Vst3Plugin::RestartComponent(Steinberg::int32 flags)

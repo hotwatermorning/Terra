@@ -539,10 +539,22 @@ private:
     
     void OnVst3PluginLoaded(Vst3Plugin *plugin) override
     {
-        int const num = plugin->GetProgramCount();
+        auto const &unit_info = plugin->GetUnitInfoByID(Vst::kRootUnitId);
+        auto const &pl = unit_info.program_list_;
         cho_select_program_->Clear();
-        for(int i = 0; i < num; ++i) {
-            cho_select_program_->Append(plugin->GetProgramName(i));
+        for(auto const &entry: pl.programs_) {
+            std::wstringstream ss;
+            ss
+            << entry.name_ << "("
+            << entry.instrument_ << "|"
+            << entry.character_ << "|"
+            << entry.state_type_ << "|"
+            << entry.style_ << "|"
+            << entry.plugin_name_ << "|"
+            << entry.plugin_category_ << "|"
+            << entry.file_name_ << "|"
+            << entry.file_path_string_type_ << ")";
+            cho_select_program_->Append(ss.str());
         }
         cho_select_program_->SetSelection(plugin->GetProgramIndex());
         btn_open_editor_->Enable(plugin->HasEditor());
@@ -601,7 +613,7 @@ private:
         if(sel == wxNOT_FOUND) { return; }
         
         auto plugin = MyApp::GetInstance()->GetPlugin();
-        plugin->SetProgramIndex(sel);
+        plugin->SetProgramIndex(sel, Vst::kRootUnitId);
     }
     
     wxStaticText    *st_filepath_;

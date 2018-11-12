@@ -65,6 +65,7 @@ tresult PLUGIN_API Vst3Plugin::HostContext::beginEdit (Vst::ParamID id)
 tresult PLUGIN_API Vst3Plugin::HostContext::performEdit (Vst::ParamID id, Vst::ParamValue valueNormalized)
 {
     hwm::dout << "Perform edit [" << id << "]\t[" << valueNormalized << "]" << std::endl;
+    plugin_->EnqueueParameterChange(id, valueNormalized);
     return kResultOk;
 }
 

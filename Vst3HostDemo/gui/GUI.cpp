@@ -519,7 +519,7 @@ private:
         for(int i = 0; i < num; ++i) {
             auto const &info = factory->GetComponentInfo(i);
             
-            hwm::dout << hwm::to_utf8(info.name()) << ", " << hwm::to_utf8(info.category()) << std::endl;
+            hwm::dout << L"{}, {}"_format(info.name(), info.category()) << std::endl;
             
             //! カテゴリがkVstAudioEffectClassなComponentを探索する。
             if(info.category() == hwm::to_wstr(kVstAudioEffectClass)) {

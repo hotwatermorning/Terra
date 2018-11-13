@@ -7,6 +7,10 @@
 #include <wx/wx.h>
 #endif
 
+#include <fmt/format.h>
+
+using namespace fmt::literals;
+
 #include <pluginterfaces/gui/iplugview.h>
 #include <pluginterfaces/base/ipluginbase.h>
 #include <pluginterfaces/vst/ivstcomponent.h>

@@ -32,24 +32,19 @@ void showErrorMsg(tresult result)
 
 String UnitInfoToString(Vst::UnitInfo const &info)
 {
-    std::wstringstream ss;
-    ss    << info.id
-    << L", " << info.name
-    << L", " << L"Parent: " << info.parentUnitId
-    << L", " << L"Program List ID: " << info.programListId;
-    
-    return ss.str();
+    return
+    L"ID: {}, Name: {}, Parent: {}, Program List ID: {}"_format(info.id,
+                                                                to_wstr(info.name),
+                                                                info.parentUnitId,
+                                                                info.programListId);
 }
 
 String ProgramListInfoToString(Vst::ProgramListInfo const &info)
 {
-    std::wstringstream ss;
-    
-    ss    << info.id
-    << L", " << L"Program List Name: " << info.name
-    << L", " << L"Program Count: " << info.programCount;
-    
-    return ss.str();
+    return
+    L"ID: {}, Name: {}, Program Count: {}"_format(info.id,
+                                                  to_wstr(info.name),
+                                                  info.programCount);
 }
 
 void OutputUnitInfo(Vst::IUnitInfo *unit_handler)
@@ -76,11 +71,11 @@ void OutputUnitInfo(Vst::IUnitInfo *unit_handler)
             break;
         }
         
-        hwm::wdout << L"[" << i << L"] " << ProgramListInfoToString(program_list_info) << std::endl;
+        hwm::wdout << L"[{}] {}"_format(i, ProgramListInfoToString(program_list_info)) << std::endl;
         
         for(size_t program_index = 0; program_index < program_list_info.programCount; ++program_index) {
             
-            hwm::wdout << L"\t[" << program_index << L"] ";
+            hwm::wdout << L"\t[{}] "_format(program_index);
             
             Vst::String128 name;
             unit_handler->getProgramName(program_list_info.id, program_index, name);
@@ -100,7 +95,7 @@ void OutputUnitInfo(Vst::IUnitInfo *unit_handler)
                 Vst::String128 attr_value = {};
                 unit_handler->getProgramInfo(program_list_info.id, program_index, attr, attr_value);
                 
-                hwm::wdout << L", " << attr << L": " << to_wstr(attr_value);
+                hwm::wdout << L", {}: {}"_format(to_wstr(attr), to_wstr(attr_value));
             }
             
             if(unit_handler->hasProgramPitchNames(program_list_info.id, program_index) == kResultTrue) {
@@ -120,17 +115,16 @@ void OutputUnitInfo(Vst::IUnitInfo *unit_handler)
 
 String BusInfoToString(Vst::BusInfo &bus)
 {
-    std::wstringstream ss;
-    
-    ss
-    << to_wstr(bus.name)
-    << L", " << (bus.mediaType == Vst::MediaTypes::kAudio ? L"Audio" : L"Midi")
-    << L", " << (bus.direction == Vst::BusDirections::kInput ? L"Input" : L"Output")
-    << L", " << (bus.busType == Vst::BusTypes::kMain ? L"Main Bus" : L"Aux Bus")
-    << L", " << L"Channels: " << bus.channelCount
-    << L", " << L"Default Active: " << std::boolalpha << ((bus.flags & bus.kDefaultActive) != 0);
-    
-    return ss.str();
+    return
+    L"Bus{{ Name: {}, MediaType: {}, Direction: {}, "
+          L"BusType: {}, Channels: {}, Defatult Active: {}"
+    L" }}"_format(to_wstr(bus.name),
+                  (bus.mediaType == Vst::MediaTypes::kAudio ? L"Audio" : L"Midi"),
+                  (bus.direction == Vst::BusDirections::kInput ? L"Input" : L"Output"),
+                  (bus.busType == Vst::BusTypes::kMain ? L"Main Bus" : L"Aux Bus"),
+                  bus.channelCount,
+                  ((bus.flags & bus.kDefaultActive) != 0)
+                  );
 }
 
 // this function returns a string which representing relationship between a bus and units.
@@ -138,7 +132,7 @@ String BusUnitInfoToString(int bus_index, Vst::BusInfo &bus, Vst::IUnitInfo *uni
 {
     auto const spaces = String(num_spaces, L' ');
     
-    std::wstringstream ss;
+    String str;
     for(int ch = 0; ch < bus.channelCount; ++ch) {
         Vst::UnitID unit_id;
         // `This method mainly is intended to find out which unit is related to a given MIDI input channel`
@@ -160,10 +154,10 @@ String BusUnitInfoToString(int bus_index, Vst::BusInfo &bus, Vst::IUnitInfo *uni
             assert(i != num_units - 1);
         }
         
-        
-        ss << spaces << std::setw(2) << ch << "ch => " << unit_id << " (" << to_wstr(unit_info.name) << ")" << std::endl;
+        str += L"{}{:#2d}ch => {}({})"_format(spaces, ch, unit_id, to_wstr(unit_info.name));
     }
-    return ss.str();
+    
+    return str;
 }
 
 void OutputBusInfoImpl(Vst::IComponent *component,
@@ -190,7 +184,7 @@ void OutputBusInfoImpl(Vst::IComponent *component,
         :   String(kNumSpaces, L' ') + L"No unit info for this bus."
         ;
         
-        hwm::wdout << L"[" << i << L"] " << bus_info_str << "\n" << bus_unit_info_str << std::endl;
+        hwm::wdout << L"[{}] {}\n{}"_format(i, bus_info_str, bus_unit_info_str) << std::endl;
     }
 }
 

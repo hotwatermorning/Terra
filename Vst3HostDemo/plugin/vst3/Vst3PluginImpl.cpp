@@ -570,7 +570,7 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
 	for(int i = 0; i < output_params_.getParameterCount(); ++i) {
 		auto *queue = output_params_.getParameterData(i);
 		if(queue && queue->getPointCount() > 0) {
-			hwm::dout << "Output parameter count [" << i << "] : " << queue->getPointCount() << std::endl;
+            hwm::dout << "Output parameter count [{}] : {}"_format(i, queue->getPointCount()) << std::endl;
 		}
 	}
 }

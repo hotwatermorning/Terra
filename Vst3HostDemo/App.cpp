@@ -69,7 +69,7 @@ bool MyApp::OnInit()
     
     auto list = adm_->Enumerate();
     for(auto const &info: list) {
-        hwm::wdout << info.name_ << L" - " << to_wstring(info.driver_) << L" ( " << info.num_channels_ << L" )" << std::endl;
+        hwm::wdout << L"{} - {}({}ch)"_format(info.name_, to_wstring(info.driver_), info.num_channels_) << std::endl;
     }
     
     auto find_entry = [&list](auto io_type,

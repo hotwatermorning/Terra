@@ -58,26 +58,26 @@ tresult PLUGIN_API Vst3Plugin::HostContext::createInstance(TUID cid, TUID iid, v
 
 tresult PLUGIN_API Vst3Plugin::HostContext::beginEdit (Vst::ParamID id)
 {
-    hwm::dout << "Begin edit   [" << id << "]" << std::endl;
+    hwm::dout << "Begin edit   [{}]"_format(id) << std::endl;
     return kResultOk;
 }
 
 tresult PLUGIN_API Vst3Plugin::HostContext::performEdit (Vst::ParamID id, Vst::ParamValue valueNormalized)
 {
-    hwm::dout << "Perform edit [" << id << "]\t[" << valueNormalized << "]" << std::endl;
+    hwm::dout << "Perform edit [{}]\t[{}]"_format(id, valueNormalized) << std::endl;
     plugin_->EnqueueParameterChange(id, valueNormalized);
     return kResultOk;
 }
 
 tresult PLUGIN_API Vst3Plugin::HostContext::endEdit (Vst::ParamID id)
 {
-    hwm::dout << "End edit     [" << id << "]" << std::endl;
+    hwm::dout << "End edit     [{}]"_format(id) << std::endl;
     return kResultOk;
 }
 
 tresult PLUGIN_API Vst3Plugin::HostContext::restartComponent (int32 flags)
 {
-    hwm::dout << "Restart request has come [" << flags << "]" << std::endl;
+    hwm::dout << "Restart request has come [{}]"_format(flags) << std::endl;
     if(plugin_) {
         plugin_->RestartComponent(flags);
     }
@@ -86,13 +86,13 @@ tresult PLUGIN_API Vst3Plugin::HostContext::restartComponent (int32 flags)
 
 tresult PLUGIN_API Vst3Plugin::HostContext::setDirty (TBool state)
 {
-    hwm::dout << "Plugin has dirty [" << std::boolalpha << state << "]" << std::endl;
+    hwm::dout << "Plugin has dirty [{}]"_format(state != 0) << std::endl;
     return kResultOk;
 }
 
 tresult PLUGIN_API Vst3Plugin::HostContext::requestOpenEditor (FIDString name)
 {
-    hwm::dout << "Open editor request has come [ " << name << "]" << std::endl;
+    hwm::dout << "Open editor request has come [{}]"_format(name) << std::endl;
     return kResultOk;
 }
 

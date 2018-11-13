@@ -7,3 +7,6 @@
 [submodule "ext/portaudio"]
 	path = ext/portaudio
 	url = https://git.assembla.com/portaudio.git
+[submodule "ext/fmt"]
+	path = ext/fmt
+	url = https://github.com/fmtlib/fmt.git

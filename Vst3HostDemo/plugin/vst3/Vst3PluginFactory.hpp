@@ -4,7 +4,6 @@
 #include <memory>
 #include <functional>
 #include <string>
-#include <experimental/optional>
 
 #include <pluginterfaces/gui/iplugview.h>
 #include <pluginterfaces/base/ipluginbase.h>
@@ -80,7 +79,7 @@ private:
 	String		name_;
 	String		category_;
 	Steinberg::int32	cardinality_;
-    std::experimental::optional<ClassInfo2Data> classinfo2_data_;
+    std::optional<ClassInfo2Data> classinfo2_data_;
 };
 
 class Vst3PluginFactory

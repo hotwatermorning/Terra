@@ -539,24 +539,23 @@ private:
     
     void OnVst3PluginLoaded(Vst3Plugin *plugin) override
     {
-        auto const &unit_info = plugin->GetUnitInfoByID(Vst::kRootUnitId);
-        auto const &pl = unit_info.program_list_;
         cho_select_program_->Clear();
-        for(auto const &entry: pl.programs_) {
-            std::wstringstream ss;
-            ss
-            << entry.name_ << "("
-            << entry.instrument_ << "|"
-            << entry.character_ << "|"
-            << entry.state_type_ << "|"
-            << entry.style_ << "|"
-            << entry.plugin_name_ << "|"
-            << entry.plugin_category_ << "|"
-            << entry.file_name_ << "|"
-            << entry.file_path_string_type_ << ")";
-            cho_select_program_->Append(ss.str());
+        
+        auto const num = plugin->GetNumUnitInfo();
+        for(int un = 0; un < num; ++un) {
+            auto const &unit_info = plugin->GetUnitInfoByIndex(un);
+            auto const &pl = unit_info.program_list_;
+            
+            cho_select_program_->Append(L"----[" + unit_info.name_ + L"]----");
+            for(auto const &entry: pl.programs_) {
+                cho_select_program_->Append(entry.name_, (void *)(un + 1));
+            }
         }
-        cho_select_program_->SetSelection(plugin->GetProgramIndex());
+        
+        if(num > 0) {
+            cho_select_program_->SetSelection(plugin->GetProgramIndex());
+        }
+        
         btn_open_editor_->Enable(plugin->HasEditor());
     }
     
@@ -612,8 +611,13 @@ private:
         auto sel = cho_select_program_->GetSelection();
         if(sel == wxNOT_FOUND) { return; }
         
+        auto data = cho_select_program_->GetClientData(sel);
+        if(!data) { return; }
+        
+        auto un = reinterpret_cast<Int64>(data) - 1;
+        
         auto plugin = MyApp::GetInstance()->GetPlugin();
-        plugin->SetProgramIndex(sel, Vst::kRootUnitId);
+        plugin->SetProgramIndex(sel, un);
     }
     
     wxStaticText    *st_filepath_;

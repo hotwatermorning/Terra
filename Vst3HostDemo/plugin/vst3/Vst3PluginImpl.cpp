@@ -756,12 +756,12 @@ void Vst3Plugin::Impl::Initialize(vstma_unique_ptr<Vst::IComponentHandler> compo
 		}
         
         auto maybe_unit_info = queryInterface<Vst::IUnitInfo>(edit_controller_);
-        if(!maybe_unit_info.is_right()) {
-            throw std::runtime_error("Failed to get the UnitInfo Interface.");
-            return;
+        if(maybe_unit_info.is_right()) {
+            unit_handler_ = std::move(maybe_unit_info.right());
+            OutputUnitInfo(unit_handler_.get());
+        } else {
+            hwm::dout << "This Plugin has no UnitInfo interafaces." << std::endl;
         }
-        
-        unit_handler_ = std::move(maybe_unit_info.right());
 
         OutputBusInfo(component_.get(), edit_controller_.get(), unit_handler_.get());
 
@@ -904,10 +904,8 @@ Vst::ParamID FindProgramChangeParam(Vst3Plugin::Impl::ParameterInfoList &list, V
 
 void Vst3Plugin::Impl::PrepareUnitInfo()
 {
-	OutputUnitInfo(unit_handler_.get());
-
-	tresult res;
-
+    if(!unit_handler_) { return; }
+    
     size_t const num = unit_handler_->getUnitCount();
     assert(num >= 1); // 少なくとも、unitID = 0のunitは用意されているはず。
 

@@ -80,15 +80,15 @@ def execute_with_exit_code(def params, String working_dir = ".", def env_vars = 
   println "${tmp} @ '${working_dir}' (${env_vars})"
 
   def pb = new ProcessBuilder(tokenize(params)).redirectErrorStream(true)
-    pb.directory(file(working_dir).getAbsoluteFile())
+  pb.directory(file(working_dir).getAbsoluteFile())
 
-    if(env_vars) {
-      def pb_env = pb.environment()
-        env_vars.each { key, value -> pb_env.put(key, value) }
-    }
+  if(env_vars) {
+    def pb_env = pb.environment()
+    env_vars.each { key, value -> pb_env.put(key, value) }
+  }
 
   def process = pb.start()
-    process.inputStream.eachLine { println it }
+  process.inputStream.eachLine { println it }
   return process.waitFor()
 }
 
@@ -96,7 +96,7 @@ def execute_with_exit_code(def params, String working_dir = ".", def env_vars = 
 def execute(def params, String working_dir = ".", def env_vars = [:])
 {
   def exit_code = execute_with_exit_code(params, working_dir, env_vars)
-    assert (exit_code == 0)
+  assert (exit_code == 0)
 }
 
 task update_submodules {
@@ -153,8 +153,19 @@ task build_wxwidgets {
 }
 build_wxwidgets.mustRunAfter update_submodules
 
+task build_fmtlib {
+  doLast {
+    def build_dir = file("../ext/fmt/${build_dir_name}").getAbsolutePath()
+    execute("mkdir -p ${build_dir}")
+    execute("cmake -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir)
+    execute("make -j", build_dir)
+  }
+}
+build_fmtlib.mustRunAfter update_submodules
+
+
 task build_submodules {
-  dependsOn { [build_portaudio, build_vst3sdk, build_wxwidgets] }
+  dependsOn { [build_portaudio, build_vst3sdk, build_wxwidgets, build_fmtlib] }
 }
 
 task build_app {

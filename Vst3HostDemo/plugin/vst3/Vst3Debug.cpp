@@ -89,7 +89,9 @@ void OutputUnitInfo(Vst::IUnitInfo *unit_handler)
                 Vst::PresetAttributes::kStyle,
                 Vst::PresetAttributes::kCharacter,
                 Vst::PresetAttributes::kStateType,
-                Vst::PresetAttributes::kFilePathStringType };
+                Vst::PresetAttributes::kFilePathStringType,
+                Vst::PresetAttributes::kFileName
+            };
             
             for(auto attr: attrs) {
                 Vst::String128 attr_value = {};

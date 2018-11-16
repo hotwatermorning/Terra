@@ -31,6 +31,7 @@ open build_debug/Debug/Vst3HostDemo -Pconfig=<Debug or Release>
 * [wxWidgets](http://www.wxwidgets.org/)
 * [PortAudio](http://www.portaudio.com/)
 * [VST3 SDK](https://github.com/steinbergmedia/vst3sdk)
+* [cppformat](http://fmtlib.net)
 
 -----
 

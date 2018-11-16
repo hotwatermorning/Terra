@@ -8,7 +8,11 @@
 
 NS_HWM_BEGIN
 
-//! OutputDebugStringへ出力するストリームクラス
+//! MSVCでは、GUIアプリケーション実行時にstd::coutの出力がデバッガーに送られないため、
+//! そのままではデバッグがしにくい。
+//! このストリームは、構築した文字列をOutputDebugStringに出力して、デバッガーで確認できるようにする。
+//! MSVC以外でビルドした場合は、std::coutと同じものを指す。
+//!
 //! 複数のoperator<<を最後にまとめて出力する部分は
 //! http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2013/n3535.html
 //! これを参考にした

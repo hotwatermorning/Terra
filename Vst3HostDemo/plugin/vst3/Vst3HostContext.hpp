@@ -3,6 +3,7 @@
 #include <pluginterfaces/vst/ivsteditcontroller.h>
 #include <public.sdk/source/vst/hosting/hostclasses.h>
 #include <public.sdk/source/vst/hosting/parameterchanges.h>
+#include <pluginterfaces/gui/iplugview.h>
 
 #include "Vst3Plugin.hpp"
 
@@ -11,10 +12,11 @@ NS_HWM_BEGIN
 using namespace Steinberg;
 
 class Vst3Plugin::HostContext
-:    public FObject
-,    public Vst::IHostApplication
-,    public Vst::IComponentHandler
-,    public Vst::IComponentHandler2
+:   public FObject
+,   public Vst::IHostApplication
+,   public Vst::IComponentHandler
+,   public Vst::IComponentHandler2
+,   public IPlugFrame
 {
 public:
     typedef Impl this_type;
@@ -27,6 +29,7 @@ public:
     DEF_INTERFACE(Vst::IHostApplication)
     DEF_INTERFACE(Vst::IComponentHandler)
     DEF_INTERFACE(Vst::IComponentHandler2)
+    DEF_INTERFACE(IPlugFrame)
     END_DEFINE_INTERFACES(FObject)
     
 public:
@@ -34,6 +37,7 @@ public:
     ~HostContext();
     
     Vst3Plugin *plugin_ = nullptr;
+    PlugFrameListener *plug_frame_listener_ = nullptr;
     std::u16string host_name_;
     
     void SetVst3Plugin(Vst3Plugin *plugin);
@@ -82,6 +86,11 @@ protected:
     /** Finishes the group editing started by a \ref startGroupEdit (call after a \ref IComponentHandler::endEdit). */
     tresult PLUGIN_API finishGroupEdit () override;
     
+    //! @}
+
+    //! @name IPlugFrame
+    //! @{
+    tresult PLUGIN_API resizeView (IPlugView* view, ViewRect* newSize) override;
     //! @}
 };
 

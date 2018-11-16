@@ -9,26 +9,58 @@ using namespace Steinberg;
 
 NS_HWM_BEGIN
 
-void showErrorMsg(tresult result)
+std::string tresult_to_string(tresult result)
 {
-    if(result == kResultTrue) { return; }
-    
-    auto to_s = [](auto x) {
-        switch(x) {
-            case kNoInterface: return "no Interface";
-            case kResultFalse: return "result false";
-            case kInvalidArgument: return "invalid argument";
-            case kNotImplemented: return "not implemented";
-            case kInternalError: return "internal error";
-            case kNotInitialized: return "not initialized";
-            case kOutOfMemory: return "out of memory";
-            default: return "unknown error";
-        }
-    };
-    
-    hwm::dout << "Error: " << to_s(result) << std::endl;
+    switch(result) {
+        case kResultOk: return "successful";
+        case kNoInterface: return "no Interface";
+        case kResultFalse: return "result false";
+        case kInvalidArgument: return "invalid argument";
+        case kNotImplemented: return "not implemented";
+        case kInternalError: return "internal error";
+        case kNotInitialized: return "not initialized";
+        case kOutOfMemory: return "out of memory";
+        default: return "unknown error";
+    }
 }
 
+std::wstring tresult_to_wstring(tresult result)
+{
+    return to_wstr(tresult_to_string(result));
+}
+
+void OutputParameterInfo(Vst::IEditController *edit_controller)
+{
+    hwm::wdout << "--- Output Parameter Info ---" << std::endl;
+    
+    UInt32 const num = edit_controller->getParameterCount();
+    
+    for(UInt32 i = 0; i < num; ++i) {
+        Vst::ParameterInfo info;
+        edit_controller->getParameterInfo(i, info);
+        
+        hwm::dout <<
+        L"{}: {{"
+        L"ID:{}, Title:{}, ShortTitle:{}, Units:{}, "
+        L"StepCount:{}, Default:{}, UnitID:{}, "
+        L"CanAutomate:{}, "
+        L"IsReadOnly:{}, "
+        L"IsWrapAround:{}, "
+        L"IsList:{}, "
+        L"IsProgramChange:{}, "
+        L"IsByPass:{}"
+        L"}}"_format(i, info.id, to_wstr(info.title), to_wstr(info.shortTitle), to_wstr(info.units),
+                     info.stepCount, info.defaultNormalizedValue, info.unitId,
+                     (info.flags & info.kCanAutomate) != 0,
+                     (info.flags & info.kIsReadOnly) != 0,
+                     (info.flags & info.kIsWrapAround) != 0,
+                     (info.flags & info.kIsList) != 0,
+                     (info.flags & info.kIsProgramChange) != 0,
+                     (info.flags & info.kIsBypass) != 0
+                     )
+        << std::endl;
+    }
+}
 
 String UnitInfoToString(Vst::UnitInfo const &info)
 {
@@ -130,17 +162,20 @@ String BusInfoToString(Vst::BusInfo &bus)
 }
 
 // this function returns a string which representing relationship between a bus and units.
-String BusUnitInfoToString(int bus_index, Vst::BusInfo &bus, Vst::IUnitInfo *unit_handler, int num_spaces)
+String BusUnitInfoToString(int bus_index, Vst::BusInfo const &bus, Vst::IUnitInfo *unit_handler, int num_spaces)
 {
     auto const spaces = String(num_spaces, L' ');
     
-    String str;
-    for(int ch = 0; ch < bus.channelCount; ++ch) {
+    auto get_unit_info_of_channel = [&](int channel) -> String {
         Vst::UnitID unit_id;
         // `This method mainly is intended to find out which unit is related to a given MIDI input channel`
-        tresult result = unit_handler->getUnitByBus(bus.mediaType, bus.direction, bus_index, ch, unit_id);
-        if(result != kResultOk) {
-            return spaces + L"Failed to get related unit by bus";
+        tresult result = unit_handler->getUnitByBus(bus.mediaType, bus.direction, bus_index, channel, unit_id);
+        if(result == kResultOk) {
+            // ok
+        } else if(result == kResultFalse) {
+            return spaces + L"No related unit info for this bus channel.";
+        } else {
+            return spaces + L"Failed to get related unit info for this bus channel: " + tresult_to_string(result);
         }
         
         Vst::UnitInfo unit_info;
@@ -153,12 +188,19 @@ String BusUnitInfoToString(int bus_index, Vst::BusInfo &bus, Vst::IUnitInfo *uni
                 break;
             }
             
-            assert(i != num_units - 1);
+            if(i != num_units - 1) {
+                return spaces + L"No related unit info for this bus channel.";
+            }
         }
         
-        str += L"{}{:#2d}ch => {}({})"_format(spaces, ch, unit_id, to_wstr(unit_info.name));
+        return spaces + L"Channel:{:#2d} => Unit:{})"_format(channel, to_wstr(unit_info.name));
+    };
+
+    String str;
+    for(int ch = 0; ch < bus.channelCount; ++ch) {
+        str += get_unit_info_of_channel(ch);
+        if(ch != bus.channelCount-1) { str += L"\n"; }
     }
-    
     return str;
 }
 

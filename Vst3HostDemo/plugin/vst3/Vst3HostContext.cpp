@@ -77,7 +77,25 @@ tresult PLUGIN_API Vst3Plugin::HostContext::endEdit (Vst::ParamID id)
 
 tresult PLUGIN_API Vst3Plugin::HostContext::restartComponent (int32 flags)
 {
-    hwm::dout << "Restart request has come [{}]"_format(flags) << std::endl;
+    std::string str;
+    auto add_str = [&](auto value, std::string name) {
+        if((flags & value) != 0) {
+            str += (str.empty() ? "" : ", ") + name;
+        }
+    };
+    
+    add_str(Vst::kReloadComponent, "Reload Component");
+    add_str(Vst::kIoChanged, "IO Changed");
+    add_str(Vst::kParamValuesChanged, "Param Value Changed");
+    add_str(Vst::kLatencyChanged, "Latency Changed");
+    add_str(Vst::kParamTitlesChanged, "Param Title Changed");
+    add_str(Vst::kMidiCCAssignmentChanged, "MIDI CC Assignment Changed");
+    add_str(Vst::kNoteExpressionChanged, "Note Expression Changed");
+    add_str(Vst::kIoTitlesChanged, "IO Titles Changed");
+    add_str(Vst::kPrefetchableSupportChanged, "Prefetchable Support Changed");
+    add_str(Vst::kRoutingInfoChanged, "Routing Info Changed");
+    
+    hwm::dout << "Restart request has come [{}]"_format(str) << std::endl;
     if(plugin_) {
         plugin_->RestartComponent(flags);
     }
@@ -107,5 +125,22 @@ tresult PLUGIN_API Vst3Plugin::HostContext::finishGroupEdit ()
     hwm::dout << "End group edit." << std::endl;
     return kResultOk;
 }
+
+tresult PLUGIN_API Vst3Plugin::HostContext::resizeView (IPlugView* view, ViewRect* newSize)
+{
+    assert(newSize);
+    ViewRect current;
+    view->getSize(&current);
+    
+    auto const to_tuple = [](auto x) { return std::tie(x.left, x.top, x.right, x.bottom); };
+
+    //! 同じ位置とサイズのままresizeViewが呼ばれることはない？
+    //assert(to_tuple(current) != to_tuple(*newSize));
+    
+    plug_frame_listener_->OnResizePlugView(*newSize);
+    view->onSize(newSize);
+    return 0;
+}
+
 
 NS_HWM_END

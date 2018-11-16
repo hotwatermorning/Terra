@@ -35,7 +35,7 @@ public:
         return list_[index];
     }
     
-    //! @return -1 if not found.
+    //! @return (size_type)-1 if not found.
     size_type GetIndexByID(id_type id) const
     {
         auto found = std::find_if(list_.begin(),

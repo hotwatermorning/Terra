@@ -134,6 +134,7 @@ void MyApp::RemoveVst3PluginLoadListener(MyApp::Vst3PluginLoadListener const *li
 
 bool MyApp::LoadFactory(String path)
 {
+    hwm::dout << "Load VST3 Module: " << path << std::endl;
     try {
         auto tmp_factory = std::make_unique<Vst3PluginFactory>(path);
         UnloadFactory();

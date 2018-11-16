@@ -2,10 +2,24 @@
 #include "../App.hpp"
 
 #include <set>
+#include <fmt/ostream.h>
 
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
 
 #include "../misc/StrCnv.hpp"
+
+namespace fmt {
+    template <>
+    struct formatter<Steinberg::ViewRect> {
+        template <typename ParseContext>
+        constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
+        
+        template <typename FormatContext>
+        auto format(Steinberg::ViewRect const &rc, FormatContext &ctx) {
+            return format_to(ctx.begin(), "({}, {}, {}, {})", rc.left, rc.top, rc.right, rc.bottom);
+        }
+    };
+}
 
 NS_HWM_BEGIN
 
@@ -24,6 +38,7 @@ private:
 class PluginEditorContents
 :   public wxWindow
 ,   public Vst3Plugin::EditorCloseListener
+,   public Vst3Plugin::PlugFrameListener
 {
 public:
     PluginEditorContents(wxWindow *parent,
@@ -33,17 +48,20 @@ public:
     :   wxWindow(parent, wxID_ANY, pos, size)
     {
         plugin_ = target_plugin;
-        
-        plugin_->AddEditorCloseListener(this);
-        plugin_->OpenEditor(GetHandle());
-        
-        auto rc = plugin_->GetPreferredRect();
-        SetSize(rc.getWidth(), rc.getHeight());
     }
     
     ~PluginEditorContents() {
         int x = 0;
         x = 1;
+    }
+    
+    void Initialize()
+    {
+        plugin_->AddEditorCloseListener(this);
+        plugin_->OpenEditor(GetHandle(), this);
+        
+        auto rc = plugin_->GetPreferredRect();
+        SetSize(rc.getWidth(), rc.getHeight());
     }
     
     void OnEditorClosed(Vst3Plugin *) override
@@ -60,6 +78,14 @@ public:
     
 private:
     Vst3Plugin *plugin_ = nullptr;
+    
+    void OnResizePlugView(Steinberg::ViewRect const &rc) override
+    {
+        hwm::dout << "New view size: {}"_format(rc) << std::endl;
+        
+        SetSize(rc.getWidth(), rc.getHeight());
+        GetParent()->Layout();
+    }
 };
 
 class PluginEditorFrame
@@ -76,10 +102,12 @@ public:
                 target_plugin->GetEffectName(),
                 pos,
                 size,
-                (wxDEFAULT_FRAME_STYLE & (~wxRESIZE_BORDER)))
+                wxDEFAULT_FRAME_STYLE & ~(wxRESIZE_BORDER | wxMAXIMIZE_BOX)
+                )
     {
         on_destroy_ = on_destroy;
         contents_ = new PluginEditorContents(this, target_plugin);
+        contents_->Initialize();
         SetSize(GetBestSize());
         
         Bind(wxEVT_CLOSE_WINDOW, [this](auto &ev) {
@@ -98,6 +126,14 @@ public:
         //contents_->CloseEditor();
         on_destroy_();
         return wxFrame::Destroy();
+    }
+    
+    bool Layout() override
+    {
+        if(contents_) {
+            SetClientSize(contents_->GetSize());
+        }
+        return wxFrame::Layout();
     }
     
 private:
@@ -500,7 +536,13 @@ private:
     {
         // load
         wxFileDialog openFileDialog(this,
-                                    "Open VST3 file", "/Library/Audio/Plug-Ins/VST3", "",
+                                    "Open VST3 file",
+                                    //*
+                                    "/Library/Audio/Plug-Ins/VST3",
+                                    /*/
+                                    "../../ext/vst3sdk/build_debug/VST3/Debug",
+                                    //*/
+                                    "",
                                     "VST3 files (*.vst3)|*.vst3", wxFD_OPEN|wxFD_FILE_MUST_EXIST);
         if (openFileDialog.ShowModal() == wxID_CANCEL) {
             return;
@@ -537,6 +579,18 @@ private:
         cho_select_component_->Clear();
     }
     
+    class ProgramData : public wxClientData
+    {
+    public:
+        ProgramData(UInt32 program_index, Vst::UnitID unit_id)
+        :   program_index_(program_index)
+        ,   unit_id_(unit_id)
+        {}
+        
+        UInt32 program_index_ = -1;
+        Vst::UnitID unit_id_ = -1;
+    };
+    
     void OnVst3PluginLoaded(Vst3Plugin *plugin) override
     {
         cho_select_program_->Clear();
@@ -545,10 +599,12 @@ private:
         for(int un = 0; un < num; ++un) {
             auto const &unit_info = plugin->GetUnitInfoByIndex(un);
             auto const &pl = unit_info.program_list_;
+            if(pl.id_ == Vst::kNoProgramListId) { continue; }
             
             cho_select_program_->Append(L"----[" + unit_info.name_ + L"]----");
-            for(auto const &entry: pl.programs_) {
-                cho_select_program_->Append(entry.name_, (void *)(un + 1));
+            for(UInt32 pn = 0; pn < pl.programs_.size(); ++pn) {
+                auto const entry = pl.programs_[pn];
+                cho_select_program_->Append(entry.name_, new ProgramData{pn, unit_info.id_});
             }
         }
         
@@ -610,14 +666,13 @@ private:
     {
         auto sel = cho_select_program_->GetSelection();
         if(sel == wxNOT_FOUND) { return; }
+        if(cho_select_program_->HasClientObjectData() == false) { return; }
         
-        auto data = cho_select_program_->GetClientData(sel);
+        auto data = dynamic_cast<ProgramData const *>(cho_select_program_->GetClientObject(sel));
         if(!data) { return; }
         
-        auto un = reinterpret_cast<Int64>(data) - 1;
-        
         auto plugin = MyApp::GetInstance()->GetPlugin();
-        plugin->SetProgramIndex(sel, un);
+        plugin->SetProgramIndex(data->program_index_, data->unit_id_);
     }
     
     wxStaticText    *st_filepath_;

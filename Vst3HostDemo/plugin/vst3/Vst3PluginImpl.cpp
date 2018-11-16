@@ -23,10 +23,6 @@ NS_HWM_BEGIN
 
 extern void* GetWindowRef(NSView *view);
 
-namespace {
-    std::array<float *, 32> kDummyChannelData;
-}
-
 void Vst3Plugin::Impl::AudioBusesInfo::Initialize(Impl *owner, Vst::BusDirection dir)
 {
     owner_ = owner;
@@ -306,15 +302,15 @@ bool Vst3Plugin::Impl::HasEditor() const
 	return has_editor_.get();
 }
 
-bool Vst3Plugin::Impl::OpenEditor(WindowHandle parent, IPlugFrame *frame)
+bool Vst3Plugin::Impl::OpenEditor(WindowHandle parent, IPlugFrame *plug_frame)
 {
     assert(HasEditor());
 
     tresult res;
     
-    if(frame) {
-        plug_view_->setFrame(frame);
-    }
+    assert(plug_frame);
+
+    plug_view_->setFrame(plug_frame);
     
 #if defined(_MSC_VER)
     res = plug_view_->attached((void *)parent, kPlatformTypeHWND);
@@ -371,26 +367,24 @@ void Vst3Plugin::Impl::Resume()
 		status_ = Status::kSetupDone;
 	}
     
-    input_buffer_.resize(input_buses_info_.GetNumActiveChannels(), block_size_);
-    output_buffer_.resize(output_buses_info_.GetNumActiveChannels(), block_size_);
-    
-    auto prepare_bus_buffers = [&](AudioBusesInfo &buses, Buffer<float> &buffer) {
-        assert(buffer.channels() == buses.GetNumActiveChannels());
+    auto prepare_bus_buffers = [&](AudioBusesInfo &buses, UInt32 block_size, Buffer<float> &buffer) {
+        buffer.resize(buses.GetNumChannels(), block_size);
         
         auto data = buffer.data();
         auto *bus_buffers = buses.GetBusBuffers();
         for(int i = 0; i < buses.GetNumBuses(); ++i) {
-            if(buses.IsActive(i)) {
-                bus_buffers[i].channelBuffers32 = data;
-                data += bus_buffers[i].numChannels;
-            } else {
-                bus_buffers[i].channelBuffers32 = kDummyChannelData.data();
-            }
+            // AudioBusBufferのドキュメントには、非アクティブなBusについては各チャンネルのバッファのアドレスがnullでもいいという記述があるが、
+            // これの指す意味があまりわからない。
+            // 試しにここで、非アクティブなBusのchannelBuffers32にnumChannels個のnullptrからなる有効な配列を渡しても、
+            // hostcheckerプラグインでエラー扱いになってしまう。
+            // 詳細が不明なため、すべてのBusのすべてのチャンネルに対して、有効なバッファを割り当てるようにする。
+            bus_buffers[i].channelBuffers32 = data;
+            data += bus_buffers[i].numChannels;
         }
     };
     
-    prepare_bus_buffers(input_buses_info_, input_buffer_);
-    prepare_bus_buffers(output_buses_info_, output_buffer_);
+    prepare_bus_buffers(input_buses_info_, block_size_, input_buffer_);
+    prepare_bus_buffers(output_buses_info_, block_size_, output_buffer_);
 
 	res = GetComponent()->setActive(true);
 	if(res != kResultOk && res != kNotImplemented) { throw std::runtime_error("setActive failed"); }
@@ -755,12 +749,21 @@ void Vst3Plugin::Impl::Initialize(vstma_unique_ptr<Vst::IComponentHandler> compo
 			edit_controller_->setComponentState (&stream);
 		}
         
+        OutputParameterInfo(edit_controller_.get());
+        
         auto maybe_unit_info = queryInterface<Vst::IUnitInfo>(edit_controller_);
         if(maybe_unit_info.is_right()) {
             unit_handler_ = std::move(maybe_unit_info.right());
             OutputUnitInfo(unit_handler_.get());
-        } else {
-            hwm::dout << "This Plugin has no UnitInfo interafaces." << std::endl;
+            
+            if(unit_handler_->getUnitCount() == 0) {
+                // Treat as this plugin has no IUnitInfo
+                unit_handler_.reset();
+            }
+        }
+        
+        if(!unit_handler_) {
+            hwm::dout << "This Plugin has no IUnitInfo interafaces." << std::endl;
         }
 
         OutputBusInfo(component_.get(), edit_controller_.get(), unit_handler_.get());
@@ -920,6 +923,20 @@ void Vst3Plugin::Impl::PrepareUnitInfo()
             ui.program_list_ = CreateProgramList(unit_handler_.get(), vui.programListId);
             ui.program_change_param_ = FindProgramChangeParam(parameter_info_list_, vui.id);
         }
+        
+        assert(unit_info_list_.GetIndexByID(ui.id_) == -1); // id should be unique.
+        unit_info_list_.AddItem(ui);
+    }
+    
+    if(unit_info_list_.GetIndexByID(Vst::kRootUnitId) == -1) {
+        // Root unit is there just as a hierarchy.
+        // Add an UnitInfo for the root unit here.
+        UnitInfo ui;
+        ui.id_ = Vst::kRootUnitId;
+        ui.name_ = L"Root";
+        ui.parent_id_ = Vst::kNoParentUnitId;
+        ui.program_change_param_ = Vst::kNoParamId;
+        ui.program_list_.id_ = Vst::kNoProgramListId;
         unit_info_list_.AddItem(ui);
     }
 }

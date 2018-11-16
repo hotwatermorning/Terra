@@ -88,6 +88,7 @@ public:
         void Initialize(Impl *owner, Vst::BusDirection dir);
         
         size_t GetNumBuses() const;
+        
         BusInfo const & GetBusInfo(UInt32 bus_index) const;
         
         //! すべてのバスのチャンネル数の総計
@@ -157,7 +158,7 @@ public:
 
 	bool HasEditor() const;
 
-	bool OpenEditor(WindowHandle parent, IPlugFrame *frame);
+	bool OpenEditor(WindowHandle parent, IPlugFrame *plug_frame);
 
 	void CloseEditor();
 

@@ -226,7 +226,18 @@ public:
     using WindowHandle = NSView *;
 #endif
     
-	bool	OpenEditor		(WindowHandle wnd, Steinberg::IPlugFrame *frame = nullptr);
+    class PlugFrameListener
+    {
+    protected:
+        PlugFrameListener() {}
+    public:
+        virtual ~PlugFrameListener() {}
+        virtual void OnResizePlugView(Steinberg::ViewRect const &newSize) = 0;
+    };
+    
+    //! listener is not owned in Vst3Plugin. so caller has responsible to delete this object.
+    //! listener should never be deleted before CloseEditor() is called.
+    bool	OpenEditor		(WindowHandle wnd, PlugFrameListener *listener);
     
 	void	CloseEditor		();
 	bool	IsEditorOpened	() const;
@@ -265,19 +276,5 @@ private:
     std::unique_ptr<HostContext> host_context_;
     std::function<void(Vst3Plugin const *p)> on_destruction_;
 };
-
-//class PlugFrame
-//:   Steinberg::Vst::IPlugFrame
-//{
-//    OBJ_METHODS(PlugFrame, Steinberg::Vst::IPlugFrame)
-//    REFCOUNT_METHODS(Steinberg::Vst::IPlugFrame)
-//
-//public:
-//    DEFINE_INTERFACES
-//    DEF_INTERFACE(Steinberg::Vst::IPlugFrame)
-//    DEF_INTERFACE(Vst::IComponentHandler)
-//    DEF_INTERFACE(Vst::IComponentHandler2)
-//    END_DEFINE_INTERFACES(FObject)
-//};
 
 NS_HWM_END

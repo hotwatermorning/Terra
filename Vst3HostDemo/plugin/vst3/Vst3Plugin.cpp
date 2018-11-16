@@ -153,9 +153,16 @@ bool Vst3Plugin::HasEditor() const
 	return pimpl_->HasEditor();
 }
 
-bool Vst3Plugin::OpenEditor(WindowHandle parent, Steinberg::IPlugFrame *frame)
+bool Vst3Plugin::OpenEditor(WindowHandle parent, PlugFrameListener *listener)
 {
-    return pimpl_->OpenEditor(parent, frame);
+    //! not support multiple plug view yet.
+    CloseEditor();
+    
+    assert(listener);
+    assert(host_context_->plug_frame_listener_ == nullptr);
+    
+    host_context_->plug_frame_listener_ = listener;
+    return pimpl_->OpenEditor(parent, host_context_.get());
 }
 
 void Vst3Plugin::CloseEditor()
@@ -166,6 +173,7 @@ void Vst3Plugin::CloseEditor()
         });
     }
 	pimpl_->CloseEditor();
+    host_context_->plug_frame_listener_ = nullptr;
 }
 
 bool Vst3Plugin::IsEditorOpened() const

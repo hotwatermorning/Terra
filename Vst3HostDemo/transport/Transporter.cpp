@@ -11,7 +11,7 @@ TransportInfo Transporter::GetCurrentState() const
 double GetPPQPos(TransportInfo const &info)
 {
     double sec_pos = info.sample_pos_ / info.sample_rate_;
-    double ppq_per_sec = info.tempo_ * 60.0;
+    double ppq_per_sec = info.tempo_ / 60.0;
     return sec_pos * ppq_per_sec;
 }
 

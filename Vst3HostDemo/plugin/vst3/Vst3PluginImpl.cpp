@@ -512,7 +512,7 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
             e.noteOff.pitch = note.GetPitch();
             e.noteOff.tuning = 0;
             e.noteOff.noteId = -1;
-            e.noteOff.velocity = note.GetVelocity();
+            e.noteOff.velocity = note.GetVelocity() / 127.0;
         }
         input_events_.addEvent(e);
     }

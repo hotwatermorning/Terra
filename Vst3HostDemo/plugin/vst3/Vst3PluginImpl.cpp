@@ -305,7 +305,11 @@ bool Vst3Plugin::Impl::HasEditor() const
 bool Vst3Plugin::Impl::OpenEditor(WindowHandle parent, IPlugFrame *plug_frame)
 {
     assert(HasEditor());
-
+    
+    // この関数を呼び出す前に、GetPreferredRect()から返る幅と高さで、
+    // parentはのウィンドウサイズを設定しておくこと。
+    // さもなければ、プラグインによっては正しく描画が行われない。
+    
     tresult res;
     
     assert(plug_frame);
@@ -343,8 +347,6 @@ bool Vst3Plugin::Impl::IsEditorOpened() const
 
 ViewRect Vst3Plugin::Impl::GetPreferredRect() const
 {
-	assert(IsEditorOpened());
-
 	ViewRect rect;
 	plug_view_->getSize(&rect);
 	return rect;

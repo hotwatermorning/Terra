@@ -42,26 +42,27 @@ class PluginEditorContents
 {
 public:
     PluginEditorContents(wxWindow *parent,
-                         Vst3Plugin *target_plugin,
-                         wxPoint pos = wxDefaultPosition,
-                         wxSize size = wxDefaultSize)
-    :   wxWindow(parent, wxID_ANY, pos, size)
+                         Vst3Plugin *target_plugin)
+    :   wxWindow(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize)
     {
         plugin_ = target_plugin;
+        
+        plugin_->AddEditorCloseListener(this);
+        
+        // いくつかのプラグイン (Arturia SEM V2やOszillos Mega Scopeなど) では、
+        // IPlugViewに実際のウィンドウハンドルをattachするまえに、IPlugViewのサイズでウィンドウのサイズを設定しておかなければ、
+        // 正しくプラグインウィンドウが表示されなかった。
+        auto rc = plugin_->GetPreferredRect();
+        SetSize(rc.getWidth(), rc.getHeight());
+        
+        plugin_->OpenEditor(GetHandle(), this);
+        
+        Show(true);
     }
     
     ~PluginEditorContents() {
         int x = 0;
         x = 1;
-    }
-    
-    void Initialize()
-    {
-        plugin_->AddEditorCloseListener(this);
-        plugin_->OpenEditor(GetHandle(), this);
-        
-        auto rc = plugin_->GetPreferredRect();
-        SetSize(rc.getWidth(), rc.getHeight());
     }
     
     void OnEditorClosed(Vst3Plugin *) override
@@ -94,27 +95,24 @@ class PluginEditorFrame
 public:
     PluginEditorFrame(wxWindow *parent,
                       Vst3Plugin *target_plugin,
-                      std::function<void()> on_destroy,
-                      wxPoint pos = wxDefaultPosition,
-                      wxSize size = wxDefaultSize)
+                      std::function<void()> on_destroy)
     :   wxFrame(parent,
                 wxID_ANY,
                 target_plugin->GetEffectName(),
-                pos,
-                size,
+                wxDefaultPosition,
+                wxDefaultSize,
                 wxDEFAULT_FRAME_STYLE & ~(wxRESIZE_BORDER | wxMAXIMIZE_BOX)
                 )
     {
         on_destroy_ = on_destroy;
-        contents_ = new PluginEditorContents(this, target_plugin);
-        contents_->Initialize();
-        SetSize(GetBestSize());
         
         Bind(wxEVT_CLOSE_WINDOW, [this](auto &ev) {
             contents_->CloseEditor();
             Destroy();
         });
         
+        contents_ = new PluginEditorContents(this, target_plugin);
+        SetClientSize(contents_->GetSize());
         Show(true);
     }
     
@@ -123,7 +121,6 @@ public:
     
     bool Destroy() override
     {
-        //contents_->CloseEditor();
         on_destroy_();
         return wxFrame::Destroy();
     }
@@ -138,7 +135,7 @@ public:
     
 private:
     std::function<void()> on_destroy_;
-    PluginEditorContents *contents_;
+    PluginEditorContents *contents_ = nullptr;
 };
 
 class Keyboard

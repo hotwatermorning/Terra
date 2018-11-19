@@ -396,10 +396,6 @@ void Vst3Plugin::Impl::Resume()
 	status_ = Status::kActivated;
 
 	is_resumed_ = true;
-
-	//! Some plugin (e.g., TyrellN6.vst3, podolski.vst3) need to create its plug view after the components is active.
-	tresult const ret = CreatePlugView();
-	has_editor_ = (ret == kResultOk);
 		
 	hwm::dout << "Latency samples : " << GetAudioProcessor()->getLatencySamples() << std::endl;
 
@@ -776,10 +772,8 @@ void Vst3Plugin::Impl::Initialize(vstma_unique_ptr<Vst::IComponentHandler> compo
         input_buses_info_.Initialize(this, Vst::BusDirections::kInput);
         output_buses_info_.Initialize(this, Vst::BusDirections::kOutput);
 
-		//! 可能であればこのあたりでIPlugViewを取得して、このプラグインがエディターを持っているかどうかを
-		//! チェックしたかったが、いくつかのプラグイン(e.g., TyrellN6, Podolski)では
-		//! IComponentがactivateされる前にIPlugViewを取得するとクラッシュした。
-		//! そのため、この段階ではIPlugViewは取得しない
+        tresult const ret = CreatePlugView();
+        has_editor_ = (ret == kResultOk);
 
 		PrepareParameters();
 		PrepareUnitInfo();

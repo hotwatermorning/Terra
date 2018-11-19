@@ -253,6 +253,10 @@ bool AudioDeviceManager::Open(AudioDeviceInfo const *input_device,
         op.sampleFormat = paFloat32;
         if(op.device >= 0) { pop = &op; }
     }
+    
+    hwm::wdout << L"Open Device ({}, {})"_format(pip ? input_device->name_ : L"N/A",
+                                                 pop ? output_device->name_ : L"N/A")
+    << std::endl;
 
     pimpl_->sample_rate_ = sample_rate;
     pimpl_->block_size_ = block_size;

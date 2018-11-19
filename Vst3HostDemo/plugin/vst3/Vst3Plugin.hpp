@@ -191,6 +191,12 @@ public:
     ParamValue GetParameterValueByIndex(UInt32 index) const;
     ParamValue GetParameterValueByID(ParamID id) const;
     
+    String ValueToStringByIndex(UInt32 index, ParamValue value);
+    ParamValue StringToValueTByIndex(UInt32 index, String string);
+    
+    String ValueToStringByID(ParamID id, ParamValue value);
+    ParamValue StringToValueByID(ParamID id, String string);
+    
     bool IsBusActive(BusDirection dir, UInt32 index) const;
     void SetBusActive(BusDirection dir, UInt32 index, bool state = true);
     SpeakerArrangement GetSpeakerArrangementForBus(BusDirection dir, UInt32 index) const;

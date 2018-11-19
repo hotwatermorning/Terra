@@ -92,6 +92,26 @@ Vst3Plugin::ParamValue Vst3Plugin::GetParameterValueByID(ParamID id) const
     return pimpl_->GetParameterValueByID(id);
 }
 
+String Vst3Plugin::ValueToStringByIndex(UInt32 index, ParamValue value)
+{
+    return pimpl_->ValueToStringByIndex(index, value);
+}
+
+Vst::ParamValue Vst3Plugin::StringToValueTByIndex(UInt32 index, String string)
+{
+    return pimpl_->StringToValueTByIndex(index, string);
+}
+
+String Vst3Plugin::ValueToStringByID(ParamID id, ParamValue value)
+{
+    return pimpl_->ValueToStringByID(id, value);
+}
+
+Vst::ParamValue Vst3Plugin::StringToValueByID(ParamID id, String string)
+{
+    return pimpl_->StringToValueByID(id, string);
+}
+
 bool Vst3Plugin::IsBusActive(BusDirection dir, UInt32 index) const
 {
     return pimpl_->GetBusesInfo(dir).GetBusInfo(index).is_active_;

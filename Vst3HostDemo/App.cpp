@@ -171,7 +171,7 @@ bool MyApp::LoadVst3Plugin(int component_index)
         plugin_ = std::move(tmp_plugin);
         project_->SetInstrument(plugin_);
         vl_listeners_.Invoke([this](auto li) {
-            li->OnVst3PluginLoaded(plugin_.get());
+            li->OnAfterVst3PluginLoaded(plugin_.get());
         });
         return true;
     } catch(std::exception &e) {
@@ -186,7 +186,7 @@ void MyApp::UnloadVst3Plugin()
         project_->RemoveInstrument();
         
         vl_listeners_.InvokeReversed([this](auto li) {
-            li->OnVst3PluginUnloaded(plugin_.get());
+            li->OnBeforeVst3PluginUnloaded(plugin_.get());
         });
         auto tmp = std::move(plugin_);
         tmp.reset();

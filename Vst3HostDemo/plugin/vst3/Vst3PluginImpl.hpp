@@ -153,6 +153,12 @@ public:
     Vst::ParamValue GetParameterValueByIndex(UInt32 index) const;
     Vst::ParamValue GetParameterValueByID(Vst::ParamID id) const;
     
+    String ValueToStringByIndex(UInt32 index, ParamValue value);
+    ParamValue StringToValueTByIndex(UInt32 index, String string);
+    
+    String ValueToStringByID(ParamID id, ParamValue value);
+    ParamValue StringToValueByID(ParamID id, String string);
+    
     UInt32  GetProgramIndex(Vst::UnitID unit_id = 0) const;
     void    SetProgramIndex(UInt32 index, Vst::UnitID unit_id = 0);
 

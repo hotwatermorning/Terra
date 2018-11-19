@@ -48,10 +48,10 @@ public:
         ~Vst3PluginLoadListener() {}
         
         virtual
-        void OnVst3PluginLoaded(Vst3Plugin *plugin) = 0;
+        void OnAfterVst3PluginLoaded(Vst3Plugin *plugin) {};
         
         virtual
-        void OnVst3PluginUnloaded(Vst3Plugin *plugin) = 0;
+        void OnBeforeVst3PluginUnloaded(Vst3Plugin *plugin) {};
     };
     
     void AddVst3PluginLoadListener(Vst3PluginLoadListener *li);

@@ -258,6 +258,38 @@ Vst::ParamValue Vst3Plugin::Impl::GetParameterValueByID(Vst::ParamID id) const
     return edit_controller_->getParamNormalized(id);
 }
 
+String Vst3Plugin::Impl::ValueToStringByIndex(UInt32 index, ParamValue value)
+{
+    return ValueToStringByID(GetParameterInfoList().GetItemByIndex(index).id_, value);
+}
+
+Vst::ParamValue Vst3Plugin::Impl::StringToValueTByIndex(UInt32 index, String string)
+{
+    return StringToValueByID(GetParameterInfoList().GetItemByIndex(index).id_, string);
+}
+
+String Vst3Plugin::Impl::ValueToStringByID(ParamID id, ParamValue value)
+{
+    Vst::String128 str = {};
+    auto result = edit_controller_->getParamStringByValue(id, value, str);
+    if(result != kResultOk) {
+        return L"";
+    }
+    
+    return to_wstr(str);
+}
+
+Vst::ParamValue Vst3Plugin::Impl::StringToValueByID(ParamID id, String string)
+{
+    Vst::ParamValue value = 0;
+    auto result = edit_controller_->getParamValueByString(id, to_utf16(string).data(), value);
+    if(result != kResultOk) {
+        return -1;
+    }
+    
+    return value;
+}
+
 UInt32 Vst3Plugin::Impl::GetProgramIndex(Vst::UnitID unit_id) const
 {
     auto const &unit_info = GetUnitInfoList().GetItemByID(unit_id);

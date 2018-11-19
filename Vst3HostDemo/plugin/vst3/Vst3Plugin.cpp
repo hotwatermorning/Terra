@@ -21,6 +21,8 @@ Vst3Plugin::Vst3Plugin(std::unique_ptr<Impl> pimpl,
 
 Vst3Plugin::~Vst3Plugin()
 {
+    assert(IsEditorOpened() == false);
+    
 	pimpl_.reset();
     host_context_.reset();
     on_destruction_(this);
@@ -138,16 +140,6 @@ void Vst3Plugin::SetSamplingRate(int sampling_rate)
 	pimpl_->SetSamplingRate(sampling_rate);
 }
 
-void Vst3Plugin::AddEditorCloseListener(EditorCloseListener *li)
-{
-    ec_listeners_.AddListener(li);
-}
-
-void Vst3Plugin::RemoveEditorCloseListener(EditorCloseListener *li)
-{
-    ec_listeners_.RemoveListener(li);
-}
-
 bool Vst3Plugin::HasEditor() const
 {
 	return pimpl_->HasEditor();
@@ -167,11 +159,6 @@ bool Vst3Plugin::OpenEditor(WindowHandle parent, PlugFrameListener *listener)
 
 void Vst3Plugin::CloseEditor()
 {
-    if(IsEditorOpened()) {
-        ec_listeners_.Invoke([this](auto li) {
-            li->OnEditorClosed(this);
-        });
-    }
 	pimpl_->CloseEditor();
     host_context_->plug_frame_listener_ = nullptr;
 }

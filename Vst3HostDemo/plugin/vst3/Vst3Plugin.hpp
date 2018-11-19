@@ -77,8 +77,6 @@ private:
     int velocity_ = 0;
     Type type_ = Type::kNoteOff;
 };
-    
-using String = std::wstring;
 
 //! VST3のプラグインを表すクラス
 /*!
@@ -203,20 +201,6 @@ public:
 	bool	IsResumed() const;
 	void	SetBlockSize(int block_size);
 	void	SetSamplingRate(int sampling_rate);
-    
-    class EditorCloseListener
-    {
-    public:
-        virtual
-        ~EditorCloseListener() {}
-        
-        virtual
-        void OnEditorClosed(Vst3Plugin *plugin) = 0;
-    };
-    ListenerService<EditorCloseListener> ec_listeners_;
-
-    void AddEditorCloseListener(EditorCloseListener *li);
-    void RemoveEditorCloseListener(EditorCloseListener *li);
     
 	bool	HasEditor		() const;
 

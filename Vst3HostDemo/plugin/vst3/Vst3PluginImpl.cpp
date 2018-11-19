@@ -376,13 +376,15 @@ void Vst3Plugin::Impl::Resume()
         auto data = buffer.data();
         auto *bus_buffers = buses.GetBusBuffers();
         for(int i = 0; i < buses.GetNumBuses(); ++i) {
+            auto &buffer = bus_buffers[i];
             // AudioBusBufferのドキュメントには、非アクティブなBusについては各チャンネルのバッファのアドレスがnullでもいいという記述があるが、
             // これの指す意味があまりわからない。
             // 試しにここで、非アクティブなBusのchannelBuffers32にnumChannels個のnullptrからなる有効な配列を渡しても、
             // hostcheckerプラグインでエラー扱いになってしまう。
             // 詳細が不明なため、すべてのBusのすべてのチャンネルに対して、有効なバッファを割り当てるようにする。
-            bus_buffers[i].channelBuffers32 = data;
-            data += bus_buffers[i].numChannels;
+            buffer.channelBuffers32 = data;
+            buffer.silenceFlags = (buses.IsActive(i) ? 0 : -1);
+            data += buffer.numChannels;
         }
     };
     

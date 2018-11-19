@@ -117,18 +117,15 @@ bool Vst3Plugin::Impl::AudioBusesInfo::SetSpeakerArrangement(size_t bus_index, V
 {
     assert(bus_index < GetNumBuses());
     
-    auto get_speakers = [](AudioBusesInfo const &buses_info) {
-        std::vector<Vst::SpeakerArrangement> arrs;
-        size_t const num = buses_info.GetNumBuses();
-        for(size_t i = 0; i < num; ++i) {
-            arrs.push_back(buses_info.GetBusInfo(i).speaker_);
-        }
-        
-        return arrs;
-    };
+    hwm::dout
+    << L"Set speaker arrangement for {} Bus[{}]: {}"_format(dir_ == Vst::BusDirections::kInput ? L"Input" : L"Output",
+                                                             bus_index,
+                                                             GetSpeakerName(arr)
+                                                             )
+    << std::endl;
     
-    auto input_arrs = get_speakers(owner_->input_buses_info_);
-    auto output_arrs = get_speakers(owner_->output_buses_info_);
+    auto input_arrs = owner_->input_buses_info_.GetSpeakers();
+    auto output_arrs = owner_->output_buses_info_.GetSpeakers();
     
     auto &my_arrs = (dir_ == Vst::BusDirections::kInput ? input_arrs : output_arrs);
     my_arrs[bus_index] = arr;
@@ -146,6 +143,17 @@ bool Vst3Plugin::Impl::AudioBusesInfo::SetSpeakerArrangement(size_t bus_index, V
     bus_infos_[bus_index].channel_count_ = Vst::SpeakerArr::getChannelCount(arr);
     UpdateBusBuffers();
     return true;
+}
+
+std::vector<Vst::SpeakerArrangement> Vst3Plugin::Impl::AudioBusesInfo::GetSpeakers() const
+{
+    std::vector<Vst::SpeakerArrangement> arrs;
+    size_t const num = GetNumBuses();
+    for(size_t i = 0; i < num; ++i) {
+        arrs.push_back(GetBusInfo(i).speaker_);
+    }
+    
+    return arrs;
 }
 
 Vst::AudioBusBuffers * Vst3Plugin::Impl::AudioBusesInfo::GetBusBuffers()

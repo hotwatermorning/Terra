@@ -108,6 +108,7 @@ public:
         //! false otherwise.
         bool SetSpeakerArrangement(size_t bus_index, Vst::SpeakerArrangement arr);
         
+        std::vector<Vst::SpeakerArrangement> GetSpeakers() const;
         Vst::AudioBusBuffers * GetBusBuffers();
         
     private:

@@ -3,7 +3,9 @@
 #include <iomanip>
 #include <sstream>
 #include <pluginterfaces/vst/vstpresetkeys.h>
+#include <pluginterfaces/vst/ivstaudioprocessor.h>
 #include "../../misc/StrCnv.hpp"
+#include "./Vst3Utils.hpp"
 
 using namespace Steinberg;
 
@@ -147,17 +149,19 @@ void OutputUnitInfo(Vst::IUnitInfo *unit_handler)
     }
 }
 
-String BusInfoToString(Vst::BusInfo &bus)
+String BusInfoToString(Vst::BusInfo &bus, Vst::SpeakerArrangement speaker)
 {
     return
     L"Bus{{ Name: {}, MediaType: {}, Direction: {}, "
-          L"BusType: {}, Channels: {}, Defatult Active: {}"
+          L"BusType: {}, Channels: {}, Defatult Active: {}, "
+          L"Speaker: {}"
     L" }}"_format(to_wstr(bus.name),
                   (bus.mediaType == Vst::MediaTypes::kAudio ? L"Audio" : L"Midi"),
                   (bus.direction == Vst::BusDirections::kInput ? L"Input" : L"Output"),
                   (bus.busType == Vst::BusTypes::kMain ? L"Main Bus" : L"Aux Bus"),
                   bus.channelCount,
-                  ((bus.flags & bus.kDefaultActive) != 0)
+                  ((bus.flags & bus.kDefaultActive) != 0),
+                  GetSpeakerName(speaker)
                   );
 }
 
@@ -220,8 +224,12 @@ void OutputBusInfoImpl(Vst::IComponent *component,
     for(int i = 0; i < num_components; ++i) {
         Vst::BusInfo bus_info;
         component->getBusInfo(media_type, bus_direction, i, bus_info);
+        auto ap = std::move(queryInterface<Vst::IAudioProcessor>(component).right());
+
+        Vst::SpeakerArrangement speaker;
+        ap->getBusArrangement(bus_direction, i, speaker);
         
-        auto const bus_info_str = BusInfoToString(bus_info);
+        auto const bus_info_str = BusInfoToString(bus_info, speaker);
         auto const bus_unit_info_str
         = (unit_handler && bus_info.channelCount > 0)
         ?   BusUnitInfoToString(i, bus_info, unit_handler, kNumSpaces)

@@ -6,6 +6,8 @@
 #include <pluginterfaces/base/ftypes.h>
 #include <pluginterfaces/base/ipluginbase.h>
 
+#include "../../Misc/StrCnv.hpp"
+
 NS_HWM_BEGIN
 
 class SelfReleaser
@@ -159,6 +161,12 @@ template<class To, class FactoryPointer>
 maybe_vstma_unique_ptr<To> createInstance(FactoryPointer const &factory, Steinberg::FUID class_id)
 {
 	return createInstance_impl<To>(prevent_adl::get_raw_pointer(factory), class_id, To::iid);
+}
+
+inline
+String GetSpeakerName(Steinberg::Vst::SpeakerArrangement arr, bool with_speaker_name = true)
+{
+    return to_wstr(Steinberg::Vst::SpeakerArr::getSpeakerArrangementString(arr, with_speaker_name));
 }
 
 NS_HWM_END

@@ -26,6 +26,7 @@ extern void* GetWindowRef(NSView *view);
 void Vst3Plugin::Impl::AudioBusesInfo::Initialize(Impl *owner, Vst::BusDirection dir)
 {
     owner_ = owner;
+    dir_ = dir;
     
     auto &comp = owner_->component_;
     auto &proc = owner_->audio_processor_;

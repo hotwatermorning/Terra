@@ -31,6 +31,13 @@ std::wstring tresult_to_wstring(tresult result)
     return to_wstr(tresult_to_string(result));
 }
 
+void ShowError(Steinberg::tresult result, String context)
+{
+    if(result != kResultOk) {
+        hwm::dout << L"Failed({}): {}"_format(tresult_to_wstring(result), context) << std::endl;
+    }
+}
+
 void OutputParameterInfo(Vst::IEditController *edit_controller)
 {
     hwm::wdout << "--- Output Parameter Info ---" << std::endl;

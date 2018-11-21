@@ -5,6 +5,7 @@
 
 #include <pluginterfaces/base/ftypes.h>
 #include <pluginterfaces/base/ipluginbase.h>
+#include <pluginterfaces/vst/vstspeaker.h>
 
 #include "../../Misc/StrCnv.hpp"
 

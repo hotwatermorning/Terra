@@ -45,14 +45,6 @@ public:
 	using unit_info_ptr_t           = vstma_unique_ptr<Vst::IUnitInfo>;
 	using program_list_data_ptr_t   = vstma_unique_ptr<Vst::IProgramListData>;
 
-	enum ErrorContext {
-		kFactoryError,
-		kComponentError,
-		kAudioProcessorError,
-		kEditControllerError,
-		kEditController2Error
-	};
-
 	enum class Status {
 		kInvalid,
 		kCreated,
@@ -60,24 +52,6 @@ public:
 		kSetupDone,
 		kActivated,
 		kProcessing,
-	};
-
-	class Error
-    :	public std::runtime_error
-	{
-    public:
-		Error(ErrorContext error_context, tresult error_code)
-			:	std::runtime_error("VstPlugin::Error")
-			,	error_context_(error_context)
-			,	error_code_(error_code)
-		{}
-
-		ErrorContext context() { return error_context_; }
-		tresult code() { return error_code_; }
-
-	private:
-		tresult			error_code_;
-		ErrorContext	error_context_;
 	};
     
     using ParameterInfoList = IdentifiedValueList<ParameterInfo>;

@@ -23,6 +23,40 @@ NS_HWM_BEGIN
 
 extern void* GetWindowRef(NSView *view);
 
+class Error
+:    public std::runtime_error
+{
+public:
+    Error(tresult error_code, std::string context)
+    :    std::runtime_error("Failed({}){}"_format(tresult_to_string(error_code),
+                                                  context.empty() ? "" : ": {}" + context
+                                                  ).c_str()
+                            )
+    {}
+};
+
+template<class To>
+void ThrowIfNotRight(maybe_vstma_unique_ptr<To> const &ptr, std::string context = "")
+{
+    if(ptr.is_right() == false) {
+        throw Error(ptr.left(), context);
+    }
+}
+
+void ThrowIfNotFound(tresult result, std::vector<tresult> candidates, std::string context = "")
+{
+    assert(candidates.size() >= 1);
+    
+    if(std::find(candidates.begin(), candidates.end(), result) == candidates.end()) {
+        throw Error(result, context);
+    }
+}
+
+void ThrowIfNotOk(tresult result, std::string context = "")
+{
+    ThrowIfNotFound(result, { kResultOk }, context);
+}
+
 void Vst3Plugin::Impl::AudioBusesInfo::Initialize(Impl *owner, Vst::BusDirection dir)
 {
     owner_ = owner;
@@ -406,7 +440,9 @@ void Vst3Plugin::Impl::Resume()
 		setup.processMode = Vst::ProcessModes::kRealtime;
 
 		res = GetAudioProcessor()->setupProcessing(setup);
-		if(res != kResultOk && res != kNotImplemented) { throw std::runtime_error("setupProcessing failed"); }
+		if(res != kResultOk && res != kNotImplemented) {
+            throw Error(res, "setupProcessing failed");
+        }
 		status_ = Status::kSetupDone;
 	}
     
@@ -432,7 +468,10 @@ void Vst3Plugin::Impl::Resume()
     prepare_bus_buffers(output_buses_info_, block_size_, output_buffer_);
 
 	res = GetComponent()->setActive(true);
-	if(res != kResultOk && res != kNotImplemented) { throw std::runtime_error("setActive failed"); }
+	if(res != kResultOk && res != kNotImplemented) {
+        throw Error(res, "setActive failed");
+    }
+    
 	status_ = Status::kActivated;
 
 	is_resumed_ = true;
@@ -447,12 +486,10 @@ void Vst3Plugin::Impl::Resume()
 		In this call the Plug-in should do only light operation (no memory allocation or big setup reconfiguration), this could be used to reset some buffers (like Delay line or Reverb).
 	*/
 	res = GetAudioProcessor()->setProcessing(true);
-	if(res == kResultOk || res == kNotImplemented) {
-		status_ = Status::kProcessing;
-		is_processing_started_ = true;
-	} else {
-		hwm::dout << "Start processing failed : " << res << std::endl;
-	}
+    ThrowIfNotFound(res, { kResultOk, kNotImplemented });
+
+    status_ = Status::kProcessing;
+	is_processing_started_ = true;
 }
 
 void Vst3Plugin::Impl::Suspend()
@@ -494,9 +531,11 @@ void Vst3Plugin::Impl::RestartComponent(Steinberg::int32 flags)
 
 		hwm::dout << "Should reload component" << std::endl;
 
+        tresult res;
         Steinberg::MemoryStream stream;
 		//! ReloadComponentで行う内容はこれで合っているかどうか分からない。
-		component_->getState(&stream);
+		res = component_->getState(&stream);
+        ShowError(res, L"getState");
 
 		bool const is_resumed = IsResumed();
 		if(is_resumed) {
@@ -504,7 +543,8 @@ void Vst3Plugin::Impl::RestartComponent(Steinberg::int32 flags)
 			Resume();
 		}
 
-		component_->setState(&stream);
+		res = component_->setState(&stream);
+        ShowError(res, L"setState");
 	}
 }
 
@@ -526,10 +566,15 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
     = (ti.playing_ ? Flags::kPlaying : 0)
     | Flags::kProjectTimeMusicValid
     | Flags::kTempoValid
-    | Flags::kTimeSigValid;
+    | Flags::kTimeSigValid
+    ;
 
     input_events_.clear();
     output_events_.clear();
+    input_params_.clearQueue();
+    output_params_.clearQueue();
+    input_buffer_.fill();
+    output_buffer_.fill();
     
     for(auto &note: pi.notes_) {
         Vst::Event e;
@@ -555,8 +600,6 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
         }
         input_events_.addEvent(e);
     }
-    
-    input_buffer_.fill();
 	
     auto copy_buffer = [&](auto const &src, auto &dest,
                            SampleCount length_to_copy,
@@ -577,9 +620,6 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
                 pi.frame_length_,
                 pi.input_.sample_offset_, 0);
 
-	input_params_.clearQueue();
-	output_params_.clearQueue();
-
 	PopFrontParameterChanges(input_params_);
 
 	Vst::ProcessData process_data;
@@ -596,7 +636,10 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
 	process_data.inputParameterChanges = &input_params_;
 	process_data.outputParameterChanges = &output_params_;
 
-	GetAudioProcessor()->process(process_data);
+	auto const res = GetAudioProcessor()->process(process_data);
+    if(res != kResultOk) {
+        hwm::dout << "process failed: {}"_format(tresult_to_string(res)) << std::endl;
+    }
     
     copy_buffer(output_buffer_, pi.output_.buffer_,
                 pi.frame_length_,
@@ -663,21 +706,18 @@ void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &
 {
     auto cid = FUID::fromTUID(info.cid());
 	auto maybe_component = createInstance<Vst::IComponent>(factory, cid);
-	if(!maybe_component.is_right()) {
-		throw Error(ErrorContext::kFactoryError, maybe_component.left());
-	}
+    ThrowIfNotRight(maybe_component);
+    
 	auto component = std::move(maybe_component.right());
 	tresult res;
 	res = component->setIoMode(Vst::IoModes::kAdvanced);
-	if(res != kResultOk && res != kNotImplemented) {
-		throw Error(ErrorContext::kComponentError, res);
-	}
+    ThrowIfNotFound(res, { kResultOk, kNotImplemented });
+    
 	status_ = Status::kCreated;
 
 	res = component->initialize(host_context);
-	if(res != kResultOk) {
-		throw Error(ErrorContext::kComponentError, res);
-	}
+    ThrowIfNotOk(res);
+    
 	status_ = Status::kInitialized;
 
     HWM_SCOPE_EXIT([&component] {
@@ -688,15 +728,12 @@ void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &
     });
 
 	auto maybe_audio_processor = queryInterface<Vst::IAudioProcessor>(component);
-	if(!maybe_audio_processor.is_right()) {
-		throw Error(ErrorContext::kComponentError, maybe_audio_processor.left());
-	}
+    ThrowIfNotRight(maybe_audio_processor);
+    
 	auto audio_processor = std::move(maybe_audio_processor.right());
 
 	res = audio_processor->canProcessSampleSize(Vst::SymbolicSampleSizes::kSample32);
-	if(res != kResultOk) {
-		throw Error(ErrorContext::kAudioProcessorError, res);
-	}
+    ThrowIfNotOk(res);
 
 	// $(DOCUMENT_ROOT)/vstsdk360_22_11_2013_build_100/VST3%20SDK/doc/vstinterfaces/index.html
 	// Although it is not recommended, it is possible to implement both, 
@@ -716,25 +753,16 @@ void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &
 			} else {
 				//! this plugin has no edit controller.
 			}
-		} else {
-			if(res != kNoInterface && res != kNotImplemented) {
-				throw Error(ErrorContext::kComponentError, res);
-			}
 		}
 	}
 
-    if(maybe_edit_controller.is_right() == false) {
-        //! this plugin has no edit controller. this host rejects such a plugin.
-        throw Error(ErrorContext::kComponentError, kNoInterface);
-    }
+    ThrowIfNotRight(maybe_edit_controller);
     
 	edit_controller_ptr_t edit_controller = std::move(maybe_edit_controller.right());
 
 	if(edit_controller_is_created_new) {
 		res = edit_controller->initialize(host_context);
-		if(res != kResultOk) {
-			throw Error(ErrorContext::kEditControllerError, res);
-		}
+        ThrowIfNotOk(res);
 	}
 
 	HWM_SCOPE_EXIT([&edit_controller, edit_controller_is_created_new] {
@@ -768,20 +796,17 @@ void Vst3Plugin::Impl::Initialize(vstma_unique_ptr<Vst::IComponentHandler> compo
 	if(edit_controller_) {	
 		if(component_handler) {
 			res = edit_controller_->setComponentHandler(component_handler.get());
-			if(res != kResultOk) {
-                hwm::dout << "Can't set component handler" << std::endl;
-			}
+            ThrowIfNotOk(res);
 		}
 
 		auto maybe_cpoint_component = queryInterface<Vst::IConnectionPoint>(component_);
 		auto maybe_cpoint_edit_controller = queryInterface<Vst::IConnectionPoint>(edit_controller_);
 
-		if (maybe_cpoint_component.is_right() && maybe_cpoint_edit_controller.is_right())
-		{
-			maybe_cpoint_component.right()->connect(maybe_cpoint_edit_controller.right().get());
-			maybe_cpoint_edit_controller.right()->connect(maybe_cpoint_component.right().get());
-		}
-
+        if(maybe_cpoint_component.is_right() && maybe_cpoint_edit_controller.is_right()) {
+            maybe_cpoint_component.right()->connect(maybe_cpoint_edit_controller.right().get());
+            maybe_cpoint_edit_controller.right()->connect(maybe_cpoint_component.right().get());
+        }
+        
 		// synchronize controller to component by using setComponentState
 		MemoryStream stream;
 		if (component_->getState (&stream) == kResultOk)
@@ -798,13 +823,14 @@ void Vst3Plugin::Impl::Initialize(vstma_unique_ptr<Vst::IComponentHandler> compo
             OutputUnitInfo(unit_handler_.get());
             
             if(unit_handler_->getUnitCount() == 0) {
+                hwm::dout << "Warning: This plugin has no unit info." << std::endl;
                 // Treat as this plugin has no IUnitInfo
                 unit_handler_.reset();
             }
         }
         
         if(!unit_handler_) {
-            hwm::dout << "This Plugin has no IUnitInfo interafaces." << std::endl;
+            hwm::dout << "This Plugin has no IUnitInfo interfaces." << std::endl;
         }
 
         OutputBusInfo(component_.get(), edit_controller_.get(), unit_handler_.get());
@@ -825,9 +851,7 @@ void Vst3Plugin::Impl::Initialize(vstma_unique_ptr<Vst::IComponentHandler> compo
 
 tresult Vst3Plugin::Impl::CreatePlugView()
 {
-	if(!edit_controller_) {
-		return kNoInterface;
-	}
+    assert(edit_controller_);
 
     //! 一つのプラグインから複数のPlugViewを構築してはいけない。
     //! (実際TyrellやPodolskiなどいくつかのプラグインでクラッシュする)

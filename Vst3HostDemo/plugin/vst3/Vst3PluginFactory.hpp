@@ -11,8 +11,6 @@
 #include <pluginterfaces/vst/ivsteditcontroller.h>
 #include <public.sdk/source/vst/hosting/parameterchanges.h>
 
-#include "Vst3HostContext.hpp"
-
 NS_HWM_BEGIN
 
 class Vst3Plugin;
@@ -61,11 +59,14 @@ private:
 class ClassInfo
 {
 public:
+    static constexpr UInt32 kCIDLength = 16;
+    using CID = std::array<Steinberg::int8, kCIDLength>;
+    
 	ClassInfo(Steinberg::PClassInfo const &info);
 	ClassInfo(Steinberg::PClassInfo2 const &info);
 	ClassInfo(Steinberg::PClassInfoW const &info);
 
-	Steinberg::int8	const *	cid() const { return cid_.data(); }
+    CID const &	cid() const { return cid_; }
 	String const &	name() const { return name_; }
 	String const &	category() const { return category_; }
 	Steinberg::int32        cardinality() const { return cardinality_; }
@@ -75,7 +76,7 @@ public:
 			classinfo2() const { return *classinfo2_data_; }
 
 private:
-	std::array<Steinberg::int8, 16> cid_;
+	CID cid_;
 	String		name_;
 	String		category_;
 	Steinberg::int32	cardinality_;

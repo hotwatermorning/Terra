@@ -87,7 +87,7 @@ ClassInfo::ClassInfo(Steinberg::PClassInfo const &info)
 	,	category_(hwm::to_wstr(info.category))
 	,	cardinality_(info.cardinality)
 {
-    std::copy(std::begin(info.cid), std::end(info.cid), cid_.begin());
+    std::copy(info.cid, info.cid + kCIDLength, cid_.begin());
 }
 
 ClassInfo::ClassInfo(Steinberg::PClassInfo2 const &info)
@@ -97,7 +97,7 @@ ClassInfo::ClassInfo(Steinberg::PClassInfo2 const &info)
 	,	cardinality_(info.cardinality)
 	,	classinfo2_data_(info)
 {
-	std::copy(std::begin(info.cid), std::end(info.cid), cid_.begin());
+	std::copy(info.cid, info.cid + kCIDLength, cid_.begin());
 }
 
 ClassInfo::ClassInfo(Steinberg::PClassInfoW const &info)
@@ -107,7 +107,7 @@ ClassInfo::ClassInfo(Steinberg::PClassInfoW const &info)
 	,	cardinality_(info.cardinality)
 	,	classinfo2_data_(info)
 {
-	std::copy(std::begin(info.cid), std::end(info.cid), cid_.begin());
+	std::copy(info.cid, info.cid + kCIDLength, cid_.begin());
 }
 
 class Vst3PluginFactory::Impl
@@ -151,12 +151,11 @@ private:
     std::vector<Vst3Plugin const *> loaded_plugins_;
 };
 
-String FormatCid(Steinberg::int8 const *cid_array)
+String FormatCid(ClassInfo::CID const &cid)
 {
 	int const reg_str_len = 48; // including null-terminator
 	std::string reg_str(reg_str_len, '\0');
-    FUID fuid;
-    fuid.fromTUID(cid_array);
+    FUID fuid = FUID::fromTUID(cid.data());
     fuid.toRegistryString(&reg_str[0]);
     return hwm::to_wstr(reg_str.c_str());
 }
@@ -326,7 +325,7 @@ std::unique_ptr<Vst3Plugin>
 {
 	for(size_t i = 0; i < GetComponentCount(); ++i) {
 		bool const is_equal = std::equal<Steinberg::int8 const *, Steinberg::int8 const *>(
-			GetComponentInfo(i).cid(), GetComponentInfo(i).cid() + 16,
+			GetComponentInfo(i).cid().begin(), GetComponentInfo(i).cid().begin() + 16,
 			component_id
 			);
 

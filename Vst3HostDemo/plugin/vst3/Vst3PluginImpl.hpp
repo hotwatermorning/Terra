@@ -102,6 +102,8 @@ public:
          FUnknown *host_context);
 
     ~Impl();
+    
+    ClassInfo::CID GetComponentID() const;
 
 	bool HasEditController	() const;
 	bool HasEditController2	() const;

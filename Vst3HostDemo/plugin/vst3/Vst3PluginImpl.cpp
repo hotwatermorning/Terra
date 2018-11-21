@@ -231,6 +231,12 @@ Vst3Plugin::Impl::~Impl()
 	UnloadPlugin();
 }
 
+ClassInfo::CID Vst3Plugin::Impl::GetComponentID() const
+{
+    assert(plugin_info_);
+    return plugin_info_->cid();
+}
+
 bool Vst3Plugin::Impl::HasEditController	() const { return edit_controller_.get() != nullptr; }
 bool Vst3Plugin::Impl::HasEditController2	() const { return edit_controller2_.get() != nullptr; }
 
@@ -360,6 +366,11 @@ void Vst3Plugin::Impl::SetProgramIndex(UInt32 index, Vst::UnitID unit_id)
     if(param_id == Vst::kNoParamId || size == 0) {
         return;
     }
+    
+    hwm::dout << "Set Program[{}] of Unit[{}]"_format(index,
+                                                      GetUnitInfoList().GetIndexByID(unit_id)
+                                                      )
+    << std::endl;
     
     // Wavesでは、このパラメータに対するstepCountがsizeと同一になっていて、
     // VST3のドキュメントにあるようにstepCount+1でnormalied_valueを計算すると、ズレが発生してしまう。
@@ -704,7 +715,7 @@ void Vst3Plugin::Impl::LoadPlugin(IPluginFactory *factory, ClassInfo const &info
 
 void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context)
 {
-    auto cid = FUID::fromTUID(info.cid());
+    auto cid = FUID::fromTUID(info.cid().data());
 	auto maybe_component = createInstance<Vst::IComponent>(factory, cid);
     ThrowIfNotRight(maybe_component);
     

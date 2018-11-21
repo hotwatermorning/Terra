@@ -14,6 +14,7 @@
 #include "../../misc/Buffer.hpp"
 #include "../../misc/ArrayRef.hpp"
 #include "./IdentifiedValueList.hpp"
+#include "./Vst3PluginFactory.hpp"
 
 NS_HWM_BEGIN
 
@@ -172,6 +173,8 @@ public:
                std::function<void(Vst3Plugin const *p)> on_destruction);
     
 	virtual ~Vst3Plugin();
+    
+    ClassInfo::CID GetComponentID() const;
 
 	String GetEffectName() const;
 	size_t	GetNumInputs() const;

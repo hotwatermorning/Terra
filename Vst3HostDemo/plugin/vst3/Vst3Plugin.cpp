@@ -28,6 +28,11 @@ Vst3Plugin::~Vst3Plugin()
     on_destruction_(this);
 }
 
+ClassInfo::CID Vst3Plugin::GetComponentID() const
+{
+    return pimpl_->GetComponentID();
+}
+
 String Vst3Plugin::GetEffectName() const
 {
 	return pimpl_->GetEffectName();

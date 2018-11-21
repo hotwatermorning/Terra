@@ -218,6 +218,10 @@ public:
         
         assert( (has_editor_ == false && use_dedicated_editor_) == false );
         
+        // not implemented yet.
+        btn_prev_program_->Disable();
+        btn_next_program_->Disable();
+        
         if(has_editor_ == false) {
             chk_gen_editor_->Disable();
         }

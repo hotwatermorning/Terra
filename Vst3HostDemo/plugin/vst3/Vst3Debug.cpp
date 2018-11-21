@@ -153,7 +153,7 @@ String BusInfoToString(Vst::BusInfo &bus, Vst::SpeakerArrangement speaker)
 {
     return
     L"Bus{{ Name: {}, MediaType: {}, Direction: {}, "
-          L"BusType: {}, Channels: {}, Defatult Active: {}, "
+          L"BusType: {}, Channels: {}, Default Active: {}, "
           L"Speaker: {}"
     L" }}"_format(to_wstr(bus.name),
                   (bus.mediaType == Vst::MediaTypes::kAudio ? L"Audio" : L"Midi"),
@@ -197,7 +197,7 @@ String BusUnitInfoToString(int bus_index, Vst::BusInfo const &bus, Vst::IUnitInf
             }
         }
         
-        return spaces + L"Channel:{:#2d} => Unit:{})"_format(channel, to_wstr(unit_info.name));
+        return spaces + L"Channel:{:#2d} => Unit: {})"_format(channel, to_wstr(unit_info.name));
     };
 
     String str;

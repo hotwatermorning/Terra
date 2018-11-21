@@ -440,6 +440,7 @@ private:
     PluginEditorContents *contents_ = nullptr;
     PluginEditorControl *control_ = nullptr;
     GenericParameterView *genedit_ = nullptr;
+    UInt32 target_unit_index_ = -1;
 };
 
 class Keyboard
@@ -767,8 +768,12 @@ public:
         st_class_info_->SetBackgroundColour(*wxWHITE);
         st_class_info_->Hide();
         
+        cho_select_unit_ = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxSize(100, 20));
+        cho_select_unit_->Hide();
+        
         cho_select_program_ = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxSize(100, 20));
         cho_select_program_->Hide();
+        
         btn_open_editor_ = new wxButton(this, wxID_ANY, "Open Editor", wxDefaultPosition, wxSize(100, 20));
         btn_open_editor_->Hide();
         
@@ -785,8 +790,14 @@ public:
         
         auto vbox3 = new wxBoxSizer(wxVERTICAL);
         vbox3->Add(btn_open_editor_, wxSizerFlags(0).Border(wxBOTTOM));
-        vbox3->Add(cho_select_program_, wxSizerFlags(0).Expand().Border(wxBOTTOM|wxTOP));
-        vbox3->Add(1, 1, wxSizerFlags(1).Expand().Border(wxTOP));
+        
+        auto vbox4 = new wxStaticBoxSizer(wxVERTICAL, this, "Units & Programs");
+
+        vbox4->Add(cho_select_unit_, wxSizerFlags(0).Expand().Border(wxBOTTOM|wxTOP, 2));
+        vbox4->Add(cho_select_program_, wxSizerFlags(0).Expand().Border(wxBOTTOM|wxTOP, 2));
+        
+        vbox3->Add(vbox4, wxSizerFlags(0).Expand().Border(wxBOTTOM|wxTOP));
+        vbox3->AddStretchSpacer();
         
         hbox2->Add(vbox2, wxSizerFlags(1).Expand().Border(wxRIGHT));
         hbox2->Add(vbox3, wxSizerFlags(1).Expand().Border(wxLEFT));
@@ -807,6 +818,7 @@ public:
         btn_load_module_->Bind(wxEVT_BUTTON, [this](auto &ev) { OnLoadModule(); });
         cho_select_component_->Bind(wxEVT_CHOICE, [this](auto &ev) { OnSelectComponent(); });
         btn_open_editor_->Bind(wxEVT_BUTTON, [this](auto &ev) { OnOpenEditor(); });
+        cho_select_unit_->Bind(wxEVT_CHOICE, [this](auto &ev) { OnSelectUnit(); });
         cho_select_program_->Bind(wxEVT_CHOICE, [this](auto &ev) { OnSelectProgram(); });
         
         MyApp::GetInstance()->AddFactoryLoadListener(this);
@@ -853,12 +865,23 @@ private:
         MyApp::GetInstance()->LoadFactory(path);
     }
     
+    class ComponentData : public wxClientData
+    {
+    public:
+        ComponentData(ClassInfo::CID cid)
+        :   cid_(cid)
+        {}
+        
+        ClassInfo::CID cid_;
+    };
+    
     void OnFactoryLoaded(String path, Vst3PluginFactory *factory) override
     {
         auto const num = factory->GetComponentCount();
         
         st_filepath_->SetLabel(path);
         
+        cho_select_component_->Clear();
         for(int i = 0; i < num; ++i) {
             auto const &info = factory->GetComponentInfo(i);
             
@@ -866,11 +889,20 @@ private:
             
             //! カテゴリがkVstAudioEffectClassなComponentを探索する。
             if(info.category() == hwm::to_wstr(kVstAudioEffectClass)) {
-                cho_select_component_->Append(info.name(), reinterpret_cast<void*>(i));
+                cho_select_component_->Append(info.name(), new ComponentData{info.cid()});
             }
         }
         
-        cho_select_component_->SetSelection(wxNOT_FOUND);
+        if(cho_select_component_->GetCount() == 0) {
+            return;
+        } else if(cho_select_component_->GetCount() == 1) {
+            cho_select_component_->SetSelection(0);
+            cho_select_component_->Disable();
+            OnSelectComponent();
+        } else {
+            cho_select_component_->SetSelection(wxNOT_FOUND);
+        }
+        
         cho_select_component_->Show();
         Layout();
     }
@@ -880,46 +912,84 @@ private:
         cho_select_component_->Clear();
     }
     
-    class ProgramData : public wxClientData
+    class UnitData : public wxClientData
     {
     public:
-        ProgramData(UInt32 program_index, Vst::UnitID unit_id)
-        :   program_index_(program_index)
-        ,   unit_id_(unit_id)
+        UnitData(Steinberg::Vst::UnitID unit_id)
+        :   unit_id_(unit_id)
         {}
         
-        UInt32 program_index_ = -1;
-        Vst::UnitID unit_id_ = -1;
+        Steinberg::Vst::UnitID unit_id_ = -1;
     };
     
     void OnAfterVst3PluginLoaded(Vst3Plugin *plugin) override
     {
+        UInt32 component_index = -1;
+        auto cid = plugin->GetComponentID();
+        for(int i = 0; i < cho_select_component_->GetCount(); ++i) {
+            auto component_data = static_cast<ComponentData *>(cho_select_component_->GetClientObject(i));
+            if(component_data->cid_ == cid) {
+                component_index = i;
+                break;
+            }
+        }
+        
+        assert(component_index != -1);
+        
+        auto const &info = MyApp::GetInstance()->GetFactory()->GetComponentInfo(component_index);
+        auto str = wxString::Format(L"[%s]\ncategory: ", info.name(), info.category());
+        
+        if(info.has_classinfo2()) {
+            auto info2 = info.classinfo2();
+            str += L"\n";
+            str += wxString::Format(L"sub categories: %s\nvendor: %s\nversion: %s\nsdk_version: %s",
+                                    info2.sub_categories(),
+                                    info2.vendor(),
+                                    info2.version(),
+                                    info2.sdk_version());
+            st_class_info_->SetLabel(str);
+        }
+        
+        cho_select_unit_->Clear();
         cho_select_program_->Clear();
         
         auto const num = plugin->GetNumUnitInfo();
         for(int un = 0; un < num; ++un) {
-            auto const &unit_info = plugin->GetUnitInfoByIndex(un);
-            auto const &pl = unit_info.program_list_;
-            if(pl.id_ == Vst::kNoProgramListId) { continue; }
+            auto const &info = plugin->GetUnitInfoByIndex(un);
+            auto const &pl = info.program_list_;
+            if(info.program_change_param_ == Steinberg::Vst::kNoParamId) { continue; }
+            if(pl.id_ == Steinberg::Vst::kNoProgramListId) { continue; }
+            if(pl.programs_.empty()) { continue; }
             
-            cho_select_program_->Append(L"----[" + unit_info.name_ + L"]----");
-            for(UInt32 pn = 0; pn < pl.programs_.size(); ++pn) {
-                auto const entry = pl.programs_[pn];
-                cho_select_program_->Append(entry.name_, new ProgramData{pn, unit_info.id_});
-            }
+            cho_select_unit_->Append(info.name_, new UnitData{info.id_});
         }
         
-        if(num > 0) {
-            cho_select_program_->SetSelection(plugin->GetProgramIndex());
+        if(cho_select_unit_->GetCount() == 0) {
+            // nothing to do for cho_select_unit_ and cho_select_program_
+        } else if(cho_select_unit_->GetCount() == 1) {
+            cho_select_unit_->SetSelection(0);
+            cho_select_unit_->Show();
+            cho_select_unit_->Disable();
+            OnSelectUnit();
+        } else {
+            cho_select_unit_->SetSelection(0);
+            cho_select_unit_->Show();
+            cho_select_unit_->Enable();
+            OnSelectUnit();
         }
         
-        btn_open_editor_->Enable(plugin->HasEditor());
+        st_class_info_->Show();
+        btn_open_editor_->Show();
+        btn_open_editor_->Enable();
+        
+        Layout();
     }
     
     void OnBeforeVst3PluginUnloaded(Vst3Plugin *plugin) override
     {
         st_class_info_->Hide();
         btn_open_editor_->Hide();
+        cho_select_unit_->Hide();
         cho_select_program_->Hide();
     }
     
@@ -927,29 +997,29 @@ private:
         auto sel = cho_select_component_->GetSelection();
         if(sel == wxNOT_FOUND) { return; }
         
-        auto const p = cho_select_component_->GetClientData(sel);
-        auto const component_index = (int)reinterpret_cast<ptrdiff_t>(p);
-        auto const successful = MyApp::GetInstance()->LoadVst3Plugin(component_index);
+        auto const p = static_cast<ComponentData const *>(cho_select_component_->GetClientObject(sel));
         
-        if(successful) {
-            auto const &info = MyApp::GetInstance()->GetFactory()->GetComponentInfo(component_index);
-            auto str = wxString::Format(L"[%s]\ncategory: ", info.name(), info.category());
-            
-            if(info.has_classinfo2()) {
-                auto info2 = info.classinfo2();
-                str += L"\n";
-                str += wxString::Format(L"sub categories: %s\nvendor: %s\nversion: %s\nsdk_version: %s",
-                                        info2.sub_categories(),
-                                        info2.vendor(),
-                                        info2.version(),
-                                        info2.sdk_version());
-                st_class_info_->SetLabel(str);
+        UInt32 component_index = -1;
+        auto factory = MyApp::GetInstance()->GetFactory();
+        for(UInt32 i = 0, end = factory->GetComponentCount(); i < end; ++i) {
+            if(factory->GetComponentInfo(i).cid() == p->cid_) {
+                component_index = i;
+                break;
             }
-            st_class_info_->Show();
-            btn_open_editor_->Show();
-            cho_select_program_->Show();
-            Layout();
         }
+        
+        assert(component_index != -1);
+        MyApp::GetInstance()->LoadVst3Plugin(component_index);
+    }
+    
+    Vst3Plugin::UnitID GetCurrentUnitID() const
+    {
+        auto const sel = cho_select_unit_->GetSelection();
+        if(sel == wxNOT_FOUND) { return -1; }
+        
+        assert(cho_select_unit_->HasClientObjectData());
+        auto data = static_cast<UnitData *>(cho_select_unit_->GetClientObject(sel));
+        return data->unit_id_;
     }
     
     void OnOpenEditor()
@@ -965,23 +1035,51 @@ private:
         btn_open_editor_->Disable();
     }
     
+    void OnSelectUnit()
+    {
+        auto sel = cho_select_unit_->GetSelection();
+        if(sel == wxNOT_FOUND) { return; }
+        
+        auto unit_id = GetCurrentUnitID();
+        assert(unit_id != -1);
+        
+        auto plugin = MyApp::GetInstance()->GetPlugin();
+        auto info = plugin->GetUnitInfoByID(unit_id);
+        
+        assert(info.program_list_.programs_.size() >= 1);
+
+        // update program list
+        cho_select_program_->Clear();
+        for(UInt32 i = 0; i < info.program_list_.programs_.size(); ++i) {
+            cho_select_program_->Append(info.program_list_.programs_[i].name_);
+        }
+        
+        cho_select_program_->Select(plugin->GetProgramIndex(unit_id));
+        cho_select_program_->Show();
+        Layout();
+    }
+    
     void OnSelectProgram()
     {
         auto sel = cho_select_program_->GetSelection();
         if(sel == wxNOT_FOUND) { return; }
-        if(cho_select_program_->HasClientObjectData() == false) { return; }
         
-        auto data = dynamic_cast<ProgramData const *>(cho_select_program_->GetClientObject(sel));
-        if(!data) { return; }
+        assert(cho_select_unit_->GetSelection() != wxNOT_FOUND);
+        
+        auto const unit_id = GetCurrentUnitID();
+        assert(unit_id != -1);
         
         auto plugin = MyApp::GetInstance()->GetPlugin();
-        plugin->SetProgramIndex(data->program_index_, data->unit_id_);
+        auto info = plugin->GetUnitInfoByID(unit_id);
+        
+        plugin->SetProgramIndex(sel, unit_id);
     }
     
     wxStaticText    *st_filepath_;
     wxButton        *btn_load_module_;
     wxChoice        *cho_select_component_;
     wxStaticText    *st_class_info_;
+    wxChoice        *cho_select_unit_;
     wxChoice        *cho_select_program_;
     wxButton        *btn_open_editor_;
     Keyboard        *keyboard_;

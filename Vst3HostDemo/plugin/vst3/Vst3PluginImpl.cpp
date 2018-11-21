@@ -837,6 +837,23 @@ void Vst3Plugin::Impl::Initialize(vstma_unique_ptr<Vst::IComponentHandler> compo
 
         input_buses_info_.Initialize(this, Vst::BusDirections::kInput);
         output_buses_info_.Initialize(this, Vst::BusDirections::kOutput);
+        
+        for(int i = 0; i < input_buses_info_.GetNumBuses(); ++i) {
+            input_buses_info_.SetActive(i);
+        }
+        
+        for(int i = 0; i < output_buses_info_.GetNumBuses(); ++i) {
+            output_buses_info_.SetActive(i);
+        }
+       
+        auto input_speakers = input_buses_info_.GetSpeakers();
+        auto output_speakers = output_buses_info_.GetSpeakers();
+
+        auto const result = audio_processor_->setBusArrangements(input_speakers.data(), input_speakers.size(),
+                                                                 output_speakers.data(), output_speakers.size());
+        if(result != kResultOk) {
+            hwm::dout << "Failed to set bus arrangement: " << tresult_to_string(result) << std::endl;
+        }
 
         tresult const ret = CreatePlugView();
         has_editor_ = (ret == kResultOk);

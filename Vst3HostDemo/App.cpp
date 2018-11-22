@@ -59,6 +59,8 @@ bool MyApp::OnInit()
 {
     if(!wxApp::OnInit()) { return false; }
     
+    wxInitAllImageHandlers();
+    
     project_ = std::make_shared<Project>();
     project_->SetSequence(MakeSequence());
     project_->GetTransporter().SetLoopRange(0, 4 * kSampleRate);

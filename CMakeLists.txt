@@ -64,41 +64,67 @@ include_directories(
 set(CMAKE_CXX_FLAGS "-DHAVE_TYPE_TRAITS=1 ${WX_CXX_FLAGS} ${CMAKE_CXX_FLAGS} -std=c++17 -stdlib=libc++")
 set(CMAKE_EXE_LINKER_FLAGS "${WX_LIB_FLAGS} ${CMAKE_EXE_LINKER_FLAGS}")
 
+# set source directories
 set(SOURCE_DIR_LIST "./Vst3HostDemo")
+# set target extension list
 set(TARGET_EXTENSION_LIST "*.c" "*.cpp" "*.h" "*.hpp")
+
+if(IsXcode)
+  list(APPEND TARGET_EXTENSION_LIST "*.mm")
+endif()
+
+# set the root directory of the source file tree in IDE
 set(BASE_DIR "./Vst3HostDemo")
 get_filename_component(BASE_DIR "${BASE_DIR}" ABSOLUTE)
 
-if(IsXcode)
-  list(APPEND TARGET_EXTENSION_LIST ${TARGET_EXTENSION_LIST} "*.mm")
-endif()
-
-# プロジェクトに含めるソースファイル／ヘッダーファイルを再帰的に検索
 foreach(DIR ${SOURCE_DIR_LIST})
   foreach(EXT ${TARGET_EXTENSION_LIST})
-    list(APPEND PATTERNS ${PATTERNS} "${DIR}/${EXT}")
+    list(APPEND PATTERNS "${DIR}/${EXT}")
   endforeach()
 
   file(GLOB_RECURSE FILES ${PATTERNS})
 
   # Define SourceGroup reflecting filesystem hierarchy.
   foreach(FILE_PATH ${FILES})
-    get_filename_component(FILE_DIR "${FILE_PATH}" DIRECTORY)
-    file(RELATIVE_PATH GROUP_NAME "${BASE_DIR}" "${FILE_DIR}")
+    get_filename_component(ABS_PATH "${FILE_PATH}" ABSOLUTE)
+    get_filename_component(DIR "${ABS_PATH}" DIRECTORY)
+    file(RELATIVE_PATH GROUP_NAME "${BASE_DIR}" "${DIR}")
     string(REPLACE "/" "\\" GROUP_NAME "${GROUP_NAME}")
-    source_group("${GROUP_NAME}" FILES "${FILE_PATH}")
+    source_group("${GROUP_NAME}" FILES "${ABS_PATH}")
+    list(APPEND SOURCE_FILES "${ABS_PATH}")
   endforeach()
-
-  list(APPEND SOURCE_FILES ${FILES})
 endforeach()
 
 message("Files ${SOURCE_FILES}")
 
-add_executable(${PROJECT_NAME} ${SOURCE_FILES})
+if(IsXcode)
+  add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCE_FILES})
+endif()
+
+set(OSX_RESOURCE_DIR "./data")
+
+if(IsXcode)
+  get_filename_component(RESOURCE_DIR ${OSX_RESOURCE_DIR} ABSOLUTE)
+  file(GLOB_RECURSE RESOURCE_FILES "${RESOURCE_DIR}/*")
+
+  # 階層構造を保持したままResourceディレクトリ以下に配置されるように設定する
+  foreach(RESOURCE_FILE ${RESOURCE_FILES})
+    get_filename_component(FILENAME ${RESOURCE_FILE} NAME)
+    if(${FILENAME} STREQUAL ".DS_Store")
+      continue()
+    endif()
+
+    get_filename_component(DIR ${RESOURCE_FILE} DIRECTORY)
+    string(REGEX REPLACE "^${RESOURCE_DIR}" "" DIR_IN_RESOURCE ${DIR})
+    target_sources(${PROJECT_NAME} PRIVATE ${RESOURCE_FILE})
+    set_source_files_properties(${RESOURCE_FILE} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources${DIR_IN_RESOURCE}")
+    string(REPLACE "/" "\\" GROUP_NAME "Resources${DIR_IN_RESOURCE}")
+    source_group(${GROUP_NAME} FILES "${RESOURCE_FILE}")
+  endforeach()
+endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PREFIX_HEADER "Vst3HostDemo/prefix.hpp")
 set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PRECOMPILE_PREFIX_HEADER "YES")
-
 
 find_library(VST3_SDK_LIB "sdk" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}")
 find_library(VST3_BASE_LIB "base" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}")

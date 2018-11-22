@@ -5,8 +5,10 @@
 !*.mm
 !*.txt
 !*.md
+!*.png
 !.gitignore
 !.gitmodules
+
 !gradle/*
 !gradle/**/*
 gradle/.gradle

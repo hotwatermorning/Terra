@@ -1,6 +1,8 @@
 #include "./GUI.hpp"
 #include "../App.hpp"
 
+#include <wx/stdpaths.h>
+
 #include <set>
 #include <fmt/ostream.h>
 
@@ -444,19 +446,33 @@ private:
 };
 
 class Keyboard
-:   public wxWindow
+:   public wxPanel
 {
 public:
     using PlayingNoteList = std::array<bool, 128>;
     
-    Keyboard(wxWindow *parent, wxPoint pos = wxDefaultPosition, wxSize size = wxDefaultSize)
-    :   wxWindow(parent, wxID_ANY, pos, size)
+    static
+    wxImage LoadImage(String filename)
     {
+        return wxStandardPaths::Get().GetResourcesDir() + L"/keyboard/" + filename;
+    }
+    
+    Keyboard(wxWindow *parent, wxPoint pos = wxDefaultPosition, wxSize size = wxDefaultSize)
+    :   wxPanel(parent, wxID_ANY, pos, size)
+    {
+        img_white_          = LoadImage(L"pianokey_white.png");
+        img_white_pushed_   = LoadImage(L"pianokey_white_pushed.png");
+        img_white_pushed_contiguous_   = LoadImage(L"pianokey_white_pushed_contiguous.png");
+        img_black_          = LoadImage(L"pianokey_black.png");
+        img_black_pushed_   = LoadImage(L"pianokey_black_pushed.png");
+        
+        img_white_.Rescale(kKeyWidth, kWhiteKeyHeight);
+        img_white_pushed_.Rescale(kKeyWidth, kWhiteKeyHeight);
+        img_white_pushed_contiguous_.Rescale(kKeyWidth, kWhiteKeyHeight);
+        img_black_.Rescale(kKeyWidth+1, kBlackKeyHeight);
+        img_black_pushed_.Rescale(kKeyWidth+1, kBlackKeyHeight);
+        
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(); });
-        playing_notes_[48] = true;
-        playing_notes_[52] = true;
-        playing_notes_[55] = true;
-        playing_notes_[58] = true;
         
         timer_.Bind(wxEVT_TIMER, [this](auto &ev) { OnTimer(); });
         timer_.Start(50);
@@ -472,7 +488,9 @@ public:
     ~Keyboard()
     {}
     
-    static constexpr int kKeyWidth = 15;
+    static constexpr int kKeyWidth = 16;
+    static constexpr int kBlackKeyDispOffset = 6;
+    static constexpr int kBlackKeyDispWidth = 11;
     static constexpr int kNumKeys = 128;
     static constexpr int kNumWhiteKeys = 75;
     static constexpr int kFullKeysWidth = kKeyWidth * kNumWhiteKeys;
@@ -482,35 +500,22 @@ public:
     static wxSize const kWhiteKey;
     static wxSize const kBlackKey;
     
-    static wxColor const kWhiteKeyColor;
-    static wxColor const kBlackKeyColor;
-    static wxColor const kKeyBorderColor;
-    static wxColor const kKeyBorderColorPlaying;
     static wxColor const kPlayingNoteColor;
+
+    template<class List>
+    static
+    bool IsFound(Int32 n, List const &list) {
+        return std::find(list.begin(), list.end(), n) != list.end();
+    }
     
-    struct KeyProperty {
-        KeyProperty(int x, wxSize sz, wxColor col) : rect_(wxPoint(x, 0), sz), color_(col) {}
-        wxRect rect_;
-        wxColour color_;
-    };
+    static std::vector<Int32> kWhiteKeyIndices;
+    static std::vector<Int32> kBlackKeyIndices;
     
-    std::vector<KeyProperty> const kKeyPropertyList {
-        { kKeyWidth * 0, kWhiteKey, kWhiteKeyColor },
-        { int(kKeyWidth * 0.5 + 2), kBlackKey, kBlackKeyColor },
-        { kKeyWidth * 1, kWhiteKey, kWhiteKeyColor },
-        { int(kKeyWidth * 1.5 + 2), kBlackKey, kBlackKeyColor },
-        { kKeyWidth * 2, kWhiteKey, kWhiteKeyColor },
-        { kKeyWidth * 3, kWhiteKey, kWhiteKeyColor },
-        { int(kKeyWidth * 3.5 + 2), kBlackKey, kBlackKeyColor },
-        { kKeyWidth * 4, kWhiteKey, kWhiteKeyColor },
-        { int(kKeyWidth * 4.5 + 2), kBlackKey, kBlackKeyColor },
-        { kKeyWidth * 5, kWhiteKey, kWhiteKeyColor },
-        { int(kKeyWidth * 5.5 + 2), kBlackKey, kBlackKeyColor },
-        { kKeyWidth * 6, kWhiteKey, kWhiteKeyColor },
-    };
+    static
+    bool IsWhiteKey(Int32 note_number) { return IsFound(note_number % 12, kWhiteKeyIndices); }
     
-    std::set<int> const kWhiteKeyIndcies = { 0, 2, 4, 5, 7, 9, 11 };
-    std::set<int> const kBlackKeyIndcies = { 1, 3, 6, 8, 10 };
+    static
+    bool IsBlackKey(Int32 note_number) { return IsFound(note_number % 12, kBlackKeyIndices); }
     
     void OnPaint()
     {
@@ -525,32 +530,52 @@ public:
         int const disp_half = rect.GetWidth() / 2;
         int const disp_shift = kFullKeysWidth / 2 - disp_half;
  
-        auto draw_key = [&](auto note_num, bool is_playing) {
+        auto draw_key = [&](auto note_num, auto const &prop, auto const &img) {
             int const octave = note_num / 12;
-            auto key = kKeyPropertyList[note_num % 12];
-            auto key_rect = key.rect_;
+            auto key_rect = prop.rect_;
             key_rect.Offset(octave * kKeyWidth * 7 - disp_shift, 0);
             
             if(key_rect.GetLeft() >= rect.GetWidth()) { return; }
             if(key_rect.GetRight() < 0) { return; }
+
+            dc.DrawBitmap(wxBitmap(img), key_rect.GetTopLeft());
             
-            wxColor col_pen = kKeyBorderColor;
-            wxColor col_brush = key.color_;
-            if(is_playing) {
-                col_pen = kKeyBorderColorPlaying;
-                col_brush = kPlayingNoteColor;
-            }
-            dc.SetPen(wxPen(col_pen));
-            dc.SetBrush(wxBrush(col_brush));
-            dc.DrawRoundedRectangle(key_rect, 2);
+//            if(is_playing) {
+//                col_pen = kKeyBorderColorPlaying;
+//                col_brush = kPlayingNoteColor;
+//                dc.SetPen(wxPen(col_pen));
+//                dc.SetBrush(wxBrush(col_brush));
+//            }
+//            dc.DrawRoundedRectangle(key_rect, 2);
         };
         
         for(int i = 0; i < kNumKeys; ++i) {
-            if(kWhiteKeyIndcies.count(i % 12) != 0) { draw_key(i, playing_notes_[i]); }
+            if(IsWhiteKey(i) == false) { continue; }
+            
+            bool const is_playing = playing_notes_[i];
+            bool next_pushed = false;
+            if(i < kNumKeys - 2) {
+                if(IsWhiteKey(i+1) && playing_notes_[i+1]) { next_pushed = true; }
+                else if(IsWhiteKey(i+2) && playing_notes_[i+2]) { next_pushed = true; }
+            }
+            
+            auto const &img
+            = (is_playing && next_pushed)
+            ? img_white_pushed_contiguous_
+            : (is_playing ? img_white_pushed_ : img_white_);
+            
+            draw_key(i, kKeyPropertyList[i % 12], img);
         }
+        
         for(int i = 0; i < kNumKeys; ++i) {
-            if(kBlackKeyIndcies.count(i % 12) != 0) { draw_key(i, playing_notes_[i]); }
+            if(IsBlackKey(i) == false) { continue; }
+            
+            bool const is_playing = playing_notes_[i];
+            
+            auto const &img = (is_playing ? img_black_pushed_ : img_black_);
+            draw_key(i, kKeyPropertyList[i % 12], img);
         }
+        
         auto font = wxFont(wxFontInfo(wxSize(8, 10)).Family(wxFONTFAMILY_DEFAULT));
         dc.SetFont(font);
         for(int i = 0; i < kNumKeys; i += 12) {
@@ -647,13 +672,25 @@ public:
         int x_in_oct = x - (kOctaveWidth * octave);
 
         std::optional<int> found;
-        for(auto const &list: { kBlackKeyIndcies, kWhiteKeyIndcies }) {
-            for(auto index: list) {
-                auto key = kKeyPropertyList[index];
-                if(key.rect_.Contains(x_in_oct, pt.y)) {
-                    if(!found) { found = (index + octave * 12); }
-                    break;
-                }
+        
+        for(auto index: kBlackKeyIndices) {
+            auto key = kKeyPropertyList[index];
+            auto rc = key.rect_;
+            rc.SetWidth(kBlackKeyDispWidth);
+            rc.Inflate(1, 1);
+            if(rc.Contains(x_in_oct - kBlackKeyDispOffset, pt.y)) {
+                if(!found) { found = (index + octave * 12); }
+                break;
+            }
+        }
+        
+        for(auto index: kWhiteKeyIndices) {
+            auto key = kKeyPropertyList[index];
+            auto rc = key.rect_;
+            rc.Inflate(1, 1);
+            if(rc.Contains(x_in_oct, pt.y)) {
+                if(!found) { found = (index + octave * 12); }
+                break;
             }
         }
 
@@ -728,6 +765,35 @@ private:
     constexpr static wxChar kOctaveUp = L'X';
     static std::vector<wxChar> const kKeyTable;
     int sample_note_channel = 0;
+    wxImage img_white_;
+    wxImage img_white_pushed_;
+    wxImage img_white_pushed_contiguous_;
+    wxImage img_black_;
+    wxImage img_black_pushed_;
+    
+    struct KeyProperty {
+        KeyProperty(int x, wxSize sz)
+        :   rect_(wxPoint(x, 0), sz)
+        {}
+        
+        wxRect rect_;
+        wxColour color_;
+    };
+    
+    std::vector<KeyProperty> const kKeyPropertyList {
+        { kKeyWidth * 0,            kWhiteKey },
+        { int(kKeyWidth * 0.5 - 4), kBlackKey },
+        { kKeyWidth * 1,            kWhiteKey },
+        { int(kKeyWidth * 1.5 - 2), kBlackKey },
+        { kKeyWidth * 2,            kWhiteKey },
+        { kKeyWidth * 3,            kWhiteKey },
+        { int(kKeyWidth * 3.5 - 4), kBlackKey },
+        { kKeyWidth * 4,            kWhiteKey },
+        { int(kKeyWidth * 4.5 - 3), kBlackKey },
+        { kKeyWidth * 5,            kWhiteKey },
+        { int(kKeyWidth * 5.5 - 2), kBlackKey },
+        { kKeyWidth * 6,            kWhiteKey },
+    };
 };
 
 std::vector<wxChar> const Keyboard::kKeyTable = {
@@ -735,13 +801,12 @@ std::vector<wxChar> const Keyboard::kKeyTable = {
 };
 
 wxSize const Keyboard::kWhiteKey { kKeyWidth, kWhiteKeyHeight };
-wxSize const Keyboard::kBlackKey { kKeyWidth-4, kBlackKeyHeight };
+wxSize const Keyboard::kBlackKey { kKeyWidth, kBlackKeyHeight };
 
-wxColor const Keyboard::kWhiteKeyColor { 0xFF, 0xFF, 0xF6 };
-wxColor const Keyboard::kBlackKeyColor { 0x00, 0x0D, 0x06 };
-wxColor const Keyboard::kKeyBorderColor { 0x00, 0x00, 0x00 };
-wxColor const Keyboard::kKeyBorderColorPlaying { 0x00, 0x00, 0x00, 0x30 };
 wxColor const Keyboard::kPlayingNoteColor { 0x99, 0xEA, 0xFF };
+
+std::vector<Int32> Keyboard::kWhiteKeyIndices = { 0, 2, 4, 5, 7, 9, 11 };
+std::vector<Int32> Keyboard::kBlackKeyIndices = { 1, 3, 6, 8, 10 };
 
 class MyPanel
 :   public wxPanel

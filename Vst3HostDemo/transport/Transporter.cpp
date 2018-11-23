@@ -8,6 +8,16 @@ Transporter::Transporter()
 Transporter::~Transporter()
 {}
 
+void Transporter::AddListener(ITransportStateListener *li)
+{
+    listeners_.AddListener(li);
+}
+
+void Transporter::RemoveListener(ITransportStateListener const *li)
+{
+    listeners_.RemoveListener(li);
+}
+
 TransportInfo Transporter::GetCurrentState() const
 {
     auto lock = lf_.make_lock();
@@ -21,11 +31,35 @@ double GetPPQPos(TransportInfo const &info)
     return sec_pos * ppq_per_sec;
 }
 
+template<class F>
+std::pair<TransportInfo, TransportInfo> Alter(LockFactory & lf,
+                                              TransportInfo &info,
+                                              F f)
+{
+    std::pair<TransportInfo, TransportInfo> ret;
+    
+    auto lock = lf.make_lock();
+    ret.first = info;
+    f(info);
+    ret.second = info;
+    lock.unlock();
+    
+    return ret;
+}
+
 void Transporter::MoveTo(SampleCount pos)
 {
-    auto lock = lf_.make_lock();
-    transport_info_.sample_pos_ = pos;
-    transport_info_.ppq_pos_ = GetPPQPos(transport_info_);
+    auto pair = Alter(lf_,
+                      transport_info_,
+                      [&](TransportInfo &info) {
+                          transport_info_.sample_pos_ = pos;
+                          transport_info_.last_moved_pos_ = pos;
+                          transport_info_.ppq_pos_ = GetPPQPos(transport_info_);
+                      });
+    
+    listeners_.Invoke([&pair](auto *li) {
+        li->OnChanged(pair.first, pair.second);
+    });
 }
 
 bool Transporter::IsPlaying() const {
@@ -35,23 +69,45 @@ bool Transporter::IsPlaying() const {
 
 void Transporter::SetPlaying(bool is_playing)
 {
-    auto lock = lf_.make_lock();
-    transport_info_.playing_ = is_playing;
+    auto pair = Alter(lf_,
+                      transport_info_,
+                      [&](TransportInfo &info) {
+                          transport_info_.playing_ = is_playing;
+                      });
+    
+    listeners_.Invoke([&pair](auto *li) {
+        li->OnChanged(pair.first, pair.second);
+    });
 }
 
 void Transporter::SetLoopRange(SampleCount begin, SampleCount end)
 {
     assert(0 <= begin);
     assert(begin <= end);
-    auto lock = lf_.make_lock();
-    transport_info_.loop_begin_ = begin;
-    transport_info_.loop_end_ = end;
+    
+    auto pair = Alter(lf_,
+                      transport_info_,
+                      [&](TransportInfo &info) {
+                          transport_info_.loop_begin_ = begin;
+                          transport_info_.loop_end_ = end;
+                      });
+    
+    listeners_.Invoke([&pair](auto *li) {
+        li->OnChanged(pair.first, pair.second);
+    });
 }
 
 void Transporter::SetLoopEnabled(bool enabled)
 {
-    auto lock = lf_.make_lock();
-    transport_info_.loop_enabled_ = enabled;
+    auto pair = Alter(lf_,
+                      transport_info_,
+                      [&](TransportInfo &info) {
+                          transport_info_.loop_enabled_ = enabled;
+                      });
+    
+    listeners_.Invoke([&pair](auto *li) {
+        li->OnChanged(pair.first, pair.second);
+    });
 }
 
 std::pair<SampleCount, SampleCount> Transporter::GetLoopRange() const

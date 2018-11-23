@@ -4,6 +4,7 @@
 #include <mutex>
 #include "../misc/LockFactory.hpp"
 #include "TransportInfo.hpp"
+#include "../misc/ListenerService.hpp"
 
 NS_HWM_BEGIN
 
@@ -17,6 +18,23 @@ public:
     
     TransportInfo GetCurrentState() const;
     
+    class ITransportStateListener
+    {
+    protected:
+        ITransportStateListener() {}
+        
+    public:
+        virtual
+        ~ITransportStateListener() {}
+        
+        virtual
+        void OnChanged(TransportInfo const &old_state,
+                       TransportInfo const &new_state) = 0;
+    };
+    
+    void AddListener(ITransportStateListener *li);
+    void RemoveListener(ITransportStateListener const *li);
+    
     void MoveTo(SampleCount pos);
     bool IsPlaying() const;
     void SetPlaying(bool is_playing);
@@ -28,6 +46,7 @@ public:
 private:
     LockFactory lf_;    
     TransportInfo transport_info_;
+    ListenerService<ITransportStateListener> listeners_;
 };
 
 NS_HWM_END

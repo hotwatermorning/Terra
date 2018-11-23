@@ -1,9 +1,17 @@
-// ビルド構成の設定
-if(!project.hasProperty('config')) {
-  project.metaClass.config = "Debug"
+def ensure_property(def obj, String keyname, List candidates, Integer default_value_index = 0)
+{
+  if(!obj.hasProperty(keyname)) {
+    obj.metaClass.setProperty(keyname, candidates[default_value_index])
+  }
+
+  assert(candidates.contains(obj.getProperty(keyname)))
 }
 
-assert(project.config == 'Debug' || project.config == 'Release')
+// Property about build configuration
+ensure_property(project, "config", ["Debug", "Release"])
+// Property about ccache.
+// (note: ccache is not used if not installed even if this property is true.)
+ensure_property(project, "use_ccache", ["true", "false"])
 
 def isWindows() {
   return System.properties['os.name'].toLowerCase().startsWith("windows")
@@ -11,8 +19,17 @@ def isWindows() {
 
 ext {
   build_dir_name = "build_${project.config.toLowerCase()}"
+  has_ccache = (project.use_ccache == "true" ? "which ccache".execute().waitFor() == 0 : false)
+  ccache_path = (has_ccache ? "which ccache".execute().text.trim() : "")
+  cmake_ccache_config = (has_ccache
+                         ? "-DCMAKE_C_COMPILER_LAUNCHER=\"${ccache_path}\" -DCMAKE_CXX_COMPILER_LAUNCHER=\"${ccache_path}\""
+                         : "")
+  ccache_envvars = [CC: "${ccache_path} clang", CXX: "${ccache_path} clang++"]
 }
 
+// println "has ccache: ${has_ccache}"
+// println "ccache path: ${ccache_path}"
+// println "cmake ccache config: ${cmake_ccache_config}"
 
 // 渡された文字列を空白で区切って、単語のリストとして返す。
 // ただし、引用符(`'` or `"`)で囲まれた範囲は空白で区切らずに一つの単語とみなす。
@@ -110,7 +127,7 @@ task build_portaudio {
     // vst3sdk
     def portaudio_build_dir = file("../ext/portaudio/${build_dir_name}").getAbsolutePath()
     execute("mkdir -p ${portaudio_build_dir}")
-    execute("cmake -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ..", portaudio_build_dir)
+    execute("cmake -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ${cmake_ccache_config} ..", portaudio_build_dir)
     execute("make -j", portaudio_build_dir)
   }
 }
@@ -122,7 +139,7 @@ task build_vst3sdk {
     // vst3sdk
     def vst3sdk_build_dir = file("../ext/vst3sdk/${build_dir_name}").getAbsolutePath()
     execute("mkdir -p ${vst3sdk_build_dir}")
-    execute("cmake -DCMAKE_BUILD_TYPE=${project.config} ..", vst3sdk_build_dir)
+    execute("cmake -DCMAKE_BUILD_TYPE=${project.config} ${cmake_ccache_config} ..", vst3sdk_build_dir)
     execute("make -j", vst3sdk_build_dir)
   }
 }
@@ -146,7 +163,10 @@ task build_wxwidgets {
             '--with-libjpeg=builtin --with-libpng=builtin --with-regex=builtin --with-libtiff=builtin ' +
             '--with-zlib=builtin --with-expat=builtin ' +
             '--enable-stl --enable-std_containers --enable-std_iostreams --enable-std_string ' +
-            "--disable-shared --enable-unicode ${debug_flags} --with-cxx=14 --prefix=${wx_build_dir}/install", wx_build_dir)
+            "--disable-shared --enable-unicode ${debug_flags} --with-cxx=14 --prefix=${wx_build_dir}/install",
+            wx_build_dir,
+            ccache_envvars
+            )
     execute("make", wx_build_dir)
     execute("make install", wx_build_dir)
   }
@@ -157,7 +177,7 @@ task build_fmtlib {
   doLast {
     def build_dir = file("../ext/fmt/${build_dir_name}").getAbsolutePath()
     execute("mkdir -p ${build_dir}")
-    execute("cmake -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir)
+    execute("cmake -DCMAKE_BUILD_TYPE=${project.config} ${cmake_ccache_config} ..", build_dir)
     execute("make -j", build_dir)
   }
 }
@@ -172,7 +192,7 @@ task build_app {
   doLast {
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
     execute("mkdir -p ${build_dir}")
-    execute("cmake -GXcode -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir)
+    execute("cmake -GXcode -DCMAKE_BUILD_TYPE=${project.config} ${cmake_ccache_config} ..", build_dir)
     execute("xcodebuild -configuration ${project.config}", build_dir)
   }
 

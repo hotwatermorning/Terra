@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.11)
 
+####################################################################
+# general setup
+####################################################################
+
 # IsXcodeとIsMSVCを有効にする
 message("Generator: ${CMAKE_GENERATOR}")
 if(${CMAKE_GENERATOR} STREQUAL "Xcode")
@@ -23,10 +27,13 @@ elseif(IsXcode)
     set(PLATFORM "x64")
 endif()
 
-
 if(NOT DEFINED CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Debug")
 endif()
+
+####################################################################
+# configure project
+####################################################################
 
 project("Vst3HostDemo")
 
@@ -146,3 +153,42 @@ target_link_libraries(
   "wx_baseu-3.1"
   "wx_osx_cocoau_core-3.1"
   )
+
+####################################################################
+# configure ccache
+####################################################################
+
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+  message("Found ccache")
+  # Set up wrapper scripts
+  set(C_LAUNCHER "${CCACHE_PROGRAM}")
+  set(CXX_LAUNCHER "${CCACHE_PROGRAM}")
+
+  configure_file("./cmake/launch-c.in" "${CMAKE_BINARY_DIR}/launch-c")
+  configure_file("./cmake/launch-cxx.in" "${CMAKE_BINARY_DIR}/launch-cxx")
+  execute_process(COMMAND chmod a+rx
+    "${CMAKE_BINARY_DIR}/launch-c"
+    "${CMAKE_BINARY_DIR}/launch-cxx"
+    )
+
+  if(CMAKE_GENERATOR STREQUAL "Xcode")
+    # Set Xcode project attributes to route compilation and linking
+    # through our scripts
+#     set(CMAKE_XCODE_ATTRIBUTE_C "${CMAKE_BINARY_DIR}/launch-c")
+#     set(CMAKE_XCODE_ATTRIBUTE_CXX "${CMAKE_BINARY_DIR}/launch-cxx")
+#     set(CMAKE_XCODE_ATTRIBUTE_LD "${CMAKE_BINARY_DIR}/launch-c")
+#     set(CMAKE_XCODE_ATTRIBUTE_LDPLUSPLUS "${CMAKE_BINARY_DIR}/launch-cxx")
+
+    set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_CC "${CMAKE_BINARY_DIR}/launch-c")
+    set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_CXX "${CMAKE_BINARY_DIR}/launch-cxx")
+    set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_LD "${CMAKE_BINARY_DIR}/launch-c")
+    set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_LDPLUSPLUS "${CMAKE_BINARY_DIR}/launch-cxx")
+
+  else()
+    # Support Unix Makefiles and Ninja
+    set(CMAKE_C_COMPILER_LAUNCHER "${CMAKE_BINARY_DIR}/launch-c")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CMAKE_BINARY_DIR}/launch-cxx")
+  endif()
+ endif()
+

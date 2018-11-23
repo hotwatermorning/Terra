@@ -17,7 +17,6 @@ public:
         assert(listeners_.empty());
     }
     
-    std::vector<ListenerType *> listeners_;
     void AddListener(ListenerType *li)
     {
         auto found = std::find(listeners_.begin(), listeners_.end(), li);
@@ -45,6 +44,9 @@ public:
         auto tmp = listeners_; // コールバックの中で、Add/Removeを呼び出せるように
         std::for_each(tmp.rbegin(), tmp.rend(), f);
     };
+    
+private:
+    std::vector<ListenerType *> listeners_;
 };
 
 NS_HWM_END

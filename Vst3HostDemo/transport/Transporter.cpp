@@ -67,6 +67,20 @@ bool Transporter::IsPlaying() const {
     return transport_info_.playing_;
 }
 
+void Transporter::SetStop()
+{
+    auto pair = Alter(lf_,
+                      transport_info_,
+                      [&](TransportInfo &info) {
+                          transport_info_.playing_ = false;
+                          transport_info_.sample_pos_ = transport_info_.last_moved_pos_;
+                      });
+    
+    listeners_.Invoke([&pair](auto *li) {
+        li->OnChanged(pair.first, pair.second);
+    });
+}
+
 void Transporter::SetPlaying(bool is_playing)
 {
     auto pair = Alter(lf_,

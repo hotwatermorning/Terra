@@ -4,6 +4,9 @@ NS_HWM_BEGIN
 
 struct TransportInfo {
     double sample_rate_ = 44100.0;
+    
+    //! last changed position
+    SampleCount last_moved_pos_ = 0;
     SampleCount sample_pos_ = 0;
     SampleCount last_end_pos_ = 0;
     double ppq_pos_ = 0;

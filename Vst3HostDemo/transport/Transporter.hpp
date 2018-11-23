@@ -38,6 +38,7 @@ public:
     void MoveTo(SampleCount pos);
     bool IsPlaying() const;
     void SetPlaying(bool is_playing);
+    void SetStop();
     void SetLoopRange(SampleCount begin, SampleCount end);
     void SetLoopEnabled(bool enabled);
     std::pair<SampleCount, SampleCount> GetLoopRange() const;

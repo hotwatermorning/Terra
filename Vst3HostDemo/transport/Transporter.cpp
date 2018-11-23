@@ -2,6 +2,12 @@
 
 NS_HWM_BEGIN
 
+Transporter::Transporter()
+{}
+
+Transporter::~Transporter()
+{}
+
 TransportInfo Transporter::GetCurrentState() const
 {
     auto lock = lf_.make_lock();
@@ -58,49 +64,6 @@ bool Transporter::IsLoopEnabled() const
 {
     auto lock = lf_.make_lock();
     return transport_info_.loop_enabled_;
-}
-
-void Transporter::Traverse(SampleCount length, ITraversalCallback *cb)
-{
-    SampleCount remain = length;
-    
-    for( ; remain > 0 ; ) {
-        TransportInfo ti = (lf_.make_lock(),transport_info_);
-        
-        auto num_to_process = 0;
-        bool jump_to_begin = 0;
-        
-        if(ti.IsLoopValid() && ti.playing_) {
-            if(ti.sample_pos_ < ti.loop_begin_) {
-                num_to_process = std::min(ti.sample_pos_ + remain, ti.loop_begin_) - ti.sample_pos_;
-            } else if(ti.sample_pos_ < ti.loop_end_) {
-                num_to_process = std::min(ti.sample_pos_ + remain, ti.loop_end_) - ti.sample_pos_;
-                if(ti.sample_pos_ + num_to_process == ti.loop_end_) {
-                    jump_to_begin = true;
-                }
-            } else {
-                num_to_process = remain;
-            }
-        } else {
-            num_to_process = remain;
-        }
-        
-        cb->Process(ti, num_to_process);
-        
-        auto lock = lf_.make_lock();
-        if(transport_info_.sample_pos_ == ti.sample_pos_ && ti.playing_) {
-            if(jump_to_begin) {
-                transport_info_.sample_pos_ = transport_info_.loop_begin_;
-            } else {
-                transport_info_.sample_pos_ += num_to_process;
-            }
-            transport_info_.ppq_pos_ = GetPPQPos(transport_info_);
-            transport_info_.last_end_pos_ = ti.sample_pos_ + num_to_process;
-        }
-        lock.unlock();
-        
-        remain -= num_to_process;
-    }
 }
 
 NS_HWM_END

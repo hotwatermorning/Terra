@@ -1,4 +1,5 @@
 #include "Project.hpp"
+#include "../transport/Traverser.hpp"
 
 NS_HWM_BEGIN
 
@@ -279,7 +280,7 @@ void Project::StartProcessing(double sample_rate,
 
 template<class F>
 class TraversalCallback
-:   public Transporter::ITraversalCallback
+:   public Transporter::Traverser::ITraversalCallback
 {
 public:
     TraversalCallback(F f) : f_(std::forward<F>(f)) {}
@@ -391,7 +392,8 @@ void Project::Process(SampleCount block_size, float const * const * input, float
         num_processed += length;
     });
     
-    pimpl_->tp_.Traverse(block_size, &cb);
+    Transporter::Traverser tv;
+    tv.Traverse(&pimpl_->tp_, block_size, &cb);
 }
 
 void Project::StopProcessing()

@@ -1,812 +1,425 @@
 #include "./GUI.hpp"
 #include "../App.hpp"
+#include "../project/Project.hpp"
 
+#include <wx/tglbtn.h>
 #include <wx/stdpaths.h>
 
-#include <set>
-#include <fmt/ostream.h>
+#include <vector>
 
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
 
 #include "../misc/StrCnv.hpp"
-
-namespace fmt {
-    template <>
-    struct formatter<Steinberg::ViewRect> {
-        template <typename ParseContext>
-        constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
-        
-        template <typename FormatContext>
-        auto format(Steinberg::ViewRect const &rc, FormatContext &ctx) {
-            return format_to(ctx.begin(), "({}, {}, {}, {})", rc.left, rc.top, rc.right, rc.bottom);
-        }
-    };
-}
+#include "./PluginEditor.hpp"
+#include "./Keyboard.hpp"
 
 NS_HWM_BEGIN
 
-class ParameterSlider
-:   public wxPanel
+bool IsPushed(wxButton const *btn)
+{
+    return false;
+}
+
+bool IsPushed(wxToggleButton const *btn)
+{
+    return btn->GetValue();
+}
+
+class ImageButton
+:   public wxWindow
 {
 public:
-    enum { kDefaultValueMax = 1'000'000 };
-    
-    UInt32 ToInteger(double normalized) const {
-        return std::min<UInt32>(value_max_-1, std::round(normalized * value_max_));
-    }
-    
-    double ToNormalized(UInt32 value) const {
-        return value / (double)value_max_;
-    }
-    
-    ParameterSlider(wxWindow *parent,
-                    Vst3Plugin *plugin,
-                    UInt32 param_index,
-                    wxPoint pos = wxDefaultPosition,
-                    wxSize size = wxDefaultSize)
-    :   wxPanel(parent, wxID_ANY, pos, size)
-    ,   plugin_(plugin)
-    ,   param_index_(param_index)
+    ImageButton(wxWindow *parent,
+                bool is_3state,
+                wxImage normal,
+                wxImage hover,
+                wxImage pushed,
+                wxImage hover_pushed,
+                wxPoint pos = wxDefaultPosition,
+                wxSize size = wxDefaultSize)
+    :   wxWindow(parent, wxID_ANY, pos, size)
+    ,   normal_(normal)
+    ,   hover_(hover)
+    ,   pushed_(pushed)
+    ,   hover_pushed_(hover_pushed)
+    ,   is_3state_(is_3state)
     {
-        auto param_info = plugin->GetParameterInfoByIndex(param_index);
-        auto value = plugin->GetParameterValueByIndex(param_index);
-        
-        UInt32 const kTitleWidth = 150;
-        UInt32 const kSliderWidth = size.GetWidth();
-        UInt32 const kDispWidth = 100;
-        
-        if(param_info.step_count_ >= 1) {
-            value_max_ = param_info.step_count_;
-        }
-        
-        name_ = new wxStaticText(this, wxID_ANY, param_info.title_,
-                                 wxPoint(0, 0), wxSize(kTitleWidth, size.GetHeight())
-                                 );
-        name_->SetToolTip(param_info.title_);
-        
-        slider_ = new wxSlider(this, wxID_ANY, ToInteger(value), 0, value_max_,
-                               wxPoint(0, 0), wxSize(kSliderWidth, size.GetHeight()),
-                               wxSL_HORIZONTAL
-                               );
-        
-        auto init_text = plugin_->ValueToStringByIndex(param_index,
-                                                       plugin_->GetParameterValueByIndex(param_index));
-        disp_ = new wxTextCtrl(this, wxID_ANY, init_text, wxDefaultPosition, wxSize(kDispWidth, size.GetHeight()), wxTE_PROCESS_ENTER);
-        
-        auto hbox = new wxBoxSizer(wxHORIZONTAL);
-        hbox->Add(name_, wxSizerFlags(0).Expand());
-        hbox->Add(slider_, wxSizerFlags(1).Expand());
-        hbox->Add(disp_, wxSizerFlags(0).Expand());
-        
-        SetSizer(hbox);
-        
-        slider_->Bind(wxEVT_SLIDER, [id = param_info.id_, this](auto &) {
-            auto const normalized = ToNormalized(slider_->GetValue());
-            plugin_->EnqueueParameterChange(id, normalized);
-            
-            auto str = plugin_->ValueToStringByID(id, normalized);
-            disp_->SetValue(str);
+        SetMinSize(normal.GetSize());
+        SetSize(normal.GetSize());
+        Bind(wxEVT_ENTER_WINDOW, [this](auto &ev) {
+            is_hover_ = true;
+            Refresh();
         });
         
-        auto apply_text = [id = param_info.id_, this](auto &e) {
-            hwm::dout << "EVT TEXT" << std::endl;
-            auto normalized = plugin_->StringToValueByID(id, disp_->GetValue());
-            if(normalized >= 0) {
-                plugin_->EnqueueParameterChange(id, normalized);
-                slider_->SetValue(ToInteger(normalized));
-            }
+        Bind(wxEVT_LEAVE_WINDOW, [this](auto &ev) {
+            is_hover_ = false;
+            is_being_pressed_ = false;
+            Refresh();
+        });
+        
+        auto left_down = [this](auto &ev) {
+            is_being_pressed_ = true;
+            Refresh();
         };
         
-        disp_->Bind(wxEVT_TEXT_ENTER, apply_text);
-        disp_->Bind(wxEVT_KILL_FOCUS, apply_text);
-    }
-    
-    void UpdateSliderValue()
-    {
-        auto const normalized = plugin_->GetParameterValueByIndex(param_index_);
-        slider_->SetValue(ToInteger(normalized));
-        auto str = plugin_->ValueToStringByIndex(param_index_, normalized);
-        disp_->SetValue(str);
-    }
-    
-private:
-    wxStaticText *name_ = nullptr;
-    wxSlider *slider_ = nullptr;
-    wxTextCtrl *disp_ = nullptr;
-    Vst3Plugin *plugin_ = nullptr;
-    UInt32 param_index_ = -1;
-    UInt32 value_max_ = kDefaultValueMax;
-};
-
-class GenericParameterView
-:   public wxPanel
-{
-    constexpr static UInt32 kParameterHeight = 20;
-    constexpr static UInt32 kPageSize = 3 * kParameterHeight;
-    constexpr static UInt32 kSBWidth = 20;
-    
-public:
-    GenericParameterView(wxWindow *parent,
-                         Vst3Plugin *plugin)
-    :   wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(40, 40))
-    {
-        UInt32 const num = plugin->GetNumParams();
+        Bind(wxEVT_LEFT_DOWN, left_down);
+        Bind(wxEVT_LEFT_DCLICK, [](auto &ev) {});
         
-        sb_ = new wxScrollBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxSB_VERTICAL);
-        sb_->SetScrollbar(0, 1, num * kParameterHeight, 1);
-        
-        for(UInt32 i = 0; i < num; ++i) {
-            auto slider = new ParameterSlider(this, plugin, i);
-            sliders_.push_back(slider);
-        }
-        
-        sb_->Bind(wxEVT_SCROLL_PAGEUP, [this](auto &ev) { Layout(); });
-        sb_->Bind(wxEVT_SCROLL_PAGEDOWN, [this](auto &ev) { Layout(); });
-        sb_->Bind(wxEVT_SCROLL_LINEUP, [this](auto &ev) { Layout(); });
-        sb_->Bind(wxEVT_SCROLL_LINEDOWN, [this](auto &ev) { Layout(); });
-        sb_->Bind(wxEVT_SCROLL_TOP, [this](auto &ev) { Layout(); });
-        sb_->Bind(wxEVT_SCROLL_BOTTOM, [this](auto &ev) { Layout(); });
-        sb_->Bind(wxEVT_SCROLL_THUMBTRACK, [this](auto &ev) { Layout(); });
-        
-        Bind(wxEVT_MOUSEWHEEL, [this](wxMouseEvent &ev) {
-            hwm::dout << "{}, {}"_format(ev.GetWheelDelta(),
-                                         ev.GetWheelRotation())
-            << std::endl;
-            sb_->SetThumbPosition(sb_->GetThumbPosition() - ev.GetWheelRotation());
-            Layout();
+        Bind(wxEVT_LEFT_UP, [this](auto &ev) {
+            if(!is_hover_) { return; }
+            if(is_3state_) {
+                is_pushed_ = !is_pushed_;
+            } else {
+                is_pushed_ = false;
+            }
+            is_being_pressed_ = false;
+            
+            wxEventType type;
+            if(is_3state_) {
+                type = wxEVT_TOGGLEBUTTON;
+            } else {
+                type = wxEVT_BUTTON;
+            }
+            wxCommandEvent new_ev(type);
+            wxPostEvent(this, new_ev);
+            Refresh();
         });
-        Layout();
+        
+        Bind(wxEVT_PAINT, [this](auto &ev) {
+            OnPaint();
+        });
     }
     
-    bool Layout() override
-    {
-        auto const rc = GetClientRect();
-        
-        sb_->SetSize(rc.GetWidth() - kSBWidth, 0, kSBWidth, rc.GetHeight());
-        
-        auto tp = sb_->GetThumbPosition();
-        tp = std::min<UInt32>(tp, sliders_.size() * kParameterHeight - rc.GetHeight());
-        sb_->SetScrollbar(tp, rc.GetHeight(), sliders_.size() * kParameterHeight, kPageSize);
-        
-        tp = sb_->GetThumbPosition();
-        
-        for(UInt32 i = 0; i < sliders_.size(); ++i) {
-            auto s = sliders_[i];
-            s->SetSize(0, i * kParameterHeight - tp, rc.GetWidth() - kSBWidth, kParameterHeight);
-        }
-
-        return wxPanel::Layout();
-    }
+    bool IsPushed() const { return is_pushed_; }
+    void SetPushed(bool status) { is_pushed_ = status; }
     
-    void UpdateParameters()
+    void OnPaint()
     {
-        for(auto slider: sliders_) {
-            slider->UpdateSliderValue();
+        wxImage img;
+        if(is_being_pressed_) {
+            img = pushed_;
+        } else if(is_hover_) {
+            if(is_pushed_) {
+                img = hover_pushed_;
+            } else {
+                img = hover_;
+            }
+        } else if(is_pushed_) {
+            img = pushed_;
+        } else {
+            img = normal_;
         }
+        
+        wxPaintDC dc(this);
+        dc.DrawBitmap(img, 0, 0);
     }
     
 private:
-    std::vector<ParameterSlider *> sliders_;
-    wxScrollBar *sb_;
+    wxImage normal_;
+    wxImage hover_;
+    wxImage pushed_;
+    wxImage hover_pushed_;
+    bool is_hover_ = false;
+    bool is_3state_ = false;
+    bool is_being_pressed_ = false;
+    bool is_pushed_ = false;
 };
 
-class PluginEditorControl
-:   public wxPanel
+class ImageAsset
 {
 public:
-    class Listener
-    {
-    protected:
-        Listener() {}
-    public:
-        virtual ~Listener() {}
-        virtual void OnSelectPrevProgram() {}
-        virtual void OnSelectNextProgram() {}
-        virtual void OnSwitchToGenericEditor(bool use_generic_editor) {}
-    };
+    ImageAsset()
+    :   num_cols_(0)
+    ,   num_rows_(0)
+    {}
     
-    PluginEditorControl(wxWindow *parent,
-                        bool has_editor,
-                        bool use_dedicated_editor = false,
-                        wxPoint pos = wxDefaultPosition,
-                        wxSize size = wxDefaultSize)
-    :   wxPanel(parent, wxID_ANY, pos, size)
-    ,   has_editor_(has_editor)
-    ,   use_dedicated_editor_(use_dedicated_editor)
+    ImageAsset(String filepath, int num_cols, int num_rows)
+    :   num_cols_(num_cols)
+    ,   num_rows_(num_rows)
     {
-        btn_prev_program_ = new wxButton(this, wxID_ANY, L"Prev", wxDefaultPosition, wxSize(60, size.GetHeight()));
-        btn_next_program_ = new wxButton(this, wxID_ANY, L"Next", wxDefaultPosition, wxSize(60, size.GetHeight()));
-        chk_gen_editor_ = new wxCheckBox(this, wxID_ANY, L"Generic Editor", wxDefaultPosition, wxSize(120, size.GetHeight()));
+        assert(num_cols_ > 1);
+        assert(num_rows_ > 1);
         
-        assert( (has_editor_ == false && use_dedicated_editor_) == false );
+        image_ = wxImage(filepath);
         
-        // not implemented yet.
-        btn_prev_program_->Disable();
-        btn_next_program_->Disable();
+        assert(image_.GetWidth() % num_cols_ == 0);
+        assert(image_.GetHeight() % num_rows_ == 0);
+    }
+    
+    wxImage GetImage(int col, int row) const
+    {
+        assert(0 <= col && col < num_cols_);
+        assert(0 <= row && row < num_rows_);
         
-        if(has_editor_ == false) {
-            chk_gen_editor_->Disable();
-        }
-        if(use_dedicated_editor_) {
-            chk_gen_editor_->SetValue(true);
-        }
+        auto const w = image_.GetWidth() / num_cols_;
+        auto const h = image_.GetHeight() / num_rows_;
+        
+        wxRect r(wxPoint(w * col, h * row),
+                 wxSize(w, h)
+                 );
+        
+        return image_.GetSubImage(r);
+    }
+    
+private:
+    wxImage image_;
+    int num_cols_;
+    int num_rows_;
+};
+
+class TransportPanel
+:   public wxPanel
+,   MyApp::ProjectActivationListener
+,   Transporter::ITransportStateListener
+{
+    static
+    String GetImagePath(String filename)
+    {
+        return wxStandardPaths::Get().GetResourcesDir() + L"/transport/" + filename;
+    }
+    
+public:
+    TransportPanel(wxWindow *parent)
+    :   wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize)
+    {
+        asset_ = ImageAsset(GetImagePath(L"transport_buttons.png"), 6, 4);
+
+        btn_rewind_     = new ImageButton(this, false, asset_.GetImage(0, 0), asset_.GetImage(0, 1), asset_.GetImage(0, 0), asset_.GetImage(0, 1));
+        btn_stop_       = new ImageButton(this, false, asset_.GetImage(1, 0), asset_.GetImage(1, 1), asset_.GetImage(1, 0), asset_.GetImage(1, 1));
+        btn_play_       = new ImageButton(this, true,  asset_.GetImage(2, 0), asset_.GetImage(2, 1), asset_.GetImage(2, 2), asset_.GetImage(2, 3));
+        btn_forward_    = new ImageButton(this, false, asset_.GetImage(3, 0), asset_.GetImage(3, 1), asset_.GetImage(3, 0), asset_.GetImage(3, 1));
+        btn_loop_       = new ImageButton(this, true,  asset_.GetImage(4, 0), asset_.GetImage(4, 1), asset_.GetImage(4, 2), asset_.GetImage(4, 3));
+        //btn_metronome_  = new ImageButton(this, true,  asset_.GetImage(5, 0), asset_.GetImage(5, 1), asset_.GetImage(5, 2), asset_.GetImage(5, 3));
         
         auto hbox = new wxBoxSizer(wxHORIZONTAL);
-        hbox->AddSpacer(20);
-        hbox->Add(btn_prev_program_, wxSizerFlags(0).Expand());
-        hbox->Add(btn_next_program_, wxSizerFlags(0).Expand());
-        hbox->Add(chk_gen_editor_, wxSizerFlags(0).Expand());
+        
+        hbox->Add(btn_rewind_,      wxSizerFlags(0));
+        hbox->Add(btn_stop_,        wxSizerFlags(0));
+        hbox->Add(btn_play_,        wxSizerFlags(0));
+        hbox->Add(btn_forward_,     wxSizerFlags(0));
+        hbox->Add(btn_loop_,        wxSizerFlags(0));
+        //hbox->Add(btn_metronome_,   wxSizerFlags(0));
         hbox->AddStretchSpacer(1);
         
         SetSizer(hbox);
         
-        btn_prev_program_->Bind(wxEVT_BUTTON, [this](auto &ev) {
-            listeners_.Invoke([](auto *x) {
-                x->OnSelectPrevProgram();
-            });
-        });
-        btn_next_program_->Bind(wxEVT_BUTTON, [this](auto &ev) {
-            listeners_.Invoke([](auto *x) {
-                x->OnSelectNextProgram();
-            });
-        });
-        chk_gen_editor_->Bind(wxEVT_CHECKBOX, [this](auto &ev) {
-            listeners_.Invoke([this](auto *x) {
-                x->OnSwitchToGenericEditor(chk_gen_editor_->IsChecked());
-            });
-        });
+        btn_rewind_->Bind(wxEVT_BUTTON, [this](auto &ev) { OnRewind(); });
+        btn_stop_->Bind(wxEVT_BUTTON, [this](auto &ev) { OnStop(); });
+        btn_play_->Bind(wxEVT_TOGGLEBUTTON, [this](auto &ev) { OnPlay(); });
+        btn_forward_->Bind(wxEVT_BUTTON, [this](auto &ev) { OnForward(); });
+        btn_loop_->Bind(wxEVT_TOGGLEBUTTON, [this](auto &ev) { OnLoop(); });
+        //btn_metronome_->Bind(wxEVT_TOGGLEBUTTON, [this](auto &ev) { OnMetronome(); });
+        
+        MyApp::GetInstance()->AddProjectActivationListener(this);
+        
+        auto pj = Project::GetInstance();
+        auto &tp = pj->GetTransporter();
+        
+        tp.AddListener(this);
+        
+        btn_play_->SetPushed(tp.IsPlaying());
+        btn_loop_->SetPushed(tp.IsLoopEnabled());
     }
-    
-    ~PluginEditorControl()
-    {}
-    
-    void AddListener(Listener *li) { listeners_.AddListener(li); }
-    void RemoveListener(Listener const *li) { listeners_.RemoveListener(li); }
-    
+
 private:
-    wxButton *btn_next_program_;
-    wxButton *btn_prev_program_;
-    wxCheckBox *chk_gen_editor_;
-    bool has_editor_ = false;
-    bool use_dedicated_editor_ = false;
-    ListenerService<Listener> listeners_;
-};
-
-class PluginEditorContents
-:   public wxWindow
-,   public Vst3Plugin::PlugFrameListener
-{
-public:
-    PluginEditorContents(wxWindow *parent,
-                         Vst3Plugin *target_plugin)
-    :   wxWindow(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize)
+    ImageAsset      asset_;
+    ImageButton     *btn_rewind_;
+    ImageButton     *btn_stop_;
+    ImageButton     *btn_play_;
+    ImageButton     *btn_forward_;
+    ImageButton     *btn_loop_;
+    ImageButton     *btn_metronome_;
+    
+    void OnRewind()
     {
-        plugin_ = target_plugin;
-        
-        // いくつかのプラグイン (Arturia SEM V2やOszillos Mega Scopeなど) では、
-        // IPlugViewに実際のウィンドウハンドルをattachするまえに、IPlugViewのサイズでウィンドウのサイズを設定しておかなければ、
-        // 正しくプラグインウィンドウが表示されなかった。
-        auto rc = plugin_->GetPreferredRect();
-        OnResizePlugView(rc);
-        
-        plugin_->OpenEditor(GetHandle(), this);
-        
-        Bind(wxEVT_SHOW, [this](auto &ev) {
-            if(IsShown() && plugin_->IsEditorOpened() == false) {
-                auto rc = plugin_->GetPreferredRect();
-                OnResizePlugView(rc);
-                plugin_->OpenEditor(GetHandle(), this);
-            } else {
-                plugin_->CloseEditor();
-            }
-        });
-        
-        Show(true);
+        auto pj = Project::GetActiveProject();
+        auto &tp = pj->GetTransporter();
+        tp.Rewind();
     }
     
-    ~PluginEditorContents() {
-        int x = 0;
-        x = 1;
-    }
-    
-    void CloseEditor()
+    void OnStop()
     {
-        plugin_->CloseEditor();
+        auto pj = Project::GetActiveProject();
+        auto &tp = pj->GetTransporter();
+        tp.SetStop();
     }
     
-private:
-    Vst3Plugin *plugin_ = nullptr;
-    
-    void OnResizePlugView(Steinberg::ViewRect const &rc) override
+    void OnPlay()
     {
-        hwm::dout << "New view size: {}"_format(rc) << std::endl;
-        
-        wxSize size(rc.getWidth(), rc.getHeight());
-        SetSize(size);
-        SetMinSize(size);
-        SetMaxSize(size);
-        GetParent()->Layout();
+        auto pj = Project::GetActiveProject();
+        auto &tp = pj->GetTransporter();
+        tp.SetPlaying(tp.IsPlaying() == false);
     }
-};
-
-class PluginEditorFrame
-:   public wxFrame
-,   public PluginEditorControl::Listener
-,   public MyApp::Vst3PluginLoadListener
-{
-    static constexpr UInt32 kControlHeight = 20;
-public:
-    PluginEditorFrame(wxWindow *parent,
-                      Vst3Plugin *target_plugin,
-                      std::function<void()> on_destroy)
-    :   wxFrame(parent,
-                wxID_ANY,
-                target_plugin->GetEffectName(),
-                wxDefaultPosition,
-                wxDefaultSize,
-                wxDEFAULT_FRAME_STYLE & ~(/*wxRESIZE_BORDER | */wxMAXIMIZE_BOX)
-                )
+    
+    void OnForward()
     {
-        MyApp::GetInstance()->AddVst3PluginLoadListener(this);
-        
-        on_destroy_ = on_destroy;
-        
-        Bind(wxEVT_CLOSE_WINDOW, [this](auto &ev) {
-            contents_->CloseEditor();
-            Destroy();
-        });
-        
-        control_ = new PluginEditorControl(this, target_plugin->HasEditor());
-        control_->AddListener(this);
-        
-        contents_ = new PluginEditorContents(this, target_plugin);
-        
-        genedit_ = new GenericParameterView(this, target_plugin);
-        genedit_->Hide();
-        
-        SetMaxSize(wxSize(1000, 1000));
-        SetMinSize(wxSize(10, 10));
-        
-        SetAutoLayout(true);
-        Show(true);
+        auto pj = Project::GetActiveProject();
+        auto &tp = pj->GetTransporter();
+        tp.FastForward();
     }
     
-    ~PluginEditorFrame() {
-        MyApp::GetInstance()->RemoveVst3PluginLoadListener(this);
-        control_->RemoveListener(this);
-    }
-    
-    bool Destroy() override
+    void OnLoop()
     {
-        on_destroy_();
-        return wxFrame::Destroy();
+        auto pj = Project::GetActiveProject();
+        auto &tp = pj->GetTransporter();
+        tp.SetLoopEnabled(btn_loop_->IsPushed());
     }
     
-    bool Layout() override
+    void OnMetronome()
     {
-        if(contents_ && contents_->IsShown()) {
-            auto rc = contents_->GetSize();
-            rc.IncBy(0, kControlHeight);
-            SetClientSize(rc);
-            
-            control_->SetSize(0, 0, rc.GetWidth(), kControlHeight);
-            contents_->SetSize(0, kControlHeight, rc.GetWidth(), rc.GetHeight() - kControlHeight);
-        } else if(genedit_ && genedit_->IsShown()) {
-            auto rc = GetClientSize();
-            
-            control_->SetSize(0, 0, rc.GetWidth(), kControlHeight);
-            genedit_->SetSize(0, kControlHeight, rc.GetWidth(), rc.GetHeight() - kControlHeight);
-            genedit_->Layout();
-        }
-        return true;
+//        auto pj = Project::GetActiveProject();
+//        pj->SetMetronome(btn_metronome_->GetValue());;
     }
     
-private:
-    void OnSelectPrevProgram() override
+    void OnBeforeProjectDeactivated(Project *pj) override
     {
-        //
-    }
-    
-    void OnSelectNextProgram() override
-    {
-        //
-    }
-    
-    void OnSwitchToGenericEditor(bool use_generic_editor) override
-    {
-        if(use_generic_editor) {
-            genedit_->Show();
-            contents_->Hide();
-            contents_->SetSize(1, 1);
-            SetSize(500, 500);
-            SetMinSize(wxSize(10, 10));
-            SetMaxSize(wxSize(2000, 2000));
-            auto style = (GetWindowStyle() | wxRESIZE_BORDER);
-            SetWindowStyle(style);
-        } else {
-            genedit_->Hide();
-            contents_->Show();
-            auto style = (GetWindowStyle() & (~wxRESIZE_BORDER));
-            SetWindowStyle(style);
-        }
-        Layout();
-    }
-    
-    void OnBeforeVst3PluginUnloaded(Vst3Plugin *plugin) override
-    {
-        Close();
-    }
-    
-private:    
-    std::function<void()> on_destroy_;
-    PluginEditorContents *contents_ = nullptr;
-    PluginEditorControl *control_ = nullptr;
-    GenericParameterView *genedit_ = nullptr;
-    UInt32 target_unit_index_ = -1;
-};
-
-class Keyboard
-:   public wxPanel
-{
-public:
-    using PlayingNoteList = std::array<bool, 128>;
-    
-    static
-    wxImage LoadImage(String filename)
-    {
-        return wxStandardPaths::Get().GetResourcesDir() + L"/keyboard/" + filename;
-    }
-    
-    Keyboard(wxWindow *parent, wxPoint pos = wxDefaultPosition, wxSize size = wxDefaultSize)
-    :   wxPanel(parent, wxID_ANY, pos, size)
-    {
-        img_white_          = LoadImage(L"pianokey_white.png");
-        img_white_pushed_   = LoadImage(L"pianokey_white_pushed.png");
-        img_white_pushed_contiguous_   = LoadImage(L"pianokey_white_pushed_contiguous.png");
-        img_black_          = LoadImage(L"pianokey_black.png");
-        img_black_pushed_   = LoadImage(L"pianokey_black_pushed.png");
+        auto &tp = pj->GetTransporter();
+        tp.RemoveListener(this);
         
-        img_white_.Rescale(kKeyWidth, kWhiteKeyHeight);
-        img_white_pushed_.Rescale(kKeyWidth, kWhiteKeyHeight);
-        img_white_pushed_contiguous_.Rescale(kKeyWidth, kWhiteKeyHeight);
-        img_black_.Rescale(kKeyWidth+1, kBlackKeyHeight);
-        img_black_pushed_.Rescale(kKeyWidth+1, kBlackKeyHeight);
-        
-        Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(); });
-        
-        timer_.Bind(wxEVT_TIMER, [this](auto &ev) { OnTimer(); });
-        timer_.Start(50);
-        Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { OnLeftDown(ev); });
-        Bind(wxEVT_LEFT_UP, [this](auto &ev) { OnLeftUp(ev); });
-        Bind(wxEVT_MOTION, [this](auto &ev) { OnMotion(ev); });
-        Bind(wxEVT_KEY_DOWN, [this](auto &ev) { OnKeyDown(ev); });
-        Bind(wxEVT_KEY_UP, [this](auto &ev) { OnKeyUp(ev); });
-        
-        key_code_for_sample_note_.fill(0);
+        MyApp::GetInstance()->RemoveProjectActivationListener(this);
     }
     
-    ~Keyboard()
-    {}
-    
-    static constexpr int kKeyWidth = 16;
-    static constexpr int kBlackKeyDispOffset = 6;
-    static constexpr int kBlackKeyDispWidth = 11;
-    static constexpr int kNumKeys = 128;
-    static constexpr int kNumWhiteKeys = 75;
-    static constexpr int kFullKeysWidth = kKeyWidth * kNumWhiteKeys;
-    static constexpr int kWhiteKeyHeight = 100;
-    static constexpr int kBlackKeyHeight = 60;
-    
-    static wxSize const kWhiteKey;
-    static wxSize const kBlackKey;
-    
-    static wxColor const kPlayingNoteColor;
-
-    template<class List>
-    static
-    bool IsFound(Int32 n, List const &list) {
-        return std::find(list.begin(), list.end(), n) != list.end();
-    }
-    
-    static std::vector<Int32> kWhiteKeyIndices;
-    static std::vector<Int32> kBlackKeyIndices;
-    
-    static
-    bool IsWhiteKey(Int32 note_number) { return IsFound(note_number % 12, kWhiteKeyIndices); }
-    
-    static
-    bool IsBlackKey(Int32 note_number) { return IsFound(note_number % 12, kBlackKeyIndices); }
-    
-    void OnPaint()
+    void OnChanged(TransportInfo const &old_state,
+                   TransportInfo const &new_state) override
     {
-        wxPaintDC dc(this);
-        
-        auto rect = GetClientRect();
-        
-        dc.SetPen(wxPen(wxColor(0x26, 0x1E, 0x00)));
-        dc.SetBrush(wxBrush(wxColor(0x26, 0x1E, 0x00)));
-        dc.DrawRectangle(rect);
-        
-        int const disp_half = rect.GetWidth() / 2;
-        int const disp_shift = kFullKeysWidth / 2 - disp_half;
- 
-        auto draw_key = [&](auto note_num, auto const &prop, auto const &img) {
-            int const octave = note_num / 12;
-            auto key_rect = prop.rect_;
-            key_rect.Offset(octave * kKeyWidth * 7 - disp_shift, 0);
-            
-            if(key_rect.GetLeft() >= rect.GetWidth()) { return; }
-            if(key_rect.GetRight() < 0) { return; }
-
-            dc.DrawBitmap(wxBitmap(img), key_rect.GetTopLeft());
-            
-//            if(is_playing) {
-//                col_pen = kKeyBorderColorPlaying;
-//                col_brush = kPlayingNoteColor;
-//                dc.SetPen(wxPen(col_pen));
-//                dc.SetBrush(wxBrush(col_brush));
-//            }
-//            dc.DrawRoundedRectangle(key_rect, 2);
+        auto differ = [&](auto const member) {
+            return old_state.*member != new_state.*member;
         };
         
-        for(int i = 0; i < kNumKeys; ++i) {
-            if(IsWhiteKey(i) == false) { continue; }
-            
-            bool const is_playing = playing_notes_[i];
-            bool next_pushed = false;
-            if(i < kNumKeys - 2) {
-                if(IsWhiteKey(i+1) && playing_notes_[i+1]) { next_pushed = true; }
-                else if(IsWhiteKey(i+2) && playing_notes_[i+2]) { next_pushed = true; }
-            }
-            
-            auto const &img
-            = (is_playing && next_pushed)
-            ? img_white_pushed_contiguous_
-            : (is_playing ? img_white_pushed_ : img_white_);
-            
-            draw_key(i, kKeyPropertyList[i % 12], img);
+        if(differ(&TransportInfo::playing_)) {
+            btn_play_->SetPushed(new_state.playing_);
+            btn_play_->Refresh();
         }
         
-        for(int i = 0; i < kNumKeys; ++i) {
-            if(IsBlackKey(i) == false) { continue; }
-            
-            bool const is_playing = playing_notes_[i];
-            
-            auto const &img = (is_playing ? img_black_pushed_ : img_black_);
-            draw_key(i, kKeyPropertyList[i % 12], img);
-        }
-        
-        auto font = wxFont(wxFontInfo(wxSize(8, 10)).Family(wxFONTFAMILY_DEFAULT));
-        dc.SetFont(font);
-        for(int i = 0; i < kNumKeys; i += 12) {
-            int const octave = i / 12;
-            dc.DrawLabel(wxString::Format("C%d", i / 12 - 2),
-                         wxBitmap(),
-                         wxRect(wxPoint(octave * kKeyWidth * 7 - disp_shift, rect.GetHeight() * 0.8),
-                                wxSize(kKeyWidth, 10)),
-                         wxALIGN_CENTER
-                         );
+        if(differ(&TransportInfo::loop_enabled_)) {
+            btn_loop_->SetPushed(new_state.loop_enabled_);
+            btn_loop_->Refresh();
         }
     }
-    
-    void OnLeftDown(wxMouseEvent const &ev)
+};
+
+class TimeIndicator
+:   public wxPanel
+,   public MyApp::ProjectActivationListener
+,   public Transporter::ITransportStateListener
+{
+public:
+    TimeIndicator(wxWindow *parent, wxPoint pos, wxSize size)
+    :   wxPanel(parent, wxID_ANY, pos, size)
     {
-        assert(last_dragging_note_ == std::nullopt);
-        OnMotion(ev);
+        timer_.Bind(wxEVT_TIMER, [this](auto &ev) { OnTimer(); });
+        timer_.Start(kIntervalSlow);
+
+        text_ = new wxStaticText(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxALIGN_CENTRE_HORIZONTAL);
+        
+        // geneva, tahoma
+        wxSize font_size(size.GetHeight() - 4, size.GetHeight() - 4);
+        auto font = wxFont(wxFontInfo(font_size).Family(wxFONTFAMILY_MODERN).FaceName("Geneva"));
+        text_->SetFont(font);
+        text_->SetForegroundColour(wxColour(0xCB, 0xCB, 0xCB));
+        text_->SetLabel("0000:00:000");
+        
+        auto vbox = new wxBoxSizer(wxVERTICAL);
+        vbox->AddStretchSpacer(1);
+        vbox->Add(text_, wxSizerFlags(0).Expand());
+        vbox->AddStretchSpacer(1);
+        SetSizer(vbox);
+        
+        MyApp::GetInstance()->AddProjectActivationListener(this);
+        
+        auto pj = Project::GetInstance();
+        assert(pj);
+        
+        auto &tp = pj->GetTransporter();
+        tp.AddListener(this);
+        
+        SetBackgroundColour(wxColour(0x3B, 0x3B, 0x3B));
     }
     
-    void OnLeftUp(wxMouseEvent const &ev)
+private:
+    UInt32 kIntervalSlow = 200;
+    UInt32 kIntervalFast = 16;
+    
+    wxTimer timer_;
+    TransportInfo last_info_;
+    wxStaticText *text_;
+    
+    void OnBeforeProjectDeactivated(Project *pj) override
     {
-        if(last_dragging_note_) {
-            SendSampleNoteOff(*last_dragging_note_);
-        }
+        auto &tp = pj->GetTransporter();
+        tp.RemoveListener(this);
         
-        last_dragging_note_ = std::nullopt;
+        MyApp::GetInstance()->RemoveProjectActivationListener(this);
     }
     
-    void OnMotion(wxMouseEvent const &ev)
+    void OnChanged(TransportInfo const &old_state,
+                   TransportInfo const &new_state) override
     {
-        if(ev.LeftIsDown() == false) { return; }
-        
-        auto pt = ev.GetPosition();
-        auto note = PointToNoteNumber(pt);
-        
-        if(last_dragging_note_ && last_dragging_note_ != note) {
-            SendSampleNoteOff(*last_dragging_note_);
-        }
-        
-        if(note) {
-            SendSampleNoteOn(*note);
-        }
-        
-        last_dragging_note_ = note;
-    }
-    
-    void OnKeyDown(wxKeyEvent const &ev)
-    {
-        if(ev.HasAnyModifiers()) { return; }
-        
-        auto uc = ev.GetUnicodeKey();
-        if(uc == WXK_NONE ) { return; }
-        
-        if(uc == kOctaveUp) {
-            if(key_base_ + 12 < 128) { key_base_ += 12; }
-            return;
-        } else if(uc == kOctaveDown) {
-            if(key_base_ - 12 >= 0) { key_base_ -= 12; }
+        auto to_tuple = [](TransportInfo const &info) {
+            return std::tie(info.ppq_pos_, info.time_sig_numer_, info.time_sig_denom_);
+        };
+        if(to_tuple(old_state) == to_tuple(new_state)) {
             return;
         }
         
-        auto found = std::find(kKeyTable.begin(), kKeyTable.end(), uc);
-        if(found == kKeyTable.end()) { return; }
-        int note_number = key_base_ + (found - kKeyTable.begin());
-        if(note_number >= 128) { return; }
+        auto const kTpqn = 480;
+        auto const tick = (Int64)(new_state.ppq_pos_ * kTpqn);
+        auto const beat_length = (kTpqn * 4) / new_state.time_sig_denom_;
+        auto const measure_length = beat_length * new_state.time_sig_numer_;
+        auto measure_pos = tick / measure_length;
+        auto beat_pos = (tick % measure_length) / beat_length;
+        auto tick_pos = tick % beat_length;
         
-        key_code_for_sample_note_[note_number] = uc;
-        SendSampleNoteOn(note_number);
-    }
-    
-    void OnKeyUp(wxKeyEvent const &ev)
-    {
-        auto uc = ev.GetUnicodeKey();
-        if(uc == WXK_NONE ) { return; }
-        
-        for(int i = 0; i < key_code_for_sample_note_.size(); ++i) {
-            if(key_code_for_sample_note_[i] == uc) {
-                SendSampleNoteOff(i);
-                key_code_for_sample_note_[i] = 0;
-            }
-        }
-    }
-    
-    std::optional<int> PointToNoteNumber(wxPoint pt)
-    {
-        auto rect = GetClientRect();
-        int const disp_half = rect.GetWidth() / 2;
-        int const disp_shift = kFullKeysWidth / 2 - disp_half;
-        
-        double const x = (pt.x + disp_shift);
-        int const kOctaveWidth = 7.0 * kKeyWidth;
-        
-        int octave = (int)(x / (double)kOctaveWidth);
-        int x_in_oct = x - (kOctaveWidth * octave);
-
-        std::optional<int> found;
-        
-        for(auto index: kBlackKeyIndices) {
-            auto key = kKeyPropertyList[index];
-            auto rc = key.rect_;
-            rc.SetWidth(kBlackKeyDispWidth);
-            rc.Inflate(1, 1);
-            if(rc.Contains(x_in_oct - kBlackKeyDispOffset, pt.y)) {
-                if(!found) { found = (index + octave * 12); }
-                break;
-            }
-        }
-        
-        for(auto index: kWhiteKeyIndices) {
-            auto key = kKeyPropertyList[index];
-            auto rc = key.rect_;
-            rc.Inflate(1, 1);
-            if(rc.Contains(x_in_oct, pt.y)) {
-                if(!found) { found = (index + octave * 12); }
-                break;
-            }
-        }
-
-        if(found && 0 <= *found && *found < 128) {
-            return *found;
-        } else {
-            return std::nullopt;
-        }
+        text_->SetLabel("{:04d}:{:02d}:{:03d}"_format(measure_pos + 1,
+                                                      beat_pos + 1,
+                                                      tick_pos)
+                        );
+        Layout();
     }
     
     void OnTimer()
     {
-        auto app = MyApp::GetInstance();
-        auto proj = app->GetProject();
+        auto pj = Project::GetInstance();
+        auto &tp = pj->GetTransporter();
+        
+        if(tp.IsPlaying() && timer_.GetInterval() == kIntervalSlow) {
+            timer_.Start(kIntervalFast);
+        } else if(tp.IsPlaying() == false && timer_.GetInterval() == kIntervalFast) {
+            timer_.Start(kIntervalSlow);
+        }
+        
+        auto new_info = tp.GetCurrentState();
+        OnChanged(last_info_, new_info);
+        last_info_ = new_info;
+    }
+};
 
-        std::vector<Project::PlayingNoteInfo> list_seq = proj->GetPlayingSequenceNotes();
-        std::vector<Project::PlayingNoteInfo> list_sample = proj->GetPlayingSampleNotes();
+class HeaderPanel
+:   public wxPanel
+{
+public:
+    HeaderPanel(wxWindow *parent)
+    :   wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize)
+    ,   col_bg_(10, 10, 10)
+    {
+        transport_buttons_ = new TransportPanel(this);
+        time_indicator_ = new TimeIndicator(this, wxDefaultPosition, wxSize(220, 36));
         
-        PlayingNoteList tmp = {};
+        auto hbox = new wxBoxSizer(wxHORIZONTAL);
+        hbox->Add(transport_buttons_, wxSizerFlags(0).Expand());
+        hbox->Add(time_indicator_, wxSizerFlags(0).Expand());
+        hbox->AddStretchSpacer();
         
-        for(auto &list: {list_seq, list_sample}) {
-            for(auto &note: list) {
-                tmp[note.pitch_] = true;
-            }
-        }
-                
-        if(tmp != playing_notes_) {
-            playing_notes_ = tmp;
-            Refresh();
-        }
+        SetSizer(hbox);
+        
+        SetBackgroundColour(col_bg_);
     }
     
 private:
-    void SendSampleNoteOn(UInt8 note_number)
-    {
-        assert(note_number < 128);
-        
-        auto app = MyApp::GetInstance();
-        auto proj = app->GetProject();
-
-        proj->SendSampleNoteOn(sample_note_channel, note_number);
-    }
-    
-    void SendSampleNoteOff(UInt8 note_number)
-    {
-        assert(note_number < 128);
-        
-        auto app = MyApp::GetInstance();
-        auto proj = app->GetProject();
-
-        proj->SendSampleNoteOff(sample_note_channel, note_number);
-    }
-    
-    void SendSampleNoteOffForAllKeyDown()
-    {
-        for(int i = 0; i < key_code_for_sample_note_.size(); ++i) {
-            if(key_code_for_sample_note_[i] != 0) {
-                SendSampleNoteOff(i);
-            }
-        }
-        key_code_for_sample_note_.fill(0);
-    }
-    
-private:
-    //std::optional<wxPoint> _;
-    std::optional<int> last_dragging_note_;
-    std::array<wxChar, 128> key_code_for_sample_note_;
-    wxTimer timer_;
-    PlayingNoteList playing_notes_;
-    int key_base_ = 60;
-    constexpr static wxChar kOctaveDown = L'Z';
-    constexpr static wxChar kOctaveUp = L'X';
-    static std::vector<wxChar> const kKeyTable;
-    int sample_note_channel = 0;
-    wxImage img_white_;
-    wxImage img_white_pushed_;
-    wxImage img_white_pushed_contiguous_;
-    wxImage img_black_;
-    wxImage img_black_pushed_;
-    
-    struct KeyProperty {
-        KeyProperty(int x, wxSize sz)
-        :   rect_(wxPoint(x, 0), sz)
-        {}
-        
-        wxRect rect_;
-        wxColour color_;
-    };
-    
-    std::vector<KeyProperty> const kKeyPropertyList {
-        { kKeyWidth * 0,            kWhiteKey },
-        { int(kKeyWidth * 0.5 - 4), kBlackKey },
-        { kKeyWidth * 1,            kWhiteKey },
-        { int(kKeyWidth * 1.5 - 2), kBlackKey },
-        { kKeyWidth * 2,            kWhiteKey },
-        { kKeyWidth * 3,            kWhiteKey },
-        { int(kKeyWidth * 3.5 - 4), kBlackKey },
-        { kKeyWidth * 4,            kWhiteKey },
-        { int(kKeyWidth * 4.5 - 3), kBlackKey },
-        { kKeyWidth * 5,            kWhiteKey },
-        { int(kKeyWidth * 5.5 - 2), kBlackKey },
-        { kKeyWidth * 6,            kWhiteKey },
-    };
+    wxPanel *transport_buttons_;
+    wxPanel *time_indicator_;
+    wxColor col_bg_;
 };
-
-std::vector<wxChar> const Keyboard::kKeyTable = {
-    L'A', L'W', L'S', L'E', L'D', L'F', L'T', L'G', L'Y', L'H', L'U', L'J', L'K', L'O', L'L', L'P'
-};
-
-wxSize const Keyboard::kWhiteKey { kKeyWidth, kWhiteKeyHeight };
-wxSize const Keyboard::kBlackKey { kKeyWidth, kBlackKeyHeight };
-
-wxColor const Keyboard::kPlayingNoteColor { 0x99, 0xEA, 0xFF };
-
-std::vector<Int32> Keyboard::kWhiteKeyIndices = { 0, 2, 4, 5, 7, 9, 11 };
-std::vector<Int32> Keyboard::kBlackKeyIndices = { 1, 3, 6, 8, 10 };
 
 class MyPanel
 :   public wxPanel
@@ -819,6 +432,8 @@ public:
     : wxPanel(parent)
     {
         this->SetBackgroundColour(wxColour(0x09, 0x21, 0x33));
+        
+        header_panel_ = new HeaderPanel(this);
         
         st_filepath_ = new wxStaticText(this, 100, "", wxDefaultPosition, wxSize(100, 20), wxST_NO_AUTORESIZE);
         st_filepath_->SetBackgroundColour(*wxWHITE);
@@ -842,6 +457,8 @@ public:
         btn_open_editor_ = new wxButton(this, wxID_ANY, "Open Editor", wxDefaultPosition, wxSize(100, 20));
         btn_open_editor_->Hide();
         
+        keyboard_ = CreateVirtualKeyboard(this);
+        
         auto hbox1 = new wxBoxSizer(wxHORIZONTAL);
         
         hbox1->Add(st_filepath_, wxSizerFlags(1).Centre().Border(wxRIGHT));
@@ -856,28 +473,29 @@ public:
         auto vbox3 = new wxBoxSizer(wxVERTICAL);
         vbox3->Add(btn_open_editor_, wxSizerFlags(0).Border(wxBOTTOM));
         
-        auto vbox4 = new wxStaticBoxSizer(wxVERTICAL, this, "Units & Programs");
+        unit_param_box_ = new wxStaticBoxSizer(wxVERTICAL, this, "Units && Programs");
+        unit_param_box_->GetStaticBox()->Hide();
+        unit_param_box_->GetStaticBox()->SetForegroundColour(wxColour(0xFF, 0xFF, 0xFF));
 
-        vbox4->Add(cho_select_unit_, wxSizerFlags(0).Expand().Border(wxBOTTOM|wxTOP, 2));
-        vbox4->Add(cho_select_program_, wxSizerFlags(0).Expand().Border(wxBOTTOM|wxTOP, 2));
+        unit_param_box_->Add(cho_select_unit_, wxSizerFlags(0).Expand().Border(wxBOTTOM|wxTOP, 2));
+        unit_param_box_->Add(cho_select_program_, wxSizerFlags(0).Expand().Border(wxBOTTOM|wxTOP, 2));
         
-        vbox3->Add(vbox4, wxSizerFlags(0).Expand().Border(wxBOTTOM|wxTOP));
+        vbox3->Add(unit_param_box_, wxSizerFlags(0).Expand().Border(wxBOTTOM|wxTOP));
         vbox3->AddStretchSpacer();
         
         hbox2->Add(vbox2, wxSizerFlags(1).Expand().Border(wxRIGHT));
         hbox2->Add(vbox3, wxSizerFlags(1).Expand().Border(wxLEFT));
   
         auto vbox = new wxBoxSizer(wxVERTICAL);
+        vbox->Add(header_panel_, wxSizerFlags(0).Expand());
         vbox->Add(hbox1, wxSizerFlags(0).Expand().Border(wxALL, 10));
         vbox->Add(hbox2, wxSizerFlags(1).Expand().Border(wxALL, 10));
-        
-        keyboard_ = new Keyboard(this, wxDefaultPosition, wxSize(0, Keyboard::kWhiteKeyHeight));
-        Bind(wxEVT_KEY_DOWN, [this](auto &ev) { keyboard_->OnKeyDown(ev); });
-        Bind(wxEVT_KEY_UP, [this](auto &ev) { keyboard_->OnKeyUp(ev); });
-        
         vbox->Add(keyboard_, wxSizerFlags(0).Expand());
         
         SetSizerAndFit(vbox);
+        
+        Bind(wxEVT_KEY_DOWN, [this](auto &ev) { keyboard_->HandleWindowEvent(ev); });
+        Bind(wxEVT_KEY_UP, [this](auto &ev) { keyboard_->HandleWindowEvent(ev); });
         
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(ev); });
         btn_load_module_->Bind(wxEVT_BUTTON, [this](auto &ev) { OnLoadModule(); });
@@ -965,6 +583,7 @@ private:
             cho_select_component_->Disable();
             OnSelectComponent();
         } else {
+            cho_select_component_->Enable();
             cho_select_component_->SetSelection(wxNOT_FOUND);
         }
         
@@ -1032,11 +651,13 @@ private:
         if(cho_select_unit_->GetCount() == 0) {
             // nothing to do for cho_select_unit_ and cho_select_program_
         } else if(cho_select_unit_->GetCount() == 1) {
+            unit_param_box_->GetStaticBox()->Show();
             cho_select_unit_->SetSelection(0);
             cho_select_unit_->Show();
             cho_select_unit_->Disable();
             OnSelectUnit();
         } else {
+            unit_param_box_->GetStaticBox()->Show();
             cho_select_unit_->SetSelection(0);
             cho_select_unit_->Show();
             cho_select_unit_->Enable();
@@ -1056,6 +677,7 @@ private:
         btn_open_editor_->Hide();
         cho_select_unit_->Hide();
         cho_select_program_->Hide();
+        unit_param_box_->GetStaticBox()->Hide();
     }
     
     void OnSelectComponent() {
@@ -1091,12 +713,12 @@ private:
     {
         if(editor_frame_) { return; }
         
-        editor_frame_ = new PluginEditorFrame(this,
-                                              MyApp::GetInstance()->GetPlugin(),
-                                              [this] {
-                                                  editor_frame_ = nullptr;
-                                                  btn_open_editor_->Enable();
-                                              });
+        editor_frame_ = CreatePluginEditorFrame(this,
+                                                MyApp::GetInstance()->GetPlugin(),
+                                                [this] {
+                                                    editor_frame_ = nullptr;
+                                                    btn_open_editor_->Enable();
+                                                });
         btn_open_editor_->Disable();
     }
     
@@ -1140,6 +762,7 @@ private:
         plugin->SetProgramIndex(sel, unit_id);
     }
     
+    wxStaticBoxSizer *unit_param_box_;
     wxStaticText    *st_filepath_;
     wxButton        *btn_load_module_;
     wxChoice        *cho_select_component_;
@@ -1147,8 +770,9 @@ private:
     wxChoice        *cho_select_unit_;
     wxChoice        *cho_select_program_;
     wxButton        *btn_open_editor_;
-    Keyboard        *keyboard_;
-    PluginEditorFrame *editor_frame_ = nullptr;
+    wxPanel         *keyboard_;
+    wxFrame         *editor_frame_ = nullptr;
+    wxPanel         *header_panel_ = nullptr;
 };
 
 enum

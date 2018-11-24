@@ -54,6 +54,9 @@ class Project final
 ,   public SingleInstance<Project>
 {
 public:
+    static
+    Project * GetActiveProject ();
+    
     struct PlayingNoteInfo
     {
         PlayingNoteInfo(UInt8 channel, UInt8 pitch, UInt8 velocity)

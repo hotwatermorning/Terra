@@ -139,6 +139,11 @@ Project::Project()
 Project::~Project()
 {}
 
+Project * Project::GetActiveProject()
+{
+    return GetInstance();
+}
+
 void Project::SetInstrument(std::shared_ptr<Vst3Plugin> plugin)
 {
     assert(plugin);

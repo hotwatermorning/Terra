@@ -48,6 +48,9 @@ private:
     LockFactory lf_;    
     TransportInfo transport_info_;
     ListenerService<ITransportStateListener> listeners_;
+
+    template<class F>
+    void AlterTransportInfo(F f);
 };
 
 NS_HWM_END

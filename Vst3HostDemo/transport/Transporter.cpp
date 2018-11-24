@@ -2,6 +2,23 @@
 
 NS_HWM_BEGIN
 
+template<class F>
+void Transporter::AlterTransportInfo(F f)
+{
+    TransportInfo old_info;
+    TransportInfo new_info;
+    
+    auto lock = lf_.make_lock();
+    old_info = transport_info_;
+    f(transport_info_);
+    new_info = transport_info_;
+    lock.unlock();
+    
+    listeners_.Invoke([&](auto *li) {
+        li->OnChanged(old_info, new_info);
+    });
+}
+
 Transporter::Transporter()
 {}
 
@@ -31,34 +48,12 @@ double GetPPQPos(TransportInfo const &info)
     return sec_pos * ppq_per_sec;
 }
 
-template<class F>
-std::pair<TransportInfo, TransportInfo> Alter(LockFactory & lf,
-                                              TransportInfo &info,
-                                              F f)
-{
-    std::pair<TransportInfo, TransportInfo> ret;
-    
-    auto lock = lf.make_lock();
-    ret.first = info;
-    f(info);
-    ret.second = info;
-    lock.unlock();
-    
-    return ret;
-}
-
 void Transporter::MoveTo(SampleCount pos)
 {
-    auto pair = Alter(lf_,
-                      transport_info_,
-                      [&](TransportInfo &info) {
-                          transport_info_.sample_pos_ = pos;
-                          transport_info_.last_moved_pos_ = pos;
-                          transport_info_.ppq_pos_ = GetPPQPos(transport_info_);
-                      });
-    
-    listeners_.Invoke([&pair](auto *li) {
-        li->OnChanged(pair.first, pair.second);
+    AlterTransportInfo([pos](TransportInfo &info) {
+        info.sample_pos_ = pos;
+        info.last_moved_pos_ = pos;
+        info.ppq_pos_ = GetPPQPos(info);
     });
 }
 
@@ -69,28 +64,17 @@ bool Transporter::IsPlaying() const {
 
 void Transporter::SetStop()
 {
-    auto pair = Alter(lf_,
-                      transport_info_,
-                      [&](TransportInfo &info) {
-                          transport_info_.playing_ = false;
-                          transport_info_.sample_pos_ = transport_info_.last_moved_pos_;
-                      });
-    
-    listeners_.Invoke([&pair](auto *li) {
-        li->OnChanged(pair.first, pair.second);
+    AlterTransportInfo([](TransportInfo &info) {
+        info.playing_ = false;
+        info.sample_pos_ = info.last_moved_pos_;
+        info.ppq_pos_ = GetPPQPos(info);
     });
 }
 
 void Transporter::SetPlaying(bool is_playing)
 {
-    auto pair = Alter(lf_,
-                      transport_info_,
-                      [&](TransportInfo &info) {
-                          transport_info_.playing_ = is_playing;
-                      });
-    
-    listeners_.Invoke([&pair](auto *li) {
-        li->OnChanged(pair.first, pair.second);
+    AlterTransportInfo([is_playing](TransportInfo &info) {
+        info.playing_ = is_playing;
     });
 }
 
@@ -99,28 +83,16 @@ void Transporter::SetLoopRange(SampleCount begin, SampleCount end)
     assert(0 <= begin);
     assert(begin <= end);
     
-    auto pair = Alter(lf_,
-                      transport_info_,
-                      [&](TransportInfo &info) {
-                          transport_info_.loop_begin_ = begin;
-                          transport_info_.loop_end_ = end;
-                      });
-    
-    listeners_.Invoke([&pair](auto *li) {
-        li->OnChanged(pair.first, pair.second);
+    AlterTransportInfo([begin, end](TransportInfo &info) {
+        info.loop_begin_ = begin;
+        info.loop_end_ = end;
     });
 }
 
 void Transporter::SetLoopEnabled(bool enabled)
 {
-    auto pair = Alter(lf_,
-                      transport_info_,
-                      [&](TransportInfo &info) {
-                          transport_info_.loop_enabled_ = enabled;
-                      });
-    
-    listeners_.Invoke([&pair](auto *li) {
-        li->OnChanged(pair.first, pair.second);
+    AlterTransportInfo([enabled](TransportInfo &info) {
+        info.loop_enabled_ = enabled;
     });
 }
 

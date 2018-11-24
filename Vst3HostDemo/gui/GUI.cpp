@@ -57,15 +57,17 @@ public:
             Refresh();
         });
         
-        auto left_down = [this](auto &ev) {
+        Bind(wxEVT_LEFT_DOWN, [this](auto &ev) {
             is_being_pressed_ = true;
             Refresh();
-        };
+        });
         
-        Bind(wxEVT_LEFT_DOWN, left_down);
-        Bind(wxEVT_LEFT_DCLICK, [](auto &ev) {});
+        Bind(wxEVT_LEFT_DCLICK, [this](auto &ev) {
+            is_being_pressed_ = true;
+            Refresh();
+        });
         
-        Bind(wxEVT_LEFT_UP, [this](auto &ev) {
+        Bind(wxEVT_LEFT_UP, [this](auto &ev) {            
             if(!is_hover_) { return; }
             if(is_3state_) {
                 is_pushed_ = !is_pushed_;

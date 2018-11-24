@@ -36,6 +36,10 @@ public:
     void RemoveListener(ITransportStateListener const *li);
     
     void MoveTo(SampleCount pos);
+    //! jump 1 measure before
+    void Rewind();
+    //! jump 1 measure after
+    void FastForward();
     bool IsPlaying() const;
     void SetPlaying(bool is_playing);
     void SetStop();

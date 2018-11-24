@@ -154,10 +154,7 @@ public:
         auto const w = image_.GetWidth() / num_cols_;
         auto const h = image_.GetHeight() / num_rows_;
         
-        wxRect r(wxPoint(w * col, h * row),
-                 wxSize(w, h)
-                 );
-        
+        wxRect r(wxPoint(w * col, h * row), wxSize(w, h));
         return image_.GetSubImage(r);
     }
     
@@ -193,15 +190,17 @@ public:
         
         auto hbox = new wxBoxSizer(wxHORIZONTAL);
         
-        hbox->Add(btn_rewind_,      wxSizerFlags(0));
-        hbox->Add(btn_stop_,        wxSizerFlags(0));
-        hbox->Add(btn_play_,        wxSizerFlags(0));
-        hbox->Add(btn_forward_,     wxSizerFlags(0));
-        hbox->Add(btn_loop_,        wxSizerFlags(0));
+        hbox->Add(btn_rewind_,      wxSizerFlags(0).Border(wxTOP|wxBOTTOM|wxRIGHT, 1));
+        hbox->Add(btn_stop_,        wxSizerFlags(0).Border(wxTOP|wxBOTTOM|wxRIGHT, 1));
+        hbox->Add(btn_play_,        wxSizerFlags(0).Border(wxTOP|wxBOTTOM|wxRIGHT, 1));
+        hbox->Add(btn_forward_,     wxSizerFlags(0).Border(wxTOP|wxBOTTOM|wxRIGHT, 1));
+        hbox->Add(btn_loop_,        wxSizerFlags(0).Border(wxTOP|wxBOTTOM|wxRIGHT, 1));
         //hbox->Add(btn_metronome_,   wxSizerFlags(0));
         hbox->AddStretchSpacer(1);
         
         SetSizer(hbox);
+        
+        SetBackgroundColour(wxColour(0x1B, 0x1B, 0x1B));
         
         btn_rewind_->Bind(wxEVT_BUTTON, [this](auto &ev) { OnRewind(); });
         btn_stop_->Bind(wxEVT_BUTTON, [this](auto &ev) { OnStop(); });
@@ -403,7 +402,7 @@ public:
     ,   col_bg_(10, 10, 10)
     {
         transport_buttons_ = new TransportPanel(this);
-        time_indicator_ = new TimeIndicator(this, wxDefaultPosition, wxSize(220, 36));
+        time_indicator_ = new TimeIndicator(this, wxDefaultPosition, wxSize(220, 38));
         
         auto hbox = new wxBoxSizer(wxHORIZONTAL);
         hbox->Add(transport_buttons_, wxSizerFlags(0).Expand());

@@ -65,6 +65,9 @@ bool MyApp::OnInit()
     project_->SetSequence(MakeSequence());
     project_->GetTransporter().SetLoopRange(0, 4 * kSampleRate);
     project_->GetTransporter().SetLoopEnabled(true);
+    pa_listeners_.Invoke([this](auto *li) {
+        li->OnAfterProjectActivated(project_.get());
+    });
     
     adm_ = std::make_unique<AudioDeviceManager>();
     adm_->AddCallback(project_.get());
@@ -115,6 +118,10 @@ bool MyApp::OnInit()
 
 int MyApp::OnExit()
 {
+    pa_listeners_.Invoke([this](auto *li) {
+        li->OnBeforeProjectDeactivated(project_.get());
+    });
+    
     adm_->Close();
     project_->RemoveInstrument();
     project_.reset();
@@ -127,6 +134,9 @@ void MyApp::BeforeExit()
 {
     project_->RemoveInstrument();
 }
+
+void MyApp::AddProjectActivationListener(ProjectActivationListener *li) { pa_listeners_.AddListener(li); }
+void MyApp::RemoveProjectActivationListener(ProjectActivationListener const *li) { pa_listeners_.RemoveListener(li); }
 
 void MyApp::AddFactoryLoadListener(MyApp::FactoryLoadListener *li) { fl_listeners_.AddListener(li); }
 void MyApp::RemoveFactoryLoadListener(MyApp::FactoryLoadListener const *li) { fl_listeners_.RemoveListener(li); }

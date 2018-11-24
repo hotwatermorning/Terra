@@ -25,6 +25,21 @@ public:
     
     std::unique_ptr<AudioDeviceManager> adm_;
     
+    class ProjectActivationListener
+    {
+    public:
+        virtual
+        ~ProjectActivationListener() {}
+        
+        virtual
+        void OnAfterProjectActivated(Project *pj) {}
+        
+        virtual
+        void OnBeforeProjectDeactivated(Project *pj) {}
+    };
+    void AddProjectActivationListener(ProjectActivationListener *li);
+    void RemoveProjectActivationListener(ProjectActivationListener const *li);
+    
     class FactoryLoadListener
     {
     public:
@@ -70,6 +85,7 @@ public:
     Project * GetProject();
     
 private:
+    ListenerService<ProjectActivationListener> pa_listeners_;
     ListenerService<FactoryLoadListener> fl_listeners_;
     ListenerService<Vst3PluginLoadListener> vl_listeners_;
     std::unique_ptr<Vst3PluginFactory> factory_;

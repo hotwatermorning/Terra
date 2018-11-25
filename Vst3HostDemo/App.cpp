@@ -55,24 +55,45 @@ std::shared_ptr<Sequence> MakeSequence() {
     return std::make_shared<Sequence>(notes);
 }
 
+struct MyApp::Impl
+{
+    std::unique_ptr<AudioDeviceManager> adm_;
+    ListenerService<ProjectActivationListener> pa_listeners_;
+    ListenerService<FactoryLoadListener> fl_listeners_;
+    ListenerService<Vst3PluginLoadListener> vl_listeners_;
+    std::unique_ptr<Vst3PluginFactory> factory_;
+    std::shared_ptr<Vst3Plugin> plugin_;
+    std::shared_ptr<Project> project_;
+    wxString device_name_;
+};
+
+MyApp::MyApp()
+:   pimpl_(std::make_unique<Impl>())
+{}
+
+MyApp::~MyApp()
+{}
+
 bool MyApp::OnInit()
 {
     if(!wxApp::OnInit()) { return false; }
     
     wxInitAllImageHandlers();
     
-    project_ = std::make_shared<Project>();
-    project_->SetSequence(MakeSequence());
-    project_->GetTransporter().SetLoopRange(0, 4 * kSampleRate);
-    project_->GetTransporter().SetLoopEnabled(true);
-    pa_listeners_.Invoke([this](auto *li) {
-        li->OnAfterProjectActivated(project_.get());
+    
+    
+    pimpl_->project_ = std::make_shared<Project>();
+    pimpl_->project_->SetSequence(MakeSequence());
+    pimpl_->project_->GetTransporter().SetLoopRange(0, 4 * kSampleRate);
+    pimpl_->project_->GetTransporter().SetLoopEnabled(true);
+    pimpl_->pa_listeners_.Invoke([this](auto *li) {
+        li->OnAfterProjectActivated(pimpl_->project_.get());
     });
     
-    adm_ = std::make_unique<AudioDeviceManager>();
-    adm_->AddCallback(project_.get());
+    pimpl_->adm_ = std::make_unique<AudioDeviceManager>();
+    pimpl_->adm_->AddCallback(pimpl_->project_.get());
     
-    auto list = adm_->Enumerate();
+    auto list = pimpl_->adm_->Enumerate();
     for(auto const &info: list) {
         hwm::wdout << L"{} - {}({}ch)"_format(info.name_, to_wstring(info.driver_), info.num_channels_) << std::endl;
     }
@@ -93,7 +114,7 @@ bool MyApp::OnInit()
         else { return &*found; }
     };
 
-    auto output_device = find_entry(AudioDeviceIOType::kOutput, 2, adm_->GetDefaultDriver());
+    auto output_device = find_entry(AudioDeviceIOType::kOutput, 2, pimpl_->adm_->GetDefaultDriver());
     if(!output_device) { output_device = find_entry(AudioDeviceIOType::kOutput, 2); }
     
     if(!output_device) {
@@ -102,12 +123,12 @@ bool MyApp::OnInit()
     
     auto input_device = find_entry(AudioDeviceIOType::kInput, 2, output_device->driver_);
     
-    bool const opened = adm_->Open(input_device, output_device, kSampleRate, kBlockSize);
+    bool const opened = pimpl_->adm_->Open(input_device, output_device, kSampleRate, kBlockSize);
     if(!opened) {
         throw std::runtime_error("Failed to open the device");
     }
     
-    adm_->Start();
+    pimpl_->adm_->Start();
     
     MyFrame *frame = new MyFrame( "Vst3HostDemo", wxPoint(50, 50), wxSize(450, 340) );
     frame->Show( true );
@@ -118,31 +139,31 @@ bool MyApp::OnInit()
 
 int MyApp::OnExit()
 {
-    pa_listeners_.Invoke([this](auto *li) {
-        li->OnBeforeProjectDeactivated(project_.get());
+    pimpl_->pa_listeners_.Invoke([this](auto *li) {
+        li->OnBeforeProjectDeactivated(pimpl_->project_.get());
     });
     
-    adm_->Close();
-    project_->RemoveInstrument();
-    project_.reset();
-    plugin_.reset();
-    factory_.reset();
+    pimpl_->adm_->Close();
+    pimpl_->project_->RemoveInstrument();
+    pimpl_->project_.reset();
+    pimpl_->plugin_.reset();
+    pimpl_->factory_.reset();
     return 0;
 }
 
 void MyApp::BeforeExit()
 {
-    project_->RemoveInstrument();
+    pimpl_->project_->RemoveInstrument();
 }
 
-void MyApp::AddProjectActivationListener(ProjectActivationListener *li) { pa_listeners_.AddListener(li); }
-void MyApp::RemoveProjectActivationListener(ProjectActivationListener const *li) { pa_listeners_.RemoveListener(li); }
+void MyApp::AddProjectActivationListener(ProjectActivationListener *li) { pimpl_->pa_listeners_.AddListener(li); }
+void MyApp::RemoveProjectActivationListener(ProjectActivationListener const *li) { pimpl_->pa_listeners_.RemoveListener(li); }
 
-void MyApp::AddFactoryLoadListener(MyApp::FactoryLoadListener *li) { fl_listeners_.AddListener(li); }
-void MyApp::RemoveFactoryLoadListener(MyApp::FactoryLoadListener const *li) { fl_listeners_.RemoveListener(li); }
+void MyApp::AddFactoryLoadListener(MyApp::FactoryLoadListener *li) { pimpl_->fl_listeners_.AddListener(li); }
+void MyApp::RemoveFactoryLoadListener(MyApp::FactoryLoadListener const *li) { pimpl_->fl_listeners_.RemoveListener(li); }
 
-void MyApp::AddVst3PluginLoadListener(MyApp::Vst3PluginLoadListener *li) { vl_listeners_.AddListener(li); }
-void MyApp::RemoveVst3PluginLoadListener(MyApp::Vst3PluginLoadListener const *li) { vl_listeners_.RemoveListener(li); }
+void MyApp::AddVst3PluginLoadListener(MyApp::Vst3PluginLoadListener *li) { pimpl_->vl_listeners_.AddListener(li); }
+void MyApp::RemoveVst3PluginLoadListener(MyApp::Vst3PluginLoadListener const *li) { pimpl_->vl_listeners_.RemoveListener(li); }
 
 bool MyApp::LoadFactory(String path)
 {
@@ -150,9 +171,9 @@ bool MyApp::LoadFactory(String path)
     try {
         auto tmp_factory = std::make_unique<Vst3PluginFactory>(path);
         UnloadFactory();
-        factory_ = std::move(tmp_factory);
-        fl_listeners_.Invoke([path, this](auto *li) {
-            li->OnFactoryLoaded(path, factory_.get());
+        pimpl_->factory_ = std::move(tmp_factory);
+        pimpl_->fl_listeners_.Invoke([path, this](auto *li) {
+            li->OnFactoryLoaded(path, pimpl_->factory_.get());
         });
         return true;
     } catch(std::exception &e) {
@@ -163,14 +184,14 @@ bool MyApp::LoadFactory(String path)
 
 void MyApp::UnloadFactory()
 {
-    if(!factory_) { return; }
+    if(!pimpl_->factory_) { return; }
     UnloadVst3Plugin(); // ロード済みのプラグインがあれば、先にアンロードしておく。
-    fl_listeners_.InvokeReversed([](auto *li) { li->OnFactoryUnloaded(); });
+    pimpl_->fl_listeners_.InvokeReversed([](auto *li) { li->OnFactoryUnloaded(); });
 }
 
 bool MyApp::IsFactoryLoaded() const
 {
-    return !!factory_;
+    return !!pimpl_->factory_;
 }
 
 bool MyApp::LoadVst3Plugin(int component_index)
@@ -178,12 +199,12 @@ bool MyApp::LoadVst3Plugin(int component_index)
     assert(IsFactoryLoaded());
     
     try {
-        auto tmp_plugin = factory_->CreateByIndex(component_index);
+        auto tmp_plugin = pimpl_->factory_->CreateByIndex(component_index);
         UnloadVst3Plugin();
-        plugin_ = std::move(tmp_plugin);
-        project_->SetInstrument(plugin_);
-        vl_listeners_.Invoke([this](auto li) {
-            li->OnAfterVst3PluginLoaded(plugin_.get());
+        pimpl_->plugin_ = std::move(tmp_plugin);
+        pimpl_->project_->SetInstrument(pimpl_->plugin_);
+        pimpl_->vl_listeners_.Invoke([this](auto li) {
+            li->OnAfterVst3PluginLoaded(pimpl_->plugin_.get());
         });
         return true;
     } catch(std::exception &e) {
@@ -194,35 +215,35 @@ bool MyApp::LoadVst3Plugin(int component_index)
 
 void MyApp::UnloadVst3Plugin()
 {
-    if(plugin_) {
-        project_->RemoveInstrument();
+    if(pimpl_->plugin_) {
+        pimpl_->project_->RemoveInstrument();
         
-        vl_listeners_.InvokeReversed([this](auto li) {
-            li->OnBeforeVst3PluginUnloaded(plugin_.get());
+        pimpl_->vl_listeners_.InvokeReversed([this](auto li) {
+            li->OnBeforeVst3PluginUnloaded(pimpl_->plugin_.get());
         });
-        auto tmp = std::move(plugin_);
+        auto tmp = std::move(pimpl_->plugin_);
         tmp.reset();
     }
 }
 
 bool MyApp::IsVst3PluginLoaded() const
 {
-    return !!plugin_;
+    return !!pimpl_->plugin_;
 }
 
 Vst3PluginFactory * MyApp::GetFactory()
 {
-    return factory_.get();
+    return pimpl_->factory_.get();
 }
 
 Vst3Plugin * MyApp::GetPlugin()
 {
-    return plugin_.get();
+    return pimpl_->plugin_.get();
 }
 
 Project * MyApp::GetProject()
 {
-    return project_.get();
+    return pimpl_->project_.get();
 }
 
 namespace {
@@ -242,7 +263,7 @@ void MyApp::OnInitCmdLine(wxCmdLineParser& parser)
 
 bool MyApp::OnCmdLineParsed(wxCmdLineParser& parser)
 {
-    parser.Found(wxString("d"), &device_name_);
+    parser.Found(wxString("d"), &pimpl_->device_name_);
     return true;
 }
 

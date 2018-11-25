@@ -16,14 +16,17 @@ class MyApp
 ,   public SingleInstance<MyApp>
 {
 public:
+    MyApp();
+    
+    virtual
+    ~MyApp();
+    
     using SingleInstance<MyApp>::GetInstance;
     
     bool OnInit() override;
     int OnExit() override;
     
     void BeforeExit();
-    
-    std::unique_ptr<AudioDeviceManager> adm_;
     
     class ProjectActivationListener
     {
@@ -85,13 +88,8 @@ public:
     Project * GetProject();
     
 private:
-    ListenerService<ProjectActivationListener> pa_listeners_;
-    ListenerService<FactoryLoadListener> fl_listeners_;
-    ListenerService<Vst3PluginLoadListener> vl_listeners_;
-    std::unique_ptr<Vst3PluginFactory> factory_;
-    std::shared_ptr<Vst3Plugin> plugin_;
-    std::shared_ptr<Project> project_;
-    wxString device_name_;
+    struct Impl;
+    std::unique_ptr<Impl> pimpl_;
     
     void OnInitCmdLine(wxCmdLineParser& parser) override;
     bool OnCmdLineParsed(wxCmdLineParser& parser) override;

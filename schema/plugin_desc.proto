@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package hwm;
+
+message PluginDescription {
+  enum PluginType {
+    VST3 = 0;
+  }
+
+  message Vst3Info {
+    message ClassInfo2 {
+      string subcategories = 1;
+      string vendor = 2;
+      string version = 3;
+      string sdk_version = 4;
+    }
+
+    string filepath = 1;
+    bytes cid = 2;
+    string category = 3;
+    int32 cardinality = 4;
+    ClassInfo2 classinfo2 = 5;
+  }
+
+  string name = 1;
+  PluginType type = 2;
+  Vst3Info vst3info = 3;
+}
+
+message PluginDescriptionList {
+  repeated PluginDescription list = 1;
+}

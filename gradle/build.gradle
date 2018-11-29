@@ -256,7 +256,7 @@ task clean_app {
   }
 }
 
-task clean {
+task clean_all {
   dependsOn { [clean_submodules, clean_app] }
 }
 

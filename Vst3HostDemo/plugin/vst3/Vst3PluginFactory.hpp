@@ -11,6 +11,8 @@
 #include <pluginterfaces/vst/ivsteditcontroller.h>
 #include <public.sdk/source/vst/hosting/parameterchanges.h>
 
+#include "../../misc/SingleInstance.hpp"
+
 NS_HWM_BEGIN
 
 class Vst3Plugin;
@@ -62,6 +64,7 @@ public:
     static constexpr UInt32 kCIDLength = 16;
     using CID = std::array<Steinberg::int8, kCIDLength>;
     
+    ClassInfo();
 	ClassInfo(Steinberg::PClassInfo const &info);
 	ClassInfo(Steinberg::PClassInfo2 const &info);
 	ClassInfo(Steinberg::PClassInfoW const &info);
@@ -76,10 +79,10 @@ public:
 			classinfo2() const { return *classinfo2_data_; }
 
 private:
-	CID cid_;
+    CID cid_ = {{}};
 	String		name_;
 	String		category_;
-	Steinberg::int32	cardinality_;
+	Steinberg::int32	cardinality_ = -1;
     std::optional<ClassInfo2Data> classinfo2_data_;
 };
 
@@ -102,19 +105,26 @@ public:
 			CreateByIndex(size_t index);
 
 	std::unique_ptr<Vst3Plugin>
-			CreateByID(Steinberg::int8 const * component_id);
+            CreateByID(ClassInfo::CID const &component_id);
+    
+    UInt32   GetNumLoadedPlugins() const;
 
 private:
 	class Impl;
 	std::unique_ptr<Impl> pimpl_;
 };
     
-class Vst3PluginFactoryList
+class Vst3PluginFactoryList final
+:   public SingleInstance<Vst3PluginFactoryList>
 {
+public:
     Vst3PluginFactoryList();
-    virtual ~Vst3PluginFactoryList();
+    ~Vst3PluginFactoryList();
     
     std::shared_ptr<Vst3PluginFactory> FindOrCreateFactory(String module_path);
+    
+    //! Unload factories which not having any plugins.
+    void Shrink();
     
 private:
     class Impl;

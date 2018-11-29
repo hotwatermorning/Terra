@@ -174,7 +174,8 @@ public:
     
 	virtual ~Vst3Plugin();
     
-    ClassInfo::CID GetComponentID() const;
+    FactoryInfo const & GetFactoryInfo() const;
+    ClassInfo const & GetComponentInfo() const;
 
 	String GetEffectName() const;
 	size_t	GetNumInputs() const;

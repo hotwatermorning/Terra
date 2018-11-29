@@ -28,9 +28,14 @@ Vst3Plugin::~Vst3Plugin()
     on_destruction_(this);
 }
 
-ClassInfo::CID Vst3Plugin::GetComponentID() const
+FactoryInfo const & Vst3Plugin::GetFactoryInfo() const
 {
-    return pimpl_->GetComponentID();
+    return pimpl_->GetFactoryInfo();
+}
+
+ClassInfo const & Vst3Plugin::GetComponentInfo() const
+{
+    return pimpl_->GetComponentInfo();
 }
 
 String Vst3Plugin::GetEffectName() const
@@ -225,11 +230,12 @@ void Vst3Plugin::Process(ProcessInfo &pi)
 
 std::unique_ptr<Vst3Plugin>
 	CreatePlugin(IPluginFactory *factory,
-                 ClassInfo const &info,
+                 FactoryInfo const &factory_info,
+                 ClassInfo const &class_info,
                  std::function<void(Vst3Plugin const *p)> on_destruction)
 {
     auto host_context = std::make_unique<Vst3Plugin::HostContext>(L"Vst3HostDemo");
-    auto impl = std::make_unique<Vst3Plugin::Impl>(factory, info, host_context->unknownCast());
+    auto impl = std::make_unique<Vst3Plugin::Impl>(factory, factory_info, class_info, host_context->unknownCast());
 	auto plugin = std::make_unique<Vst3Plugin>(std::move(impl), std::move(host_context), on_destruction);
     
     return plugin;

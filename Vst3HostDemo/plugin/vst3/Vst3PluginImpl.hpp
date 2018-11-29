@@ -98,12 +98,14 @@ public:
 
 public:
 	Impl(IPluginFactory *factory,
-         ClassInfo const &info,
+         FactoryInfo const &factory_info,
+         ClassInfo const &class_info,
          FUnknown *host_context);
 
     ~Impl();
     
-    ClassInfo::CID GetComponentID() const;
+    FactoryInfo const & GetFactoryInfo() const;
+    ClassInfo const & GetComponentInfo() const;
 
 	bool HasEditController	() const;
 	bool HasEditController2	() const;
@@ -186,7 +188,8 @@ private:
 	void UnloadPlugin();
 
 private:
-    std::optional<ClassInfo> plugin_info_;
+    ClassInfo               class_info_;
+    FactoryInfo             factory_info_;
 	component_ptr_t			component_;
 	audio_processor_ptr_t	audio_processor_;
 	edit_controller_ptr_t	edit_controller_;

@@ -207,9 +207,11 @@ void Vst3Plugin::Impl::AudioBusesInfo::UpdateBusBuffers()
 }
 
 Vst3Plugin::Impl::Impl(IPluginFactory *factory,
-                       ClassInfo const &info,
+                       FactoryInfo const &factory_info,
+                       ClassInfo const &class_info,
                        FUnknown *host_context)
-	:	edit_controller_is_created_new_(false)
+	:	factory_info_(factory_info)
+    ,   edit_controller_is_created_new_(false)
 	,	is_editor_opened_(false)
 	,	is_processing_started_(false)
 	,	is_resumed_(false)
@@ -220,7 +222,7 @@ Vst3Plugin::Impl::Impl(IPluginFactory *factory,
 {
     assert(host_context);
     
-	LoadPlugin(factory, info, std::move(host_context));
+	LoadPlugin(factory, class_info, std::move(host_context));
 
     input_events_.setMaxSize(128);
     output_events_.setMaxSize(128);
@@ -231,10 +233,14 @@ Vst3Plugin::Impl::~Impl()
 	UnloadPlugin();
 }
 
-ClassInfo::CID Vst3Plugin::Impl::GetComponentID() const
+FactoryInfo const & Vst3Plugin::Impl::GetFactoryInfo() const
 {
-    assert(plugin_info_);
-    return plugin_info_->cid();
+    return factory_info_;
+}
+
+ClassInfo const & Vst3Plugin::Impl::GetComponentInfo() const
+{
+    return class_info_;
 }
 
 bool Vst3Plugin::Impl::HasEditController	() const { return edit_controller_.get() != nullptr; }
@@ -249,7 +255,7 @@ Vst::IEditController2 *	Vst3Plugin::Impl::GetEditController2	() const { return e
 
 String Vst3Plugin::Impl::GetEffectName() const
 {
-	return plugin_info_->name();
+	return class_info_.name();
 }
 
 Vst3Plugin::Impl::ParameterInfoList & Vst3Plugin::Impl::GetParameterInfoList()
@@ -792,7 +798,7 @@ void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &
 		}
 	}
 
-	plugin_info_ = info;
+	class_info_ = info;
 	component_ = std::move(component);
 	audio_processor_ = std::move(audio_processor);
 	edit_controller_ = std::move(edit_controller);

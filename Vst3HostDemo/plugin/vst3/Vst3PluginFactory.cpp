@@ -11,6 +11,7 @@
 #include "Vst3Plugin.hpp"
 #include "../../misc/Module.hpp"
 #include "../../misc/StrCnv.hpp"
+#include "../../misc/LockFactory.hpp"
 
 using namespace Steinberg;
 
@@ -19,6 +20,7 @@ NS_HWM_BEGIN
 extern
 std::unique_ptr<Vst3Plugin>
 	CreatePlugin(IPluginFactory *factory,
+                 FactoryInfo const &factory_info,
                  ClassInfo const &info,
                  std::function<void(Vst3Plugin const *p)> on_destruction
                  );
@@ -81,6 +83,9 @@ ClassInfo2Data::ClassInfo2Data(Steinberg::PClassInfoW const &info)
 {
 }
 
+ClassInfo::ClassInfo()
+{}
+
 ClassInfo::ClassInfo(Steinberg::PClassInfo const &info)
 	:	cid_()
 	,	name_(hwm::to_wstr(info.name))
@@ -137,6 +142,10 @@ public:
         auto found = std::find(loaded_plugins_.begin(), loaded_plugins_.end(), p);
         assert(found != loaded_plugins_.end());
         loaded_plugins_.erase(found);
+    }
+    
+    UInt32 GetNumLoadedPlugins() const {
+        return loaded_plugins_.size();
     }
 
 private:
@@ -312,6 +321,7 @@ std::unique_ptr<Vst3Plugin>
 		Vst3PluginFactory::CreateByIndex(size_t index)
 {
 	auto p = CreatePlugin(pimpl_->GetFactory(),
+                          pimpl_->GetFactoryInfo(),
                           GetComponentInfo(index),
                           [this](Vst3Plugin const *p) { pimpl_->OnVst3PluginIsDestructed(p); }
                           );
@@ -321,15 +331,10 @@ std::unique_ptr<Vst3Plugin>
 }
 
 std::unique_ptr<Vst3Plugin>
-		Vst3PluginFactory::CreateByID(Steinberg::int8 const * component_id)
+    Vst3PluginFactory::CreateByID(ClassInfo::CID const &component_id)
 {
 	for(size_t i = 0; i < GetComponentCount(); ++i) {
-		bool const is_equal = std::equal<Steinberg::int8 const *, Steinberg::int8 const *>(
-			GetComponentInfo(i).cid().begin(), GetComponentInfo(i).cid().begin() + 16,
-			component_id
-			);
-
-		if(is_equal) {
+        if(component_id == GetComponentInfo(i).cid()) {
             return CreateByIndex(i);
 		}
 	}
@@ -337,9 +342,14 @@ std::unique_ptr<Vst3Plugin>
 	throw std::runtime_error("No specified id in this factory.");
 }
 
+UInt32 Vst3PluginFactory::GetNumLoadedPlugins() const {
+    return pimpl_->GetNumLoadedPlugins();
+}
+
 class Vst3PluginFactoryList::Impl
 {
 public:
+    LockFactory lf_;
     std::map<String, std::shared_ptr<Vst3PluginFactory>> table_;
 };
 
@@ -352,12 +362,38 @@ Vst3PluginFactoryList::~Vst3PluginFactoryList()
 
 std::shared_ptr<Vst3PluginFactory> Vst3PluginFactoryList::FindOrCreateFactory(String module_path)
 {
+    auto lock = pimpl_->lf_.make_lock();
+    
     auto found = pimpl_->table_.find(module_path);
     if(found == pimpl_->table_.end()) {
-        found = pimpl_->table_.emplace(module_path, std::make_shared<Vst3PluginFactory>(module_path)).first;
+        std::shared_ptr<Vst3PluginFactory> factory;
+        try {
+            factory = std::make_shared<Vst3PluginFactory>(module_path);
+        } catch(std::exception &e) {
+            hwm::dout << "Failed to create Vst3PluginFactory: " << e.what() << std::endl;
+            return {};
+        }
+        
+        found = pimpl_->table_.emplace(module_path, factory).first;
     }
     
     return found->second;
+}
+
+void Vst3PluginFactoryList::Shrink()
+{
+    std::map<String, std::shared_ptr<Vst3PluginFactory>> tmp;
+    
+    for(auto it = pimpl_->table_.begin(), end = pimpl_->table_.end();
+        it != end;
+        )
+    {
+        if(it->second->GetNumLoadedPlugins() == 0) {
+            it = pimpl_->table_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 NS_HWM_END

@@ -23,7 +23,7 @@ public:
         ~ITraversalCallback() {}
         
         virtual
-        void Process(TransportInfo const &info, SampleCount length) = 0;
+        void Process(TransportInfo const &info) = 0;
     };
 
     //! 指定した長さだけトランスポート位置を進める。

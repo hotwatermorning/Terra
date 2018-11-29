@@ -357,14 +357,14 @@ private:
                    TransportInfo const &new_state) override
     {
         auto to_tuple = [](TransportInfo const &info) {
-            return std::tie(info.ppq_pos_, info.time_sig_numer_, info.time_sig_denom_);
+            return std::tie(info.ppq_begin_pos_, info.time_sig_numer_, info.time_sig_denom_);
         };
         if(to_tuple(old_state) == to_tuple(new_state)) {
             return;
         }
         
         auto const kTpqn = 480;
-        auto const tick = (Int64)(new_state.ppq_pos_ * kTpqn);
+        auto const tick = (Int64)(new_state.ppq_begin_pos_ * kTpqn);
         auto const beat_length = (kTpqn * 4) / new_state.time_sig_denom_;
         auto const measure_length = beat_length * new_state.time_sig_numer_;
         auto measure_pos = tick / measure_length;

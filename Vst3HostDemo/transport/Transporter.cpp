@@ -21,7 +21,7 @@ void Transporter::AlterTransportInfo(F f)
 
 double GetPPQPos(TransportInfo const &info)
 {
-    double sec_pos = info.sample_pos_ / info.sample_rate_;
+    double sec_pos = info.smp_begin_pos_ / info.sample_rate_;
     double ppq_per_sec = info.tempo_ / 60.0;
     return sec_pos * ppq_per_sec;
 }
@@ -30,8 +30,18 @@ SampleCount GetSamplePos(TransportInfo const &info)
 {
     assert(info.tempo_ > 0);
     double sec_per_ppq = 60.0 / info.tempo_;
-    double sec_pos = info.ppq_pos_ * sec_per_ppq;
+    double sec_pos = info.ppq_begin_pos_ * sec_per_ppq;
     return (SampleCount)std::round(sec_pos * info.sample_rate_);
+}
+
+double GetTempoAt(double ppq_pos)
+{
+    return 120.0;
+}
+
+std::pair<UInt8, UInt8> GetTimeSignatureAt(double ppq_pos)
+{
+    return { 4, 4 };
 }
 
 Transporter::Transporter()
@@ -58,10 +68,10 @@ TransportInfo Transporter::GetCurrentState() const
 
 void Transporter::MoveTo(SampleCount pos)
 {
-    AlterTransportInfo([pos](TransportInfo &info) {
-        info.sample_pos_ = pos;
-        info.last_moved_pos_ = pos;
-        info.ppq_pos_ = GetPPQPos(info);
+    AlterTransportInfo([pos, this](TransportInfo &info) {
+        info.smp_begin_pos_ = info.smp_end_pos_ = pos;
+        info.ppq_begin_pos_ = info.ppq_end_pos_ = GetPPQPos(info);
+        smp_last_moved_pos_ = pos;
     });
 }
 
@@ -69,8 +79,8 @@ void Transporter::Rewind()
 {
     AlterTransportInfo([](TransportInfo &info) {
         auto const measure = 4.0 * info.time_sig_numer_ / info.time_sig_denom_;
-        info.ppq_pos_ = std::max<double>(0, info.ppq_pos_ - measure);
-        info.sample_pos_ = GetSamplePos(info);
+        info.ppq_begin_pos_ = info.ppq_end_pos_ = std::max<double>(0, info.ppq_begin_pos_ - measure);
+        info.smp_begin_pos_ = info.smp_end_pos_ = GetSamplePos(info);
     });
 }
 
@@ -78,8 +88,8 @@ void Transporter::FastForward()
 {
     AlterTransportInfo([](TransportInfo &info) {
         auto const measure = 4.0 * info.time_sig_numer_ / info.time_sig_denom_;
-        info.ppq_pos_ = info.ppq_pos_ + measure;
-        info.sample_pos_ = GetSamplePos(info);
+        info.ppq_begin_pos_ = info.ppq_end_pos_ = info.ppq_begin_pos_ + measure;
+        info.smp_begin_pos_ = info.smp_end_pos_ = GetSamplePos(info);
     });
 }
 
@@ -90,10 +100,10 @@ bool Transporter::IsPlaying() const {
 
 void Transporter::SetStop()
 {
-    AlterTransportInfo([](TransportInfo &info) {
+    AlterTransportInfo([this](TransportInfo &info) {
         info.playing_ = false;
-        info.sample_pos_ = info.last_moved_pos_;
-        info.ppq_pos_ = GetPPQPos(info);
+        info.smp_begin_pos_ = info.smp_end_pos_ = smp_last_moved_pos_;
+        info.ppq_begin_pos_ = info.ppq_end_pos_ = GetPPQPos(info);
     });
 }
 

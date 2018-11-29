@@ -565,8 +565,8 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
     auto &ti = *pi.ti_;
 	Vst::ProcessContext process_context = {};
 	process_context.sampleRate = sampling_rate_;
-	process_context.projectTimeSamples = ti.sample_pos_;
-    process_context.projectTimeMusic = ti.ppq_pos_;
+	process_context.projectTimeSamples = ti.smp_begin_pos_;
+    process_context.projectTimeMusic = ti.ppq_begin_pos_;
 	process_context.tempo = ti.tempo_;
 	process_context.timeSigDenominator = ti.time_sig_denom_;
 	process_context.timeSigNumerator = ti.time_sig_numer_;
@@ -637,7 +637,7 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
 	process_data.processContext = &process_context;
 	process_data.processMode = Vst::ProcessModes::kRealtime;
 	process_data.symbolicSampleSize = Vst::SymbolicSampleSizes::kSample32;
-	process_data.numSamples = pi.frame_length_;
+    process_data.numSamples = ti.GetSmpDuration();
     process_data.numInputs = input_buses_info_.GetNumBuses();
 	process_data.numOutputs = output_buses_info_.GetNumBuses();
     process_data.inputs = input_buses_info_.GetBusBuffers();

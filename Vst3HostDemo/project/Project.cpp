@@ -125,6 +125,7 @@ struct Project::Impl
     PlayingNoteList requested_sample_notes_;
     PlayingNoteList playing_sample_notes_;
     std::atomic<bool> inputs_enabled_ = { false };
+    SampleCount smp_last_pos_ = 0;
 };
 
 Project::Project()
@@ -290,9 +291,9 @@ class TraversalCallback
 public:
     TraversalCallback(F f) : f_(std::forward<F>(f)) {}
     
-    void Process(TransportInfo const &info, SampleCount length) override
+    void Process(TransportInfo const &info) override
     {
-        f_(info, length);
+        f_(info);
     }
     
     F f_;
@@ -320,16 +321,16 @@ void Project::Process(SampleCount block_size, float const * const * input, float
     
     SampleCount num_processed = 0;
     
-    auto cb = MakeTraversalCallback([&, this](TransportInfo const &ti, SampleCount length) {
-        auto const frame_begin = ti.sample_pos_;
-        auto const frame_end = ti.sample_pos_ + length;
+    auto cb = MakeTraversalCallback([&, this](TransportInfo const &ti) {
+        auto const frame_begin = ti.smp_begin_pos_;
+        auto const frame_end = ti.smp_end_pos_;
         
         auto in_this_frame = [&](auto pos) { return frame_begin <= pos && pos < frame_end; };
         
         pimpl_->vst3_notes_.clear();
         auto add_note = [&, this](SampleCount sample_pos, UInt8 channel, UInt8 pitch, UInt8 velocity, bool is_note_on)
         {
-            Vst3Note vn(sample_pos - ti.sample_pos_, SampleToPPQ(sample_pos) - ti.ppq_pos_,
+            Vst3Note vn(sample_pos - ti.smp_begin_pos_, SampleToPPQ(sample_pos) - ti.ppq_begin_pos_,
                         channel, pitch, velocity,
                         (is_note_on ? Vst3Note::Type::kNoteOn : Vst3Note::Type::kNoteOff)
                         );
@@ -340,7 +341,9 @@ void Project::Process(SampleCount block_size, float const * const * input, float
         
         bool const need_stop_all_sequence_notes
         = (ti.playing_ == false)
-        || (ti.playing_ && ti.sample_pos_ != ti.last_end_pos_);
+        || (ti.playing_ && ti.smp_begin_pos_ != pimpl_->smp_last_pos_);
+        
+        pimpl_->smp_last_pos_ = ti.smp_end_pos_;
 
         if(need_stop_all_sequence_notes) {
             int x = 0;
@@ -350,7 +353,7 @@ void Project::Process(SampleCount block_size, float const * const * input, float
                 auto note = x.load();
                 if(note) {
                     assert(note.IsNoteOn());
-                    add_note(ti.sample_pos_, ch, pi, 0, false);
+                    add_note(ti.smp_begin_pos_, ch, pi, 0, false);
                     x.store(InternalPlayingNoteInfo());
                 }
             });
@@ -375,17 +378,17 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             bool const playing = (playing_note && playing_note.IsNoteOn());
             if(!note) { return; }
             if(note.IsNoteOn() && !playing) {
-                add_note(ti.sample_pos_, ch, pi, note.velocity_, true);
+                add_note(ti.smp_begin_pos_, ch, pi, note.velocity_, true);
                 pimpl_->playing_sample_notes_.SetNoteOn(ch, pi, note.velocity_);
             } else if(note.IsNoteOff()) {
-                add_note(ti.sample_pos_, ch, pi, note.velocity_, false);
+                add_note(ti.smp_begin_pos_, ch, pi, note.velocity_, false);
                 pimpl_->playing_sample_notes_.ClearNote(ch, pi);
             }
         });
         
         Vst3Plugin::ProcessInfo pi;
         pi.ti_ = &ti;
-        pi.frame_length_ = length;
+        pi.frame_length_ = ti.GetSmpDuration();
         pi.notes_ = { pimpl_->vst3_notes_.begin(), pimpl_->vst3_notes_.end() };
         if(pimpl_->inputs_enabled_) {
             pi.input_ = { BufferRef<float const>(input, pimpl_->num_device_inputs_, block_size), num_processed };
@@ -394,7 +397,7 @@ void Project::Process(SampleCount block_size, float const * const * input, float
 
         plugin->Process(pi);
 
-        num_processed += length;
+        num_processed += pi.frame_length_;
     });
     
     Transporter::Traverser tv;

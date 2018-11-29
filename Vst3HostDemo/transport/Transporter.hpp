@@ -52,6 +52,7 @@ private:
     LockFactory lf_;    
     TransportInfo transport_info_;
     ListenerService<ITransportStateListener> listeners_;
+    SampleCount smp_last_moved_pos_ = 0;
 
     template<class F>
     void AlterTransportInfo(F f);

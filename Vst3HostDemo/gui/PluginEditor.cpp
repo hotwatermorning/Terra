@@ -346,17 +346,23 @@ public:
         on_destroy_ = on_destroy;
         
         Bind(wxEVT_CLOSE_WINDOW, [this](auto &ev) {
-            contents_->CloseEditor();
+            if(contents_) {
+                contents_->CloseEditor();
+            }
             Destroy();
         });
         
         control_ = new PluginEditorControl(this, target_plugin->HasEditor());
         control_->AddListener(this);
         
-        contents_ = new PluginEditorContents(this, target_plugin);
-        
         genedit_ = new GenericParameterView(this, target_plugin);
-        genedit_->Hide();
+        
+        if(target_plugin->HasEditor()) {
+            contents_ = new PluginEditorContents(this, target_plugin);
+            genedit_->Hide();
+        } else {
+            genedit_->Show();
+        }
         
         SetMaxSize(wxSize(1000, 1000));
         SetMinSize(wxSize(10, 10));

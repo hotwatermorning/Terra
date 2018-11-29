@@ -10,3 +10,6 @@
 [submodule "ext/fmt"]
 	path = ext/fmt
 	url = https://github.com/fmtlib/fmt.git
+[submodule "ext/protobuf"]
+	path = ext/protobuf
+	url = https://github.com/protocolbuffers/protobuf.git

@@ -122,9 +122,25 @@ task update_submodules {
   }
 }
 
+task build_protobuf {
+  doLast {
+    def build_dir = file("../ext/protobuf/${build_dir_name}").getAbsolutePath()
+
+    execute("mkdir -p ${build_dir}")
+    execute("./autogen.sh", "../ext/protobuf")
+    execute("../configure --disable-shared --prefix=${build_dir}/install",
+            build_dir,
+            ccache_envvars
+            )
+    execute("make", build_dir)
+    execute("make install", build_dir)
+  }
+}
+build_protobuf.mustRunAfter update_submodules
+
+
 task build_portaudio {
   doLast {
-    // vst3sdk
     def portaudio_build_dir = file("../ext/portaudio/${build_dir_name}").getAbsolutePath()
     execute("mkdir -p ${portaudio_build_dir}")
     execute("cmake -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ${cmake_ccache_config} ..", portaudio_build_dir)
@@ -183,9 +199,18 @@ task build_fmtlib {
 }
 build_fmtlib.mustRunAfter update_submodules
 
+task compile_schemas {
+  doLast {
+    execute("mkdir -p schema/cpp", "..")
+    file("../schema").eachFileMatch(~/.*\.proto$/) {
+      execute("./ext/protobuf/${build_dir_name}/install/bin/protoc -Ischema --cpp_out=schema/cpp ${it.getName()}", "..")
+    }
+  }
+}
+compile_schemas.mustRunAfter build_protobuf
 
 task build_submodules {
-  dependsOn { [build_portaudio, build_vst3sdk, build_wxwidgets, build_fmtlib] }
+  dependsOn { [build_protobuf, compile_schemas, build_portaudio, build_vst3sdk, build_wxwidgets, build_fmtlib] }
 }
 
 task build_app {

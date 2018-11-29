@@ -61,19 +61,17 @@ execute_process(COMMAND ${WX_CONFIG_PATH} "--libs base,core" OUTPUT_VARIABLE WX_
 
 message("WX_LIB_FLAGS ${WX_LIB_FLAGS}")
 
-include_directories(
-  "./Vst3HostDemo"
-  "./ext/vst3sdk"
-  "./ext/portaudio/include"
-  "./ext/fmt/include"
-  )
-
 set(CMAKE_CXX_FLAGS "-DHAVE_TYPE_TRAITS=1 ${WX_CXX_FLAGS} ${CMAKE_CXX_FLAGS} -std=c++17 -stdlib=libc++")
 set(CMAKE_EXE_LINKER_FLAGS "${WX_LIB_FLAGS} ${CMAKE_EXE_LINKER_FLAGS}")
 
 # set source directories
-set(SOURCE_DIR_LIST "./Vst3HostDemo")
+set(SOURCE_DIR_LIST
+  "./Vst3HostDemo"
+  "./schema/cpp"
+  )
+
 # set target extension list
+set(TARGET_EXTENSION_LIST "*.c" "*.cc" "*.cpp" "*.h" "*.hpp")
 
 if(IsXcode)
   list(APPEND TARGET_EXTENSION_LIST "*.mm")
@@ -135,9 +133,21 @@ set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PRECOMPILE_
 
 find_library(VST3_SDK_LIB "sdk" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}")
 find_library(VST3_BASE_LIB "base" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}")
-find_library(PORTAUDIO_LIB "libportaudio.a" PATHS "./ext/portaudio/${BUILD_DIR_NAME}")
-find_library(FMT_LIB NAMES "fmt" "fmtd" PATHS "./ext/fmt/${BUILD_DIR_NAME}")
-link_directories("./ext/wxWidgets/${BUILD_DIR_NAME}/install/lib")
+find_library(PORTAUDIO_LIB "libportaudio.a" "./ext/portaudio/${BUILD_DIR_NAME}")
+find_library(FMT_LIB "fmt" NAMES "fmtd" PATHS "./ext/fmt/${BUILD_DIR_NAME}")
+find_library(PROTOBUF_LIB "protobuf" PATHS "./ext/protobuf/${BUILD_DIR_NAME}/install/lib" NO_CMAKE_PATH NO_DEFAULT_PATH NO_SYSTEM_ENVIRONMENT_PATH)
+
+message("PROTOBUF: ${PROTOBUF_LIB}")
+
+include_directories(
+  "./Vst3HostDemo"
+  "./ext/vst3sdk"
+  "./ext/portaudio/include"
+  "./ext/fmt/include"
+  "./ext/json/single_include"
+  "./schema/cpp"
+  "./ext/protobuf/${BUILD_DIR_NAME}/install/include"
+  )
 
 target_link_libraries(
   ${PROJECT_NAME}
@@ -145,13 +155,12 @@ target_link_libraries(
   ${VST3_SDK_LIB}
   ${VST3_BASE_LIB}
   ${FMT_LIB}
+  ${PROTOBUF_LIB}
   "-framework CoreServices"
   "-framework CoreFoundation"
   "-framework AudioUnit"
   "-framework AudioToolbox"
   "-framework CoreAudio"
-  "wx_baseu-3.1"
-  "wx_osx_cocoau_core-3.1"
   )
 
 ####################################################################

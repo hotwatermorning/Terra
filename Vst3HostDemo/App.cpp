@@ -2,14 +2,23 @@
 #include "gui/GUI.hpp"
 
 #include <wx/cmdline.h>
+#include <wx/stdpaths.h>
 
 #include <exception>
 #include <algorithm>
+#include <fstream>
+#include "./misc/StrCnv.hpp"
+#include "./plugin/PluginScanner.hpp"
+#include "./plugin/vst3/Vst3PluginFactory.hpp"
 
 NS_HWM_BEGIN
 
 double const kSampleRate = 44100;
 SampleCount const kBlockSize = 256;
+
+std::string GetPluginDescFileName() {
+    return "plugin_list.bin";
+}
 
 std::shared_ptr<Sequence> MakeSequence() {
     static auto const tick_to_sample = [](int tick) -> SampleCount {
@@ -57,14 +66,37 @@ std::shared_ptr<Sequence> MakeSequence() {
 
 struct MyApp::Impl
 {
+    struct PluginListExporter
+    :   PluginScanner::Listener
+    {
+        void OnScanningFinished(PluginScanner *ps)
+        {
+            std::ofstream ofs(GetPluginDescFileName());
+            auto str = ps->Export();
+            ofs.write(str.data(), str.length());
+        }
+    };
+    
     std::unique_ptr<AudioDeviceManager> adm_;
     ListenerService<ProjectActivationListener> pa_listeners_;
-    ListenerService<FactoryLoadListener> fl_listeners_;
     ListenerService<Vst3PluginLoadListener> vl_listeners_;
-    std::unique_ptr<Vst3PluginFactory> factory_;
+    Vst3PluginFactoryList factory_list_;
     std::shared_ptr<Vst3Plugin> plugin_;
     std::shared_ptr<Project> project_;
     wxString device_name_;
+    
+    PluginScanner plugin_scanner_;
+    PluginListExporter plugin_list_exporter_;
+    
+    Impl()
+    {
+        plugin_scanner_.AddListener(&plugin_list_exporter_);
+    }
+    
+    ~Impl()
+    {
+        plugin_scanner_.RemoveListener(&plugin_list_exporter_);
+    }
 };
 
 MyApp::MyApp()
@@ -80,7 +112,24 @@ bool MyApp::OnInit()
     
     wxInitAllImageHandlers();
     
+    pimpl_->plugin_scanner_.AddDirectories({
+        L"/Library/Audio/Plug-Ins/VST3",
+        wxStandardPaths::Get().GetDocumentsDir().ToStdWstring() + L"../Library/Audio/Plug-Ins/VST3",
+        L"../../ext/vst3sdk/build_debug/VST3/Debug",
+    });
     
+    std::ifstream ifs(GetPluginDescFileName());
+    if(ifs) {
+        std::string dump_data;
+        std::copy(std::istreambuf_iterator<char>(ifs),
+                  std::istreambuf_iterator<char>(),
+                  std::back_inserter(dump_data)
+                  );
+        
+        pimpl_->plugin_scanner_.Import(dump_data);
+    } else {
+        pimpl_->plugin_scanner_.ScanAsync();
+    }
     
     pimpl_->project_ = std::make_shared<Project>();
     pimpl_->project_->SetSequence(MakeSequence());
@@ -147,7 +196,7 @@ int MyApp::OnExit()
     pimpl_->project_->RemoveInstrument();
     pimpl_->project_.reset();
     pimpl_->plugin_.reset();
-    pimpl_->factory_.reset();
+    pimpl_->factory_list_.Shrink();
     return 0;
 }
 
@@ -159,71 +208,52 @@ void MyApp::BeforeExit()
 void MyApp::AddProjectActivationListener(ProjectActivationListener *li) { pimpl_->pa_listeners_.AddListener(li); }
 void MyApp::RemoveProjectActivationListener(ProjectActivationListener const *li) { pimpl_->pa_listeners_.RemoveListener(li); }
 
-void MyApp::AddFactoryLoadListener(MyApp::FactoryLoadListener *li) { pimpl_->fl_listeners_.AddListener(li); }
-void MyApp::RemoveFactoryLoadListener(MyApp::FactoryLoadListener const *li) { pimpl_->fl_listeners_.RemoveListener(li); }
-
 void MyApp::AddVst3PluginLoadListener(MyApp::Vst3PluginLoadListener *li) { pimpl_->vl_listeners_.AddListener(li); }
 void MyApp::RemoveVst3PluginLoadListener(MyApp::Vst3PluginLoadListener const *li) { pimpl_->vl_listeners_.RemoveListener(li); }
 
-bool MyApp::LoadFactory(String path)
+Vst3Plugin * MyApp::LoadVst3Plugin(PluginDescription const &desc)
 {
-    hwm::dout << "Load VST3 Module: " << path << std::endl;
+    hwm::dout << "Load VST3 Module: " << desc.vst3info().filepath() << std::endl;
+    
+    std::shared_ptr<Vst3PluginFactory> factory;
     try {
-        auto tmp_factory = std::make_unique<Vst3PluginFactory>(path);
-        UnloadFactory();
-        pimpl_->factory_ = std::move(tmp_factory);
-        pimpl_->fl_listeners_.Invoke([path, this](auto *li) {
-            li->OnFactoryLoaded(path, pimpl_->factory_.get());
-        });
-        return true;
+        factory = pimpl_->factory_list_.FindOrCreateFactory(to_wstr(desc.vst3info().filepath()));
     } catch(std::exception &e) {
-        hwm::dout << "Create VST3 Factory failed: " << e.what() << std::endl;
-        return false;
+        hwm::dout << "Failed to create a Vst3PluginFactory: " << e.what() << std::endl;
+        return nullptr;
     }
-}
-
-void MyApp::UnloadFactory()
-{
-    if(!pimpl_->factory_) { return; }
-    UnloadVst3Plugin(); // ロード済みのプラグインがあれば、先にアンロードしておく。
-    pimpl_->fl_listeners_.InvokeReversed([](auto *li) { li->OnFactoryUnloaded(); });
-}
-
-bool MyApp::IsFactoryLoaded() const
-{
-    return !!pimpl_->factory_;
-}
-
-bool MyApp::LoadVst3Plugin(int component_index)
-{
-    assert(IsFactoryLoaded());
+    
+    auto cid = to_cid(desc.vst3info().cid());
+    assert(cid);
     
     try {
-        auto tmp_plugin = pimpl_->factory_->CreateByIndex(component_index);
+        auto tmp_plugin = factory->CreateByID(*cid);
         UnloadVst3Plugin();
+        
         pimpl_->plugin_ = std::move(tmp_plugin);
         pimpl_->project_->SetInstrument(pimpl_->plugin_);
         pimpl_->vl_listeners_.Invoke([this](auto li) {
             li->OnAfterVst3PluginLoaded(pimpl_->plugin_.get());
         });
-        return true;
     } catch(std::exception &e) {
-        hwm::dout << "Create VST3 Plugin failed: " << e.what() << std::endl;
-        return false;
+        hwm::dout << "Failed to create a Vst3Plugin: " << e.what() << std::endl;
+        return nullptr;
     }
+    
+    return pimpl_->plugin_.get();
 }
 
 void MyApp::UnloadVst3Plugin()
 {
-    if(pimpl_->plugin_) {
-        pimpl_->project_->RemoveInstrument();
-        
-        pimpl_->vl_listeners_.InvokeReversed([this](auto li) {
-            li->OnBeforeVst3PluginUnloaded(pimpl_->plugin_.get());
-        });
-        auto tmp = std::move(pimpl_->plugin_);
-        tmp.reset();
-    }
+    if(!pimpl_->plugin_) { return; }
+    
+    pimpl_->project_->RemoveInstrument();
+    
+    pimpl_->vl_listeners_.InvokeReversed([this](auto li) {
+        li->OnBeforeVst3PluginUnloaded(pimpl_->plugin_.get());
+    });
+    auto tmp = std::move(pimpl_->plugin_);
+    tmp.reset();
 }
 
 bool MyApp::IsVst3PluginLoaded() const
@@ -231,14 +261,25 @@ bool MyApp::IsVst3PluginLoaded() const
     return !!pimpl_->plugin_;
 }
 
-Vst3PluginFactory * MyApp::GetFactory()
-{
-    return pimpl_->factory_.get();
-}
-
-Vst3Plugin * MyApp::GetPlugin()
+Vst3Plugin * MyApp::GetVst3Plugin()
 {
     return pimpl_->plugin_.get();
+}
+
+Vst3Plugin const * MyApp::GetVst3Plugin() const
+{
+    return pimpl_->plugin_.get();
+}
+
+void MyApp::RescanPlugins()
+{
+    pimpl_->plugin_scanner_.ScanAsync();
+}
+
+void MyApp::ForceRescanPlugins()
+{
+    pimpl_->plugin_scanner_.ClearPluginDescriptions();
+    pimpl_->plugin_scanner_.ScanAsync();
 }
 
 Project * MyApp::GetProject()

@@ -8,6 +8,7 @@
 #include "project/Project.hpp"
 #include "misc/ListenerService.hpp"
 #include "misc/SingleInstance.hpp"
+#include <plugin_desc.pb.h>
 
 NS_HWM_BEGIN
 
@@ -43,22 +44,6 @@ public:
     void AddProjectActivationListener(ProjectActivationListener *li);
     void RemoveProjectActivationListener(ProjectActivationListener const *li);
     
-    class FactoryLoadListener
-    {
-    public:
-        virtual
-        ~FactoryLoadListener() {}
-        
-        virtual
-        void OnFactoryLoaded(String path, Vst3PluginFactory *factory) = 0;
-        
-        virtual
-        void OnFactoryUnloaded() = 0;
-    };
-    
-    void AddFactoryLoadListener(FactoryLoadListener *li);
-    void RemoveFactoryLoadListener(FactoryLoadListener const *li);
-    
     class Vst3PluginLoadListener
     {
     public:
@@ -75,16 +60,15 @@ public:
     void AddVst3PluginLoadListener(Vst3PluginLoadListener *li);
     void RemoveVst3PluginLoadListener(Vst3PluginLoadListener const *li);
     
-    bool LoadFactory(String path);
-    void UnloadFactory();
-    bool IsFactoryLoaded() const;
-    
-    bool LoadVst3Plugin(int component_index);
+    Vst3Plugin * LoadVst3Plugin(PluginDescription const &desc);
     void UnloadVst3Plugin();
+    Vst3Plugin * GetVst3Plugin();
+    Vst3Plugin const * GetVst3Plugin() const;
     bool IsVst3PluginLoaded() const;
     
-    Vst3PluginFactory * GetFactory();
-    Vst3Plugin * GetPlugin();
+    void RescanPlugins();
+    void ForceRescanPlugins();
+    
     Project * GetProject();
     
 private:

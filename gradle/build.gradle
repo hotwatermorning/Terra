@@ -213,16 +213,23 @@ task build_submodules {
   dependsOn { [build_protobuf, compile_schemas, build_portaudio, build_vst3sdk, build_wxwidgets, build_fmtlib] }
 }
 
-task build_app {
+task prepare_app {
   doLast {
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
     execute("mkdir -p ${build_dir}")
     execute("cmake -GXcode -DCMAKE_BUILD_TYPE=${project.config} ${cmake_ccache_config} ..", build_dir)
+  }
+}
+prepare_app.mustRunAfter build_submodules
+prepare_app.mustRunAfter compile_schemas
+
+task build_app {
+  doLast {
+    def build_dir = file("../${build_dir_name}").getAbsolutePath()
     execute("xcodebuild -configuration ${project.config}", build_dir)
   }
-
 }
-build_app.mustRunAfter build_submodules
+build_app.mustRunAfter prepare_app
 
 //! 指定したディレクトリの直下にあるディレクトリのうち、
 //! 現在のビルド構成によって決まるディレクトリ名と同じディレクトリがあれば、それを削除する。
@@ -254,5 +261,6 @@ task clean {
 }
 
 task build_all {
-  dependsOn { [update_submodules, build_submodules, build_app] }
+  dependsOn { [update_submodules, build_submodules, prepare_app, build_app] }
 }
+

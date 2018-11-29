@@ -160,31 +160,32 @@ target_link_libraries(
 
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
-  message("Found ccache")
-  # Set up wrapper scripts
-  set(C_LAUNCHER "${CCACHE_PROGRAM}")
-  set(CXX_LAUNCHER "${CCACHE_PROGRAM}")
+  message("Found ccache: ${CCACHE_PROGRAM}")
+  # generate wrapper scripts
+  function(generate_launcher_script launcher_path compiler_path file_path)
+    string(CONCAT launcher_script_template
+      "#!/bin/sh\n"
+      "# Xcode generator doesn't include the compiler as the\n"
+      "# first argument, Ninja and Makefiles do. Handle both cases.\n"
+      "if [[ \"$1\" = \"${compiler_path}\" ]] ; then shift; fi\n"
+      "export CCACHE_CPP2=true\n"
+      "export CCACHE_SLOPPINESS=pch_defines,time_macros\n"
+      "exec \"${launcher_path}\" \"${compiler_path}\" \"$@\"\n"
+      )
+    file(WRITE "${file_path}" "${launcher_script_template}")
+    execute_process(COMMAND chmod a+rx "${file_path}")
+  endfunction()
 
-  configure_file("./cmake/launch-c.in" "${CMAKE_BINARY_DIR}/launch-c")
-  configure_file("./cmake/launch-cxx.in" "${CMAKE_BINARY_DIR}/launch-cxx")
-  execute_process(COMMAND chmod a+rx
-    "${CMAKE_BINARY_DIR}/launch-c"
-    "${CMAKE_BINARY_DIR}/launch-cxx"
-    )
+  generate_launcher_script("${CCACHE_PROGRAM}" "${CMAKE_C_COMPILER}" "${CMAKE_BINARY_DIR}/launch-c")
+  generate_launcher_script("${CCACHE_PROGRAM}" "${CMAKE_CXX_COMPILER}" "${CMAKE_BINARY_DIR}/launch-cxx")
 
   if(CMAKE_GENERATOR STREQUAL "Xcode")
     # Set Xcode project attributes to route compilation and linking
     # through our scripts
-#     set(CMAKE_XCODE_ATTRIBUTE_C "${CMAKE_BINARY_DIR}/launch-c")
-#     set(CMAKE_XCODE_ATTRIBUTE_CXX "${CMAKE_BINARY_DIR}/launch-cxx")
-#     set(CMAKE_XCODE_ATTRIBUTE_LD "${CMAKE_BINARY_DIR}/launch-c")
-#     set(CMAKE_XCODE_ATTRIBUTE_LDPLUSPLUS "${CMAKE_BINARY_DIR}/launch-cxx")
-
-    set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_CC "${CMAKE_BINARY_DIR}/launch-c")
-    set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_CXX "${CMAKE_BINARY_DIR}/launch-cxx")
-    set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_LD "${CMAKE_BINARY_DIR}/launch-c")
-    set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_LDPLUSPLUS "${CMAKE_BINARY_DIR}/launch-cxx")
-
+    set(CMAKE_XCODE_ATTRIBUTE_C "${CMAKE_BINARY_DIR}/launch-c")
+    set(CMAKE_XCODE_ATTRIBUTE_CXX "${CMAKE_BINARY_DIR}/launch-cxx")
+    set(CMAKE_XCODE_ATTRIBUTE_LD "${CMAKE_BINARY_DIR}/launch-c")
+    set(CMAKE_XCODE_ATTRIBUTE_LDPLUSPLUS "${CMAKE_BINARY_DIR}/launch-cxx")
   else()
     # Support Unix Makefiles and Ninja
     set(CMAKE_C_COMPILER_LAUNCHER "${CMAKE_BINARY_DIR}/launch-c")

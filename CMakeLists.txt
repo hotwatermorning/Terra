@@ -74,7 +74,6 @@ set(CMAKE_EXE_LINKER_FLAGS "${WX_LIB_FLAGS} ${CMAKE_EXE_LINKER_FLAGS}")
 # set source directories
 set(SOURCE_DIR_LIST "./Vst3HostDemo")
 # set target extension list
-set(TARGET_EXTENSION_LIST "*.c" "*.cpp" "*.h" "*.hpp")
 
 if(IsXcode)
   list(APPEND TARGET_EXTENSION_LIST "*.mm")
@@ -85,6 +84,7 @@ set(BASE_DIR "./Vst3HostDemo")
 get_filename_component(BASE_DIR "${BASE_DIR}" ABSOLUTE)
 
 foreach(DIR ${SOURCE_DIR_LIST})
+  set(PATTERNS "")
   foreach(EXT ${TARGET_EXTENSION_LIST})
     list(APPEND PATTERNS "${DIR}/${EXT}")
   endforeach()

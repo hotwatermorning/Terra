@@ -213,6 +213,12 @@ public:
         auto uc = ev.GetUnicodeKey();
         if(uc == WXK_NONE ) { return; }
         
+        if(uc == kPlayback) {
+            auto pj = Project::GetInstance();
+            auto &tp = pj->GetTransporter();
+            tp.SetPlaying(!tp.IsPlaying());
+        }
+        
         for(int i = 0; i < key_code_for_sample_note_.size(); ++i) {
             if(key_code_for_sample_note_[i] == uc) {
                 SendSampleNoteOff(i);
@@ -322,6 +328,7 @@ private:
     wxTimer timer_;
     PlayingNoteList playing_notes_;
     int key_base_ = 60;
+    constexpr static wxChar kPlayback = L' ';
     constexpr static wxChar kOctaveDown = L'Z';
     constexpr static wxChar kOctaveUp = L'X';
     static std::vector<wxChar> const kKeyTable;

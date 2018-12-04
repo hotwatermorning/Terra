@@ -1,0 +1,21 @@
+variables:
+  DEVELOPER_DIR: "/Applications/Xcode_9.3.1.app"
+jobs:
+- job: build_osx
+  pool:
+    vmImage: 'macOS-10.13'
+  timeoutInMinutes: 120
+  steps:
+  - script: brew install libtool automake && cd gradle && ./gradlew build_all -Pconfig=Release
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathtoPublish: '$(System.DefaultWorkingDirectory)/build_release/Release'
+      artifactName: Binary
+- job: deploy
+  steps:
+  - task: DownloadBuildArtifacts@0
+    displayName: "Download Artifacts"
+    inputs:
+      artifactName: Binary
+  dependsOn: build_osx
+  condition: succeeded()

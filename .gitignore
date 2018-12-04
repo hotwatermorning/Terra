@@ -8,6 +8,7 @@
 !*.png
 !*.in
 !*.proto
+!*.yml
 !.gitignore
 !.gitmodules
 

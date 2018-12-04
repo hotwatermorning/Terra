@@ -7,29 +7,21 @@ def ensure_property(def obj, String keyname, List candidates, Integer default_va
   assert(candidates.contains(obj.getProperty(keyname)))
 }
 
+def getenv(String key) { return java.lang.System.getenv()[key] }
+def isWindows() { return System.properties['os.name'].toLowerCase().startsWith("windows") }
+
 // Property about build configuration
 ensure_property(project, "config", ["Debug", "Release"])
 // Property about ccache.
 // (note: ccache is not used if not installed even if this property is true.)
 ensure_property(project, "use_ccache", ["true", "false"])
 
-def isWindows() {
-  return System.properties['os.name'].toLowerCase().startsWith("windows")
-}
-
 ext {
   build_dir_name = "build_${project.config.toLowerCase()}"
   has_ccache = (project.use_ccache == "true" ? "which ccache".execute().waitFor() == 0 : false)
   ccache_path = (has_ccache ? "which ccache".execute().text.trim() : "")
-  cmake_ccache_config = (has_ccache
-                         ? "-DCMAKE_C_COMPILER_LAUNCHER=\"${ccache_path}\" -DCMAKE_CXX_COMPILER_LAUNCHER=\"${ccache_path}\""
-                         : "")
-  ccache_envvars = [CC: "${ccache_path} clang", CXX: "${ccache_path} clang++"]
+  ccache_envvars = (has_ccache ? [CC: "${ccache_path} clang", CXX: "${ccache_path} clang++"] : [:])
 }
-
-// println "has ccache: ${has_ccache}"
-// println "ccache path: ${ccache_path}"
-// println "cmake ccache config: ${cmake_ccache_config}"
 
 // 渡された文字列を空白で区切って、単語のリストとして返す。
 // ただし、引用符(`'` or `"`)で囲まれた範囲は空白で区切らずに一つの単語とみなす。
@@ -141,10 +133,12 @@ build_protobuf.mustRunAfter update_submodules
 
 task build_portaudio {
   doLast {
-    def portaudio_build_dir = file("../ext/portaudio/${build_dir_name}").getAbsolutePath()
-    execute("mkdir -p ${portaudio_build_dir}")
-    execute("cmake -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ${cmake_ccache_config} ..", portaudio_build_dir)
-    execute("make -j", portaudio_build_dir)
+    def build_dir = file("../ext/portaudio/${build_dir_name}").getAbsolutePath()
+
+    execute("mkdir -p ${build_dir}")
+    execute("cmake -DCMAKE_INSTALL_PREFIX=${build_dir}/install -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+    execute("make -j", build_dir)
+    execute("make install", build_dir)
   }
 }
 build_portaudio.mustRunAfter update_submodules
@@ -152,19 +146,19 @@ build_portaudio.mustRunAfter update_submodules
 
 task build_vst3sdk {
   doLast {
-    // vst3sdk
-    def vst3sdk_build_dir = file("../ext/vst3sdk/${build_dir_name}").getAbsolutePath()
-    execute("mkdir -p ${vst3sdk_build_dir}")
-    execute("cmake -DCMAKE_BUILD_TYPE=${project.config} ${cmake_ccache_config} ..", vst3sdk_build_dir)
-    execute("make -j", vst3sdk_build_dir)
+    def build_dir = file("../ext/vst3sdk/${build_dir_name}").getAbsolutePath()
+
+    execute("mkdir -p ${build_dir}")
+    // VST3SDKは、makeのinstallターゲットを用意しない
+    execute("cmake -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+    execute("make -j", build_dir)
   }
 }
 build_vst3sdk.mustRunAfter update_submodules
 
 task build_wxwidgets {
   doLast {
-    // wxwidgets
-    def wx_build_dir = file("../ext/wxWidgets/${build_dir_name}").getAbsolutePath()
+    def build_dir = file("../ext/wxWidgets/${build_dir_name}").getAbsolutePath()
 
     def debug_flags = ""
     if(project.config == "Debug") {
@@ -172,19 +166,19 @@ task build_wxwidgets {
     }
 
     execute("./autogen.sh", "../ext/wxWidgets")
-    execute("mkdir -p ${wx_build_dir}")
+    execute("mkdir -p ${build_dir}")
     execute('../configure CXXFLAGS="-stdlib=libc++ -DHAVE_TYPE_TRAITS" OBJCXXFLAGS="-stdlib=libc++" ' +
             'CPPFLAGS="-stdlib=libc++" LDFLAGS="-stdlib=libc++" ' +
             '--with-macosx-version-min=10.7 --with-cocoa ' +
             '--with-libjpeg=builtin --with-libpng=builtin --with-regex=builtin --with-libtiff=builtin ' +
             '--with-zlib=builtin --with-expat=builtin ' +
             '--enable-stl --enable-std_containers --enable-std_iostreams --enable-std_string ' +
-            "--disable-shared --enable-unicode ${debug_flags} --with-cxx=14 --prefix=${wx_build_dir}/install",
-            wx_build_dir,
+            "--disable-shared --enable-unicode ${debug_flags} --with-cxx=14 --prefix=${build_dir}/install",
+            build_dir,
             ccache_envvars
             )
-    execute("make", wx_build_dir)
-    execute("make install", wx_build_dir)
+    execute("make", build_dir)
+    execute("make install", build_dir)
   }
 }
 build_wxwidgets.mustRunAfter update_submodules
@@ -192,9 +186,11 @@ build_wxwidgets.mustRunAfter update_submodules
 task build_fmtlib {
   doLast {
     def build_dir = file("../ext/fmt/${build_dir_name}").getAbsolutePath()
+
     execute("mkdir -p ${build_dir}")
-    execute("cmake -DCMAKE_BUILD_TYPE=${project.config} ${cmake_ccache_config} ..", build_dir)
+    execute("cmake -DCMAKE_INSTALL_PREFIX=${build_dir}/install -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
     execute("make -j", build_dir)
+    execute("make install", build_dir)
   }
 }
 build_fmtlib.mustRunAfter update_submodules
@@ -217,7 +213,7 @@ task prepare_app {
   doLast {
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
     execute("mkdir -p ${build_dir}")
-    execute("cmake -GXcode -DCMAKE_BUILD_TYPE=${project.config} ${cmake_ccache_config} ..", build_dir)
+    execute("cmake -GXcode -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir)
   }
 }
 prepare_app.mustRunAfter build_submodules

@@ -197,9 +197,13 @@ build_fmtlib.mustRunAfter update_submodules
 
 task compile_schemas {
   doLast {
+    def protoc = file("../ext/protobuf/${build_dir_name}/install/bin/protoc").getAbsolutePath()
+    assert(file(protoc).exists())
+
     execute("mkdir -p schema/cpp", "..")
     file("../schema").eachFileMatch(~/.*\.proto$/) {
-      execute("./ext/protobuf/${build_dir_name}/install/bin/protoc -Ischema --cpp_out=schema/cpp ${it.getName()}", "..")
+
+      execute("${protoc} -Ischema --cpp_out=schema/cpp ${it.getName()}", "..")
     }
   }
 }

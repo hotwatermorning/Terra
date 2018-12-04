@@ -62,7 +62,7 @@ execute_process(COMMAND ${WX_CONFIG} "--libs base,core" OUTPUT_VARIABLE WX_LIB_F
 message("WX_CXX_FLAGS ${WX_CXX_FLAGS}")
 message("WX_LIB_FLAGS ${WX_LIB_FLAGS}")
 
-set(CMAKE_CXX_FLAGS "-DHAVE_TYPE_TRAITS=1 ${WX_CXX_FLAGS} ${CMAKE_CXX_FLAGS} -std=c++17 -stdlib=libc++")
+set(CMAKE_CXX_FLAGS "-DHAVE_TYPE_TRAITS=1 ${WX_CXX_FLAGS} ${CMAKE_CXX_FLAGS} -std=c++17 -Werror=return-type -stdlib=libc++")
 set(CMAKE_EXE_LINKER_FLAGS "${WX_LIB_FLAGS} ${CMAKE_EXE_LINKER_FLAGS}")
 
 find_library(PORTAUDIO_LIB "libportaudio.a" PATHS "./ext/portaudio/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)

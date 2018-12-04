@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.11)
+cmake_minimum_required(VERSION 3.6)
 
 ####################################################################
 # general setup
@@ -52,17 +52,24 @@ else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_NDEBUG")
 endif()
 
-set(WX_CONFIG_PATH "./ext/wxWidgets/${BUILD_DIR_NAME}/install/bin/wx-config")
-get_filename_component(WX_CONFIG_PATH ${WX_CONFIG_PATH} ABSOLUTE)
-message("WX_CONFIG_PATH: ${WX_CONFIG_PATH}")
+find_program(WX_CONFIG "wx-config" HINTS "./ext/wxWidgets/${BUILD_DIR_NAME}/install/bin" NO_DEFAULT_PATH)
 
-execute_process(COMMAND ${WX_CONFIG_PATH} "--cxxflags" OUTPUT_VARIABLE WX_CXX_FLAGS)
-execute_process(COMMAND ${WX_CONFIG_PATH} "--libs base,core" OUTPUT_VARIABLE WX_LIB_FLAGS)
+message("WX_CONFIG_PATH: ${WX_CONFIG}")
 
+execute_process(COMMAND ${WX_CONFIG} "--cxxflags" OUTPUT_VARIABLE WX_CXX_FLAGS)
+execute_process(COMMAND ${WX_CONFIG} "--libs base,core" OUTPUT_VARIABLE WX_LIB_FLAGS)
+
+message("WX_CXX_FLAGS ${WX_CXX_FLAGS}")
 message("WX_LIB_FLAGS ${WX_LIB_FLAGS}")
 
 set(CMAKE_CXX_FLAGS "-DHAVE_TYPE_TRAITS=1 ${WX_CXX_FLAGS} ${CMAKE_CXX_FLAGS} -std=c++17 -stdlib=libc++")
 set(CMAKE_EXE_LINKER_FLAGS "${WX_LIB_FLAGS} ${CMAKE_EXE_LINKER_FLAGS}")
+
+find_library(PORTAUDIO_LIB "libportaudio.a" PATHS "./ext/portaudio/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)
+find_library(PROTOBUF_LIB "protobuf" PATHS "./ext/protobuf/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)
+find_library(FMT_LIB NAMES "fmt" "fmtd" PATHS "./ext/fmt/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)
+find_library(VST3_SDK_LIB "sdk" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}" NO_DEFAULT_PATH)
+find_library(VST3_BASE_LIB "base" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}" NO_DEFAULT_PATH)
 
 # set source directories
 set(SOURCE_DIR_LIST
@@ -131,31 +138,23 @@ endif()
 set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PREFIX_HEADER "Vst3HostDemo/prefix.hpp")
 set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PRECOMPILE_PREFIX_HEADER "YES")
 
-find_library(VST3_SDK_LIB "sdk" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}")
-find_library(VST3_BASE_LIB "base" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}")
-find_library(PORTAUDIO_LIB "libportaudio.a" "./ext/portaudio/${BUILD_DIR_NAME}")
-find_library(FMT_LIB "fmt" NAMES "fmtd" PATHS "./ext/fmt/${BUILD_DIR_NAME}")
-find_library(PROTOBUF_LIB "protobuf" PATHS "./ext/protobuf/${BUILD_DIR_NAME}/install/lib" NO_CMAKE_PATH NO_DEFAULT_PATH NO_SYSTEM_ENVIRONMENT_PATH)
-
-message("PROTOBUF: ${PROTOBUF_LIB}")
-
 include_directories(
   "./Vst3HostDemo"
   "./ext/vst3sdk"
-  "./ext/portaudio/include"
-  "./ext/fmt/include"
-  "./ext/json/single_include"
+  "./ext/variant/include"
   "./schema/cpp"
+  "./ext/portaudio/${BUILD_DIR_NAME}/install/include"
   "./ext/protobuf/${BUILD_DIR_NAME}/install/include"
+  "./ext/fmt/${BUILD_DIR_NAME}/install/include"
   )
 
 target_link_libraries(
   ${PROJECT_NAME}
-  ${PORTAUDIO_LIB}
   ${VST3_SDK_LIB}
   ${VST3_BASE_LIB}
-  ${FMT_LIB}
+  ${PORTAUDIO_LIB}
   ${PROTOBUF_LIB}
+  ${FMT_LIB}
   "-framework CoreServices"
   "-framework CoreFoundation"
   "-framework AudioUnit"

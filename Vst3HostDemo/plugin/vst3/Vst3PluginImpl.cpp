@@ -567,8 +567,8 @@ void Vst3Plugin::Impl::RestartComponent(Steinberg::int32 flags)
 
 void Vst3Plugin::Impl::Process(ProcessInfo pi)
 {
-    assert(pi.ti_);
-    auto &ti = *pi.ti_;
+    assert(pi.time_info_);
+    auto &ti = *pi.time_info_;
 	Vst::ProcessContext process_context = {};
 	process_context.sampleRate = sampling_rate_;
 	process_context.projectTimeSamples = ti.smp_begin_pos_;
@@ -593,27 +593,38 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
     input_buffer_.fill();
     output_buffer_.fill();
     
-    for(auto &note: pi.notes_) {
+    for(auto &m: pi.input_midi_buffer_.buffer_) {
         Vst::Event e;
         e.busIndex = 0;
-        e.sampleOffset = note.GetOffset();
+        e.sampleOffset = m.offset_;
         e.ppqPosition = process_context.projectTimeMusic;
         e.flags = Vst::Event::kIsLive;
-        if(note.IsNoteOn()) {
+        
+        using MM = ProcessInfo::MidiMessage;
+        
+        if(auto note_on = m.As<MM::NoteOn>()) {
             e.type = Vst::Event::kNoteOnEvent;
-            e.noteOn.channel = note.GetChannel();
+            e.noteOn.channel = m.channel_;
+            e.noteOn.pitch = note_on->pitch_;
+            e.noteOn.velocity = note_on->velocity_ / 127.0;
             e.noteOn.length = 0;
-            e.noteOn.pitch = note.GetPitch();
             e.noteOn.tuning = 0;
             e.noteOn.noteId = -1;
-            e.noteOn.velocity = note.GetVelocity() / 127.0;
-        } else {
+        } else if(auto note_off = m.As<MM::NoteOff>()){
             e.type = Vst::Event::kNoteOffEvent;
-            e.noteOff.channel = note.GetChannel();
-            e.noteOff.pitch = note.GetPitch();
+            e.noteOff.channel = m.channel_;
+            e.noteOff.pitch = note_off->pitch_;
+            e.noteOff.velocity = note_off->off_velocity_ / 127.0;
             e.noteOff.tuning = 0;
             e.noteOff.noteId = -1;
-            e.noteOff.velocity = note.GetVelocity() / 127.0;
+        } else if(auto poly_press = m.As<MM::PolyphonicKeyPressure>()) {
+            e.type = Vst::Event::kPolyPressureEvent;
+            e.polyPressure.channel = m.channel_;
+            e.polyPressure.pitch = poly_press->pitch_;
+            e.polyPressure.pressure = poly_press->value_ / 127.0;
+            e.polyPressure.noteId = -1;
+        } else if(auto cc = m.As<MM::ControlChange>()) {
+            // IMidiMappingクラスを使用して、パラメータに変換する必要あり
         }
         input_events_.addEvent(e);
     }
@@ -633,9 +644,9 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
         }
     };
     
-    copy_buffer(pi.input_.buffer_, input_buffer_,
-                pi.frame_length_,
-                pi.input_.sample_offset_, 0);
+    copy_buffer(pi.input_audio_buffer_.buffer_, input_buffer_,
+                pi.time_info_->GetSmpDuration(),
+                pi.input_audio_buffer_.sample_offset_, 0);
 
 	PopFrontParameterChanges(input_params_);
 
@@ -658,9 +669,9 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
         hwm::dout << "process failed: {}"_format(tresult_to_string(res)) << std::endl;
     }
     
-    copy_buffer(output_buffer_, pi.output_.buffer_,
-                pi.frame_length_,
-                0, pi.output_.sample_offset_);
+    copy_buffer(output_buffer_, pi.output_audio_buffer_.buffer_,
+                pi.time_info_->GetSmpDuration(),
+                0, pi.output_audio_buffer_.sample_offset_);
 
 	for(int i = 0; i < output_params_.getParameterCount(); ++i) {
 		auto *queue = output_params_.getParameterData(i);

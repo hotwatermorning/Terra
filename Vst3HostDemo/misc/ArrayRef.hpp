@@ -65,6 +65,11 @@ struct ArrayRef
         }
     }
     
+    template<class Container>
+    ArrayRef(Container &c)
+    :   ArrayRef(std::begin(c), std::end(c))
+    {}
+    
     void swap(this_type &rhs)
     {
         std::swap(arr_, rhs.arr_);

@@ -13,3 +13,6 @@
 [submodule "ext/protobuf"]
 	path = ext/protobuf
 	url = https://github.com/protocolbuffers/protobuf.git
+[submodule "ext/variant"]
+	path = ext/variant
+	url = https://github.com/mpark/variant.git

@@ -9,7 +9,7 @@
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
 #include <pluginterfaces/vst/ivstunits.h>
 
-#include "../../transport/TransportInfo.hpp"
+#include "../../processor/ProcessInfo.hpp"
 #include "../../misc/ListenerService.hpp"
 #include "../../misc/Buffer.hpp"
 #include "../../misc/ArrayRef.hpp"
@@ -252,15 +252,6 @@ public:
     {
         BufferRef<T> buffer_;
         SampleCount sample_offset_ = 0;
-    };
-    
-    struct ProcessInfo
-    {
-        TransportInfo const *           ti_ = nullptr;
-        SampleCount                     frame_length_;
-        ArrayRef<Vst3Note>              notes_;
-        ProcessBufferInfo<float const>  input_;
-        ProcessBufferInfo<float>        output_;
     };
 
 	void Process(ProcessInfo &pi);

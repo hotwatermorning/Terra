@@ -113,7 +113,7 @@ struct Project::Impl
 {
     LockFactory lf_;
     std::shared_ptr<Vst3Plugin> plugin_;
-    std::vector<Vst3Note> vst3_notes_;
+    std::vector<ProcessInfo::MidiMessage> midis_;
     Transporter tp_;
     double sample_rate_ = 0;
     SampleCount block_size_ = 0;
@@ -134,7 +134,7 @@ Project::Project()
     pimpl_->playing_sequence_notes_.Clear();
     pimpl_->requested_sample_notes_.Clear();
     pimpl_->playing_sample_notes_.Clear();
-    pimpl_->vst3_notes_.reserve(128);
+    pimpl_->midis_.reserve(128);
 }
 
 Project::~Project()
@@ -327,14 +327,19 @@ void Project::Process(SampleCount block_size, float const * const * input, float
         
         auto in_this_frame = [&](auto pos) { return frame_begin <= pos && pos < frame_end; };
         
-        pimpl_->vst3_notes_.clear();
+        pimpl_->midis_.clear();
         auto add_note = [&, this](SampleCount sample_pos, UInt8 channel, UInt8 pitch, UInt8 velocity, bool is_note_on)
         {
-            Vst3Note vn(sample_pos - ti.smp_begin_pos_, SampleToPPQ(sample_pos) - ti.ppq_begin_pos_,
-                        channel, pitch, velocity,
-                        (is_note_on ? Vst3Note::Type::kNoteOn : Vst3Note::Type::kNoteOff)
-                        );
-            pimpl_->vst3_notes_.push_back(vn);
+            ProcessInfo::MidiMessage mm;
+            mm.offset_ = sample_pos - ti.smp_begin_pos_;
+            mm.channel_ = channel;
+            mm.ppq_pos_ = SampleToPPQ(sample_pos);
+            if(is_note_on) {
+                mm.data_ = ProcessInfo::MidiMessage::NoteOn { pitch, velocity };
+            } else {
+                mm.data_ = ProcessInfo::MidiMessage::NoteOff { pitch, velocity };
+            }
+            pimpl_->midis_.push_back(mm);
         };
         
         std::shared_ptr<Sequence> seq = GetSequence();
@@ -386,18 +391,17 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             }
         });
         
-        Vst3Plugin::ProcessInfo pi;
-        pi.ti_ = &ti;
-        pi.frame_length_ = ti.GetSmpDuration();
-        pi.notes_ = { pimpl_->vst3_notes_.begin(), pimpl_->vst3_notes_.end() };
+        ProcessInfo pi;
+        pi.time_info_ = &ti;
         if(pimpl_->inputs_enabled_) {
-            pi.input_ = { BufferRef<float const>(input, pimpl_->num_device_inputs_, block_size), num_processed };
+            pi.input_audio_buffer_ = { BufferRef<float const>(input, pimpl_->num_device_inputs_, block_size), num_processed };
         }
-        pi.output_ = { BufferRef<float>(output, pimpl_->num_device_outputs_, block_size), num_processed };
+        pi.output_audio_buffer_ = { BufferRef<float>(output, pimpl_->num_device_outputs_, block_size), num_processed };
+        pi.input_midi_buffer_ = { pimpl_->midis_, (UInt32)pimpl_->midis_.size() };
 
         plugin->Process(pi);
 
-        num_processed += pi.frame_length_;
+        num_processed += ti.GetSmpDuration();
     });
     
     Transporter::Traverser tv;

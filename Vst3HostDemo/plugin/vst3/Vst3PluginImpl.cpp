@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <vector>
 
+#include <pluginterfaces/vst/ivstmidicontrollers.h>
+
 #include "../../misc/StrCnv.hpp"
 #include "../../misc/ScopeExit.hpp"
 #include "Vst3Utils.hpp"
@@ -602,6 +604,16 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
         
         using namespace MidiDataType;
         
+        auto midi_map = [this](int channel, int offset, int cc, Vst::ParamValue value) {
+            if(!midi_mapping_) { return; }
+            Vst::ParamID param_id = 0;
+            auto result = midi_mapping_->getMidiControllerAssignment(0, channel, cc, param_id);
+            if(result == kResultOk) {
+                PushBackParameterChange(param_id, value, offset);
+                edit_controller_->setParamNormalized(param_id, value);
+            }
+        };
+        
         if(auto note_on = m.As<NoteOn>()) {
             e.type = Vst::Event::kNoteOnEvent;
             e.noteOn.channel = m.channel_;
@@ -626,6 +638,13 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
             e.polyPressure.pressure = poly_press->value_ / 127.0;
             e.polyPressure.noteId = -1;
             input_events_.addEvent(e);
+        } else if(auto cc = m.As<ControlChange>()) {
+            midi_map(m.channel_, m.offset_, cc->control_number_, cc->data_ / 128.0);
+        } else if(auto cp = m.As<ChannelPressure>()) {
+            midi_map(m.channel_, m.offset_, Vst::ControllerNumbers::kAfterTouch, cp->value_ / 128.0);
+        } else if(auto pb = m.As<PitchBendChange>()) {
+            midi_map(m.channel_, m.offset_, Vst::ControllerNumbers::kPitchBend,
+                     ((pb->value_msb_ << 7) | pb->value_lsb_) / 16384.0);
         }
     }
 	
@@ -681,13 +700,13 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
 	}
 }
 
-void Vst3Plugin::Impl::PushBackParameterChange(Vst::ParamID id, Vst::ParamValue value)
+void Vst3Plugin::Impl::PushBackParameterChange(Vst::ParamID id, Vst::ParamValue value, SampleCount offset)
 {
 	auto lock = std::unique_lock(parameter_queue_mutex_);
 	Steinberg::int32 parameter_index = 0;
 	auto *queue = param_changes_queue_.addParameterData(id, parameter_index);
 	Steinberg::int32 ref_point_index = 0;
-	queue->addPoint(0, value, ref_point_index);
+	queue->addPoint(offset, value, ref_point_index);
     (void)ref_point_index; // currently unused.
 }
 
@@ -808,6 +827,8 @@ void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &
 			edit_controller2 = std::move(maybe_edit_controller2.right());
 		}
 	}
+    
+    auto maybe_midi_mapping = queryInterface<Vst::IMidiMapping>(edit_controller);
 
 	class_info_ = info;
 	component_ = std::move(component);
@@ -815,6 +836,9 @@ void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &
 	edit_controller_ = std::move(edit_controller);
 	edit_controller2_ = std::move(edit_controller2);
 	edit_controller_is_created_new_ = edit_controller_is_created_new;
+    if(maybe_midi_mapping.is_right()) {
+        midi_mapping_ = std::move(maybe_midi_mapping.right());
+    }
 }
 
 void Vst3Plugin::Impl::Initialize(vstma_unique_ptr<Vst::IComponentHandler> component_handler)

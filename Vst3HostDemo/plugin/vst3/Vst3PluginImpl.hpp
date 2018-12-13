@@ -168,7 +168,7 @@ public:
 //! Parameter Change
 public:
 	//! PopFrontParameterChangesとの呼び出しはスレッドセーフ
-	void PushBackParameterChange(Vst::ParamID id, Vst::ParamValue value);
+	void PushBackParameterChange(Vst::ParamID id, Vst::ParamValue value, SampleCount offset = 0);
     
 private:
     //! PushBackParameterChangeとの呼び出しはスレッドセーフ
@@ -198,6 +198,7 @@ private:
 	unit_info_ptr_t			unit_handler_;
     UnitInfoList            unit_info_list_;
     ParameterInfoList       parameter_info_list_;
+    vstma_unique_ptr<Vst::IMidiMapping> midi_mapping_;
 
 	Flag					is_processing_started_;
 	Flag					edit_controller_is_created_new_;

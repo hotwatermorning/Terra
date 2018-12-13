@@ -600,9 +600,9 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
         e.ppqPosition = process_context.projectTimeMusic;
         e.flags = Vst::Event::kIsLive;
         
-        using MM = ProcessInfo::MidiMessage;
+        using namespace MidiDataType;
         
-        if(auto note_on = m.As<MM::NoteOn>()) {
+        if(auto note_on = m.As<NoteOn>()) {
             e.type = Vst::Event::kNoteOnEvent;
             e.noteOn.channel = m.channel_;
             e.noteOn.pitch = note_on->pitch_;
@@ -610,23 +610,23 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
             e.noteOn.length = 0;
             e.noteOn.tuning = 0;
             e.noteOn.noteId = -1;
-        } else if(auto note_off = m.As<MM::NoteOff>()){
+            input_events_.addEvent(e);
+        } else if(auto note_off = m.As<NoteOff>()){
             e.type = Vst::Event::kNoteOffEvent;
             e.noteOff.channel = m.channel_;
             e.noteOff.pitch = note_off->pitch_;
             e.noteOff.velocity = note_off->off_velocity_ / 127.0;
             e.noteOff.tuning = 0;
             e.noteOff.noteId = -1;
-        } else if(auto poly_press = m.As<MM::PolyphonicKeyPressure>()) {
+            input_events_.addEvent(e);
+        } else if(auto poly_press = m.As<PolyphonicKeyPressure>()) {
             e.type = Vst::Event::kPolyPressureEvent;
             e.polyPressure.channel = m.channel_;
             e.polyPressure.pitch = poly_press->pitch_;
             e.polyPressure.pressure = poly_press->value_ / 127.0;
             e.polyPressure.noteId = -1;
-        } else if(auto cc = m.As<MM::ControlChange>()) {
-            // IMidiMappingクラスを使用して、パラメータに変換する必要あり
+            input_events_.addEvent(e);
         }
-        input_events_.addEvent(e);
     }
 	
     auto copy_buffer = [&](auto const &src, auto &dest,

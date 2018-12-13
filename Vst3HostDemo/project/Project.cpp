@@ -335,9 +335,9 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             mm.channel_ = channel;
             mm.ppq_pos_ = SampleToPPQ(sample_pos);
             if(is_note_on) {
-                mm.data_ = ProcessInfo::MidiMessage::NoteOn { pitch, velocity };
+                mm.data_ = MidiDataType::NoteOn { pitch, velocity };
             } else {
-                mm.data_ = ProcessInfo::MidiMessage::NoteOff { pitch, velocity };
+                mm.data_ = MidiDataType::NoteOff { pitch, velocity };
             }
             pimpl_->midis_.push_back(mm);
         };

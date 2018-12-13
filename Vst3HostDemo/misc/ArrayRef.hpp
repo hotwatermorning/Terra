@@ -14,7 +14,7 @@ namespace ArrayRefDetail {
     };
     
     template<class T>
-    T DummyArray<T>::value;
+    T DummyArray<T>::value = {};
     
 }    // ::ArrayRefDetail
 

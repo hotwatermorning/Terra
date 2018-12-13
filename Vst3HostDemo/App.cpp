@@ -11,6 +11,9 @@
 #include "./plugin/PluginScanner.hpp"
 #include "./plugin/vst3/Vst3PluginFactory.hpp"
 
+#include "device/AudioDeviceManager.hpp"
+#include "device/MidiDeviceManager.hpp"
+
 NS_HWM_BEGIN
 
 double const kSampleRate = 44100;
@@ -78,6 +81,9 @@ struct MyApp::Impl
     };
     
     std::unique_ptr<AudioDeviceManager> adm_;
+    std::unique_ptr<MidiDeviceManager> mdm_;
+    std::vector<MidiDevice *> midi_ins_;
+    std::vector<MidiDevice *> midi_outs_;
     ListenerService<ProjectActivationListener> pa_listeners_;
     ListenerService<Vst3PluginLoadListener> vl_listeners_;
     Vst3PluginFactoryList factory_list_;
@@ -142,12 +148,12 @@ bool MyApp::OnInit()
     pimpl_->adm_ = std::make_unique<AudioDeviceManager>();
     pimpl_->adm_->AddCallback(pimpl_->project_.get());
     
-    auto list = pimpl_->adm_->Enumerate();
-    for(auto const &info: list) {
+    auto audio_device_infos = pimpl_->adm_->Enumerate();
+    for(auto const &info: audio_device_infos) {
         hwm::wdout << L"{} - {}({}ch)"_format(info.name_, to_wstring(info.driver_), info.num_channels_) << std::endl;
     }
     
-    auto find_entry = [&list](auto io_type,
+    auto find_entry = [&list = audio_device_infos](auto io_type,
                               auto min_channels,
                               std::optional<AudioDriverType> driver = std::nullopt,
                               std::optional<String> name = std::nullopt) -> AudioDeviceInfo const *
@@ -163,14 +169,14 @@ bool MyApp::OnInit()
         else { return &*found; }
     };
 
-    auto output_device = find_entry(AudioDeviceIOType::kOutput, 2, pimpl_->adm_->GetDefaultDriver());
-    if(!output_device) { output_device = find_entry(AudioDeviceIOType::kOutput, 2); }
+    auto output_device = find_entry(DeviceIOType::kOutput, 2, pimpl_->adm_->GetDefaultDriver());
+    if(!output_device) { output_device = find_entry(DeviceIOType::kOutput, 2); }
     
     if(!output_device) {
-        throw std::runtime_error("No devices found");
+        throw std::runtime_error("No audio output devices found");
     }
     
-    auto input_device = find_entry(AudioDeviceIOType::kInput, 2, output_device->driver_);
+    auto input_device = find_entry(DeviceIOType::kInput, 2, output_device->driver_);
     
     bool const opened = pimpl_->adm_->Open(input_device, output_device, kSampleRate, kBlockSize);
     if(!opened) {
@@ -178,6 +184,23 @@ bool MyApp::OnInit()
     }
     
     pimpl_->adm_->Start();
+    
+    pimpl_->mdm_ = std::make_unique<MidiDeviceManager>();
+    auto midi_device_infos = pimpl_->mdm_->Enumerate();
+    for(auto info: midi_device_infos) {
+        hwm::wdout
+        << L"[{:<6s}] {}"_format((info.io_type_ == DeviceIOType::kInput ? L"Input": L"Output"),
+                                 info.name_id_
+                                 )
+        << std::endl;
+        
+        auto d = pimpl_->mdm_->Open(info);
+        if(info.io_type_ == DeviceIOType::kInput) {
+            pimpl_->midi_ins_.push_back(d);
+        } else {
+            pimpl_->midi_outs_.push_back(d);
+        }
+    }
     
     MyFrame *frame = new MyFrame( "Vst3HostDemo", wxPoint(50, 50), wxSize(450, 340) );
     frame->Show( true );
@@ -191,6 +214,9 @@ int MyApp::OnExit()
     pimpl_->pa_listeners_.Invoke([this](auto *li) {
         li->OnBeforeProjectDeactivated(pimpl_->project_.get());
     });
+    
+    for(auto d: pimpl_->midi_ins_) { pimpl_->mdm_->Close(d); }
+    for(auto d: pimpl_->midi_outs_) { pimpl_->mdm_->Close(d); }
     
     pimpl_->adm_->Close();
     pimpl_->project_->RemoveInstrument();

@@ -28,16 +28,6 @@ std::wstring to_wstring(AudioDriverType type)
     return to_wstr(to_string(type));
 }
 
-std::string to_string(AudioDeviceIOType io)
-{
-    return io == AudioDeviceIOType::kInput ? "Input" : "Output";
-}
-
-std::wstring to_wstring(AudioDeviceIOType io)
-{
-    return to_wstr(to_string(io));
-}
-
 AudioDriverType ToAudioDriverType(PaHostApiIndex index)
 {
     using A = AudioDriverType;
@@ -190,7 +180,7 @@ std::vector<AudioDeviceInfo> AudioDeviceManager::Enumerate()
         if(info->maxInputChannels >= 0) {
             AudioDeviceInfo tmp {
                 ToAudioDriverType(host_api_info->type),
-                AudioDeviceIOType::kInput,
+                DeviceIOType::kInput,
                 to_wstr(info->name),
                 info->maxInputChannels
             };
@@ -200,7 +190,7 @@ std::vector<AudioDeviceInfo> AudioDeviceManager::Enumerate()
         if(info->maxOutputChannels >= 0) {
             AudioDeviceInfo tmp {
                 ToAudioDriverType(host_api_info->type),
-                AudioDeviceIOType::kOutput,
+                DeviceIOType::kOutput,
                 to_wstr(info->name),
                 info->maxOutputChannels
             };

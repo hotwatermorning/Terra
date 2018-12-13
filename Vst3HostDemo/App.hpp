@@ -4,7 +4,6 @@
 
 #include "plugin/vst3/Vst3PluginFactory.hpp"
 #include "plugin/vst3/Vst3Plugin.hpp"
-#include "device/AudioDeviceManager.hpp"
 #include "project/Project.hpp"
 #include "misc/ListenerService.hpp"
 #include "misc/SingleInstance.hpp"

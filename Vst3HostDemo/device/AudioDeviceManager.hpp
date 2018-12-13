@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../misc/SingleInstance.hpp"
+#include "./DeviceIOType.hpp"
 
 NS_HWM_BEGIN
 
@@ -16,21 +17,13 @@ enum class AudioDriverType {
     kJACK,
 };
 
-enum class AudioDeviceIOType {
-    kInput,
-    kOutput,
-};
-
 std::string to_string(AudioDriverType type);
 std::wstring to_wstring(AudioDriverType type);
-
-std::string to_string(AudioDeviceIOType io);
-std::wstring to_wstring(AudioDeviceIOType io);
 
 struct AudioDeviceInfo
 {
     AudioDriverType driver_ = AudioDriverType::kUnknown;
-    AudioDeviceIOType io_type_ = AudioDeviceIOType::kOutput;
+    DeviceIOType io_type_ = DeviceIOType::kOutput;
     String name_;
     int num_channels_ = 0;
 };

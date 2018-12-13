@@ -1,5 +1,6 @@
 #include "Project.hpp"
 #include "../transport/Traverser.hpp"
+#include "../device/MidiDeviceManager.hpp"
 
 NS_HWM_BEGIN
 
@@ -126,6 +127,7 @@ struct Project::Impl
     PlayingNoteList playing_sample_notes_;
     std::atomic<bool> inputs_enabled_ = { false };
     SampleCount smp_last_pos_ = 0;
+    std::vector<DeviceMidiMessage> device_midis_;
 };
 
 Project::Project()
@@ -135,6 +137,7 @@ Project::Project()
     pimpl_->requested_sample_notes_.Clear();
     pimpl_->playing_sample_notes_.Clear();
     pimpl_->midis_.reserve(128);
+    pimpl_->device_midis_.reserve(2048);
 }
 
 Project::~Project()
@@ -325,9 +328,26 @@ void Project::Process(SampleCount block_size, float const * const * input, float
         auto const frame_begin = ti.smp_begin_pos_;
         auto const frame_end = ti.smp_end_pos_;
         
+        pimpl_->midis_.clear();
+        {
+            auto mdm = MidiDeviceManager::GetInstance();
+            auto const timestamp = mdm->GetMessages(pimpl_->device_midis_);
+            
+            auto frame_length = ti.GetSmpDuration() / pimpl_->sample_rate_;
+            auto frame_begin_time = timestamp - frame_length;
+            pimpl_->midis_.clear();
+            for(auto dm: pimpl_->device_midis_) {
+                auto const pos = std::max<double>(0, dm.time_stamp_ - frame_begin_time);
+                ProcessInfo::MidiMessage pm((SampleCount)std::round(pos * pimpl_->sample_rate_),
+                                            dm.channel_,
+                                            0,
+                                            dm.data_);
+                pimpl_->midis_.push_back(pm);
+            }
+        }
+        
         auto in_this_frame = [&](auto pos) { return frame_begin <= pos && pos < frame_end; };
         
-        pimpl_->midis_.clear();
         auto add_note = [&, this](SampleCount sample_pos, UInt8 channel, UInt8 pitch, UInt8 velocity, bool is_note_on)
         {
             ProcessInfo::MidiMessage mm;

@@ -70,6 +70,21 @@ find_library(PROTOBUF_LIB "protobuf" PATHS "./ext/protobuf/${BUILD_DIR_NAME}/ins
 find_library(FMT_LIB NAMES "fmt" "fmtd" PATHS "./ext/fmt/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)
 find_library(VST3_SDK_LIB "sdk" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}" NO_DEFAULT_PATH)
 find_library(VST3_BASE_LIB "base" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}" NO_DEFAULT_PATH)
+find_library(RTMIDI_LIB "rtmidi_static" PATHS "./ext/rtmidi/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)
+find_library(JACK_LIB jack)
+
+list(APPEND LINKLIBS
+  ${VST3_SDK_LIB}
+  ${VST3_BASE_LIB}
+  ${PORTAUDIO_LIB}
+  ${PROTOBUF_LIB}
+  ${FMT_LIB}
+  ${RTMIDI_LIB}
+  )
+
+if(JACK_LIB)
+  list(APPEND LINKLIBS ${JACK_LIB})
+endif()
 
 # set source directories
 set(SOURCE_DIR_LIST
@@ -146,20 +161,18 @@ include_directories(
   "./ext/portaudio/${BUILD_DIR_NAME}/install/include"
   "./ext/protobuf/${BUILD_DIR_NAME}/install/include"
   "./ext/fmt/${BUILD_DIR_NAME}/install/include"
+  "./ext/rtmidi/${BUILD_DIR_NAME}/install/include"
   )
 
 target_link_libraries(
   ${PROJECT_NAME}
-  ${VST3_SDK_LIB}
-  ${VST3_BASE_LIB}
-  ${PORTAUDIO_LIB}
-  ${PROTOBUF_LIB}
-  ${FMT_LIB}
+  ${LINKLIBS}
   "-framework CoreServices"
   "-framework CoreFoundation"
   "-framework AudioUnit"
   "-framework AudioToolbox"
   "-framework CoreAudio"
+  "-framework CoreMidi"
   )
 
 ####################################################################

@@ -119,7 +119,7 @@ task build_protobuf {
     def build_dir = file("../ext/protobuf/${build_dir_name}").getAbsolutePath()
 
     execute("mkdir -p ${build_dir}")
-    execute("./autogen.sh", "../ext/protobuf")
+    execute("./autogen.sh", "${build_dir}/..")
     execute("../configure --disable-shared --prefix=${build_dir}/install",
             build_dir,
             ccache_envvars
@@ -130,6 +130,17 @@ task build_protobuf {
 }
 build_protobuf.mustRunAfter update_submodules
 
+task build_rtmidi {
+  doLast {
+    def build_dir = file("../ext/rtmidi/${build_dir_name}").getAbsolutePath()
+
+    execute("mkdir -p ${build_dir}")
+    execute("cmake -DCMAKE_INSTALL_PREFIX=${build_dir}/install -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+    execute("make -j", build_dir)
+    execute("make install", build_dir)
+  }
+}
+build_rtmidi.mustRunAfter update_submodules
 
 task build_portaudio {
   doLast {
@@ -210,7 +221,7 @@ task compile_schemas {
 compile_schemas.mustRunAfter build_protobuf
 
 task build_submodules {
-  dependsOn { [build_protobuf, compile_schemas, build_portaudio, build_vst3sdk, build_wxwidgets, build_fmtlib] }
+  dependsOn { [build_protobuf, compile_schemas, build_rtmidi, build_portaudio, build_vst3sdk, build_wxwidgets, build_fmtlib] }
 }
 
 task prepare_app {

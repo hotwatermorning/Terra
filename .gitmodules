@@ -16,3 +16,6 @@
 [submodule "ext/variant"]
 	path = ext/variant
 	url = https://github.com/mpark/variant.git
+[submodule "ext/rtmidi"]
+	path = ext/rtmidi
+	url = https://github.com/thestk/rtmidi.git

@@ -4,6 +4,8 @@
 
 NS_HWM_BEGIN
 
+//! This class traverse a frame samples which is required from the audio device.
+//! The frame samples are split at loop range bounds.
 class Transporter::Traverser
 {
 public:

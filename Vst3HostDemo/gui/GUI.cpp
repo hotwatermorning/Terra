@@ -13,6 +13,7 @@
 #include "../plugin/PluginScanner.hpp"
 #include "./PluginEditor.hpp"
 #include "./Keyboard.hpp"
+#include "./UnitData.hpp"
 
 NS_HWM_BEGIN
 
@@ -577,14 +578,8 @@ private:
         cho_select_unit_->Clear();
         cho_select_program_->Clear();
         
-        auto const num = plugin->GetNumUnitInfo();
-        for(int un = 0; un < num; ++un) {
-            auto const &info = plugin->GetUnitInfoByIndex(un);
-            auto const &pl = info.program_list_;
-            if(info.program_change_param_ == Steinberg::Vst::kNoParamId) { continue; }
-            if(pl.id_ == Steinberg::Vst::kNoProgramListId) { continue; }
-            if(pl.programs_.empty()) { continue; }
-            
+        auto list = GetSelectableUnitInfos(plugin);
+        for(auto const &info: list) {            
             cho_select_unit_->Append(info.name_, new UnitData{info.id_});
         }
         

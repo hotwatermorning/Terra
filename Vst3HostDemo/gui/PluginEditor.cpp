@@ -3,6 +3,7 @@
 #include <fmt/ostream.h>
 
 #include "../App.hpp"
+#include "./UnitData.hpp"
 
 namespace fmt {
     template <>
@@ -194,39 +195,51 @@ public:
         Listener() {}
     public:
         virtual ~Listener() {}
-        virtual void OnSelectPrevProgram() {}
-        virtual void OnSelectNextProgram() {}
-        virtual void OnSwitchToGenericEditor(bool use_generic_editor) {}
+        virtual void OnChangeEditorType(bool use_generic_editor) {}
+        virtual void OnChangeProgram() {}
     };
     
     PluginEditorControl(wxWindow *parent,
-                        bool has_editor,
-                        bool use_dedicated_editor = false,
+                        Vst3Plugin *plugin,
                         wxPoint pos = wxDefaultPosition,
                         wxSize size = wxDefaultSize)
     :   wxPanel(parent, wxID_ANY, pos, size)
-    ,   has_editor_(has_editor)
-    ,   use_dedicated_editor_(use_dedicated_editor)
+    ,   plugin_(plugin)
     {
-        btn_prev_program_ = new wxButton(this, wxID_ANY, L"Prev", wxDefaultPosition, wxSize(60, size.GetHeight()));
-        btn_next_program_ = new wxButton(this, wxID_ANY, L"Next", wxDefaultPosition, wxSize(60, size.GetHeight()));
+        cho_select_unit_ = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxSize(100, size.GetHeight()));
+        cho_select_program_ = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxSize(100, size.GetHeight()));
+        btn_prev_program_ = new wxButton(this, wxID_ANY, L"<<", wxDefaultPosition, wxSize(40, size.GetHeight()));
+        btn_next_program_ = new wxButton(this, wxID_ANY, L">>", wxDefaultPosition, wxSize(40, size.GetHeight()));
         chk_gen_editor_ = new wxCheckBox(this, wxID_ANY, L"Generic Editor", wxDefaultPosition, wxSize(120, size.GetHeight()));
         
-        assert( (has_editor_ == false && use_dedicated_editor_) == false );
-        
-        // not implemented yet.
-        btn_prev_program_->Disable();
-        btn_next_program_->Disable();
-        
-        if(has_editor_ == false) {
-            chk_gen_editor_->Disable();
+        auto list = GetSelectableUnitInfos(plugin);
+        for(auto const &info: list) {
+            cho_select_unit_->Append(info.name_, new UnitData{info.id_});
         }
-        if(use_dedicated_editor_) {
+        
+        if(cho_select_unit_->GetCount() == 0) {
+            cho_select_unit_->Disable();
+            cho_select_program_->Disable();
+            btn_prev_program_->Disable();
+            btn_next_program_->Disable();
+        } else {
+            cho_select_unit_->SetSelection(0);
+            for(auto &prog: list[0].program_list_.programs_) {
+                cho_select_program_->Append(prog.name_);
+            }
+            cho_select_program_->SetSelection(plugin->GetProgramIndex(0));
+        }
+        
+        if(plugin->HasEditor()) {
+            chk_gen_editor_->SetValue(false);
+        } else {
             chk_gen_editor_->SetValue(true);
+            chk_gen_editor_->Disable();
         }
         
         auto hbox = new wxBoxSizer(wxHORIZONTAL);
-        hbox->AddSpacer(20);
+        hbox->Add(cho_select_unit_, wxSizerFlags(0).Expand());
+        hbox->Add(cho_select_program_, wxSizerFlags(0).Expand());
         hbox->Add(btn_prev_program_, wxSizerFlags(0).Expand());
         hbox->Add(btn_next_program_, wxSizerFlags(0).Expand());
         hbox->Add(chk_gen_editor_, wxSizerFlags(0).Expand());
@@ -234,19 +247,42 @@ public:
         
         SetSizer(hbox);
         
-        btn_prev_program_->Bind(wxEVT_BUTTON, [this](auto &ev) {
+        cho_select_unit_->Bind(wxEVT_CHOICE, [this](auto &ev) {
+            current_unit_ = cho_select_unit_->GetSelection();
+            UpdateProgramList();
+        });
+        
+        cho_select_program_->Bind(wxEVT_CHOICE, [this](auto &ev) {
+            plugin_->SetProgramIndex(cho_select_program_->GetSelection(), GetUnitID(cho_select_unit_));
             listeners_.Invoke([](auto *x) {
-                x->OnSelectPrevProgram();
+                x->OnChangeProgram();
             });
         });
+        
+        btn_prev_program_->Bind(wxEVT_BUTTON, [this](auto &ev) {
+            int const current_program = cho_select_program_->GetSelection();
+            if(current_program != 0) {
+                cho_select_program_->SetSelection(current_program-1);
+                plugin_->SetProgramIndex(current_program-1, GetUnitID(cho_select_unit_));
+                listeners_.Invoke([](auto *x) {
+                    x->OnChangeProgram();
+                });
+            }
+        });
+
         btn_next_program_->Bind(wxEVT_BUTTON, [this](auto &ev) {
-            listeners_.Invoke([](auto *x) {
-                x->OnSelectNextProgram();
-            });
+            int const current_program = cho_select_program_->GetSelection();
+            if(current_program != cho_select_program_->GetCount()-1) {
+                cho_select_program_->SetSelection(current_program+1);
+                plugin_->SetProgramIndex(current_program+1, GetUnitID(cho_select_unit_));
+                listeners_.Invoke([](auto *x) {
+                    x->OnChangeProgram();
+                });
+            }
         });
         chk_gen_editor_->Bind(wxEVT_CHECKBOX, [this](auto &ev) {
             listeners_.Invoke([this](auto *x) {
-                x->OnSwitchToGenericEditor(chk_gen_editor_->IsChecked());
+                x->OnChangeEditorType(chk_gen_editor_->IsChecked());
             });
         });
     }
@@ -258,12 +294,46 @@ public:
     void RemoveListener(Listener const *li) { listeners_.RemoveListener(li); }
     
 private:
+    Vst3Plugin *plugin_ = nullptr;
+    wxChoice *cho_select_unit_;
+    wxChoice *cho_select_program_;
     wxButton *btn_next_program_;
     wxButton *btn_prev_program_;
     wxCheckBox *chk_gen_editor_;
-    bool has_editor_ = false;
-    bool use_dedicated_editor_ = false;
     ListenerService<Listener> listeners_;
+    
+    struct UnitInfo {
+        int unit_index_;
+        int program_index_;
+    };
+    
+    std::vector<int> programs_;
+    int current_unit_ = -1;
+    
+    Vst3Plugin::UnitID GetCurrentUnitID() const
+    {
+        auto const sel = cho_select_unit_->GetSelection();
+        if(sel == wxNOT_FOUND) { return -1; }
+        
+        assert(cho_select_unit_->HasClientObjectData());
+        auto data = static_cast<UnitData *>(cho_select_unit_->GetClientObject(sel));
+        return data->unit_id_;
+    }
+    
+    void UpdateProgramList() {
+        assert(cho_select_unit_->GetSelection() != wxNOT_FOUND);
+        
+        auto unit_id = GetUnitID(cho_select_unit_);
+        
+        cho_select_program_->Clear();
+        
+        auto unit_info = plugin_->GetUnitInfoByID(unit_id);
+        for(auto &prog: unit_info.program_list_.programs_) {
+            cho_select_program_->Append(prog.name_);
+        }
+        
+        cho_select_program_->SetSelection(plugin_->GetProgramIndex(unit_id));
+    }
 };
 
 class PluginEditorContents
@@ -338,7 +408,7 @@ public:
                 target_plugin->GetEffectName(),
                 wxDefaultPosition,
                 wxDefaultSize,
-                wxDEFAULT_FRAME_STYLE & ~(/*wxRESIZE_BORDER | */wxMAXIMIZE_BOX)
+                wxDEFAULT_FRAME_STYLE & ~(wxMAXIMIZE_BOX)
                 )
     {
         MyApp::GetInstance()->AddVst3PluginLoadListener(this);
@@ -352,7 +422,7 @@ public:
             Destroy();
         });
         
-        control_ = new PluginEditorControl(this, target_plugin->HasEditor());
+        control_ = new PluginEditorControl(this, target_plugin);
         control_->AddListener(this);
         
         genedit_ = new GenericParameterView(this, target_plugin);
@@ -402,19 +472,10 @@ public:
     }
     
 private:
-    void OnSelectPrevProgram() override
-    {
-        //
-    }
-    
-    void OnSelectNextProgram() override
-    {
-        //
-    }
-    
-    void OnSwitchToGenericEditor(bool use_generic_editor) override
+    void OnChangeEditorType(bool use_generic_editor) override
     {
         if(use_generic_editor) {
+            genedit_->UpdateParameters();
             genedit_->Show();
             contents_->Hide();
             contents_->SetSize(1, 1);
@@ -432,6 +493,13 @@ private:
         Layout();
     }
     
+    void OnChangeProgram() override
+    {
+        if(genedit_->IsShown()) {
+            genedit_->UpdateParameters();
+        }
+    }
+    
     void OnBeforeVst3PluginUnloaded(Vst3Plugin *plugin) override
     {
         Close();
@@ -439,10 +507,10 @@ private:
     
 private:
     std::function<void()> on_destroy_;
+    Vst3Plugin *plugin_ = nullptr;
     PluginEditorContents *contents_ = nullptr;
     PluginEditorControl *control_ = nullptr;
     GenericParameterView *genedit_ = nullptr;
-    UInt32 target_unit_index_ = -1;
 };
 
 wxFrame * CreatePluginEditorFrame(wxWindow *parent,

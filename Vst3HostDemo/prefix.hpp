@@ -19,16 +19,12 @@ using namespace fmt::literals;
 #include <public.sdk/source/vst/hosting/eventlist.h>
 #include <public.sdk/source/vst/hosting/parameterchanges.h>
 
-#if __has_include(<optional>)
-    #include <optional>
-#else
-    #include <experimental/optional>
-    namespace std {
-        template<class... Args>
-        using optional = std::experimental::optional<Args...>;
-        constexpr std::experimental::nullopt_t nullopt{0};
-    }
-#endif
+#include <experimental/optional>
+namespace std {
+    template<class... Args>
+    using optional = std::experimental::optional<Args...>;
+    constexpr std::experimental::nullopt_t nullopt{0};
+}
 
 #if __has_include(<variant>)
     #include <variant>

@@ -12,10 +12,39 @@ class NodeComponent
 :   public wxPanel
 {
 public:
-    NodeComponent(wxWindow *parent, GraphProcessor::Node *node, std::function<void()> request_to_unload)
+    struct Callback {
+        virtual ~Callback() {}
+        virtual void OnRequestToUnload(NodeComponent *nc) = 0;
+        //! ptはparent基準
+        virtual void OnMouseMove(NodeComponent *nc, wxPoint pt) = 0;
+        //! ptはparent基準
+        virtual void OnReleaseMouse(NodeComponent *nc, wxPoint pt_begin, wxPoint pt_end) = 0;
+    };
+    
+    struct Pin
+    {
+        static Pin MakeInput(int index) { return Pin { BusDirection::kInputSide, index }; }
+        static Pin MakeOutput(int index) { return Pin { BusDirection::kOutputSide, index }; }
+        
+        BusDirection dir_;
+        int index_;
+        
+        bool operator==(Pin const &rhs) const
+        {
+            return dir_ == rhs.dir_ && index_ == rhs.index_;
+        }
+        
+        bool operator!=(Pin const &rhs) const
+        {
+            return !(*this == rhs);
+        }
+    };
+    
+public:
+    NodeComponent(wxWindow *parent, GraphProcessor::Node *node, Callback *callback)
     :   wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(240, 80))
     ,   node_(node)
-    ,   request_to_unload_(request_to_unload)
+    ,   callback_(callback)
     {
         btn_open_editor_ = new wxButton(this, wxID_ANY, "E", wxDefaultPosition, wxSize(20, 20));
         btn_open_editor_->Bind(wxEVT_BUTTON, [this](auto &ev) { OnOpenEditor(); });
@@ -34,12 +63,18 @@ public:
         SetSizer(vbox);
 
         Layout();
+
+        st_plugin_name_->Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { GetParent()->ProcessWindowEvent(ev); });
+        st_plugin_name_->Bind(wxEVT_LEFT_UP, [this](auto &ev) { GetParent()->ProcessWindowEvent(ev); });
         
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(ev); });
         Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { OnLeftDown(ev); });
         Bind(wxEVT_LEFT_UP, [this](auto &ev) { OnLeftUp(ev); });
         Bind(wxEVT_MOTION, [this](auto &ev) { OnMouseMove(ev); });
         Bind(wxEVT_RIGHT_UP, [this](auto &ev) { OnRightUp(ev); });
+        //Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](auto &ev) { OnCaptureLost(); });
+        Bind(wxEVT_KILL_FOCUS, [this](auto &ev) { OnCaptureLost(); });
+        Bind(wxEVT_LEAVE_WINDOW, [this](auto &ev) { OnMouseLeave(ev); });
     }
     
     ~NodeComponent()
@@ -104,12 +139,18 @@ public:
     BrushPen const pin_normal = BrushPen(HSVToColour(0.5, 0.9, 0.5), HSVToColour(0.5, 0.9, 0.6));
     BrushPen const pin_hover = BrushPen(HSVToColour(0.5, 0.9, 0.8), HSVToColour(0.5, 0.9, 0.9));
     BrushPen const background = BrushPen(HSVToColour(0.0, 0.0, 0.9));
+    BrushPen const background_having_focus = BrushPen(HSVToColour(0.0, 0.0, 0.9), HSVToColour(0.7, 1.0, 0.9));
     
     void Draw(wxDC &dc)
     {
         auto const rect = GetClientRect();
         
-        background.ApplyTo(dc);
+        if(HasFocus()) {
+            background_having_focus.ApplyTo(dc);
+        } else {
+            background.ApplyTo(dc);
+        }
+        
         dc.DrawRectangle(rect);
         
         auto const p = node_->GetProcessor().get();
@@ -117,61 +158,57 @@ public:
         auto pt = ScreenToClient(::wxGetMousePosition());
         
         int const ninput = p->GetAudioChannelCount(BusDirection::kInputSide);
-        auto const hover_input_pin_index = GetPinIndex(BusDirection::kInputSide, pt);
+        int const noutput = p->GetAudioChannelCount(BusDirection::kOutputSide);
         
-        for(int i = 0; i < ninput; ++i) {
-            auto center = GetPinCenter(BusDirection::kInputSide, i);
-            
-            if(i == hover_input_pin_index) {
+        auto hover_pin = GetPin(pt);
+
+        auto draw_pin = [&, this](auto pin) {
+            if(pin == hover_pin) {
                 pin_hover.ApplyTo(dc);
-            } else if(i == selected_input_pin_) {
+            } else if(pin == selected_pin_) {
                 pin_selected.ApplyTo(dc);
             } else {
                 pin_normal.ApplyTo(dc);
             }
             
+            auto center = GetPinCenter(pin);
             dc.DrawCircle(center, kPinSize);
-        }
+        };
         
-        int const noutput = node_->GetProcessor()->GetAudioChannelCount(BusDirection::kOutputSide);
-        auto const hover_output_pin_index = GetPinIndex(BusDirection::kOutputSide, pt);
-        
-        for(int i = 0; i < noutput; ++i) {
-            auto center = GetPinCenter(BusDirection::kOutputSide, i);
-            
-            if(i == hover_output_pin_index) {
-                pin_hover.ApplyTo(dc);
-            } else if(i == selected_output_pin_) {
-                pin_selected.ApplyTo(dc);
-            } else {
-                pin_normal.ApplyTo(dc);
-            }
-            
-            dc.DrawCircle(center, kPinSize);
-        }
+        for(int i = 0; i < ninput; ++i) { draw_pin(Pin::MakeInput(i)); }
+        for(int i = 0; i < noutput; ++i) { draw_pin(Pin::MakeOutput(i)); }
     }
     
     void OnLeftDown(wxMouseEvent& ev)
     {
-        selected_input_pin_ = GetPinIndex(BusDirection::kInputSide, ev.GetPosition());
-        selected_output_pin_ = GetPinIndex(BusDirection::kOutputSide, ev.GetPosition());
-        
-        if(selected_input_pin_ != -1 || selected_output_pin_ != -1) {
-            Refresh();
-            return;
-        }
-        
-        CaptureMouse();
+        selected_pin_ = GetPin(ev.GetPosition());
+
         Raise();
-        wxPoint pos = ::wxGetMousePosition();
-        wxPoint origin = this->GetPosition();
-        delta_ = pos - origin;
+        Refresh();
+        CaptureMouse();
+        
+        if(selected_pin_) {
+            pin_drag_begin_ = ev.GetPosition() + GetPosition();
+            delta_ = std::nullopt;
+        } else {
+            wxPoint pos = ::wxGetMousePosition();
+            wxPoint origin = this->GetPosition();
+            delta_ = pos - origin;
+            pin_drag_begin_ = std::nullopt;
+        }
     }
     
     void OnLeftUp(wxMouseEvent& ev)
     {
-        if (HasCapture())
+        if (HasCapture()) {
             ReleaseMouse();
+            OnCaptureLost();
+            
+            if(pin_drag_begin_) {
+                auto pt = ev.GetPosition() + GetPosition();
+                callback_->OnReleaseMouse(this, *pin_drag_begin_, pt);
+            }
+        }
     }
     
     void OnMouseMove(wxMouseEvent& ev)
@@ -181,43 +218,72 @@ public:
             return;
         }
         
-        if (ev.Dragging() && ev.LeftIsDown())
-        {
-            wxPoint pos = ::wxGetMousePosition();
-            MoveConstrained(pos - delta_);
+        if (ev.Dragging() && ev.LeftIsDown()) {
+            
+            if(delta_) {
+                wxPoint pos = ::wxGetMousePosition();
+                MoveConstrained(pos - *delta_);
+            } else if(pin_drag_begin_) {
+                auto pt = ev.GetPosition() + GetPosition();
+                callback_->OnMouseMove(this, pt);
+            }
         }
+    }
+    
+    void OnMouseLeave(wxMouseEvent &ev)
+    {
+        if(!HasCapture()) {
+            OnCaptureLost();
+            return;
+        }
+    }
+    
+    void OnCaptureLost()
+    {
+        selected_pin_ = std::nullopt;
+        Refresh();
     }
     
     int const kPinSize = 8;
     
     // ptは、ウィンドウ相対座標。
-    // 見つからないときは-1が返る。
-    int GetPinIndex(BusDirection dir, wxPoint pt)
+    // 見つからないときはnulloptが返る。
+    std::optional<Pin> GetPin(wxPoint pt) const
     {
-        int const n = node_->GetProcessor()->GetAudioChannelCount(dir);
-        
-        for(int i = 0; i < n; ++i) {
-            auto center = GetPinCenter(dir, i);
-            auto rc = wxRect(center.x - kPinSize, center.y - kPinSize,
-                             kPinSize * 2, kPinSize * 2);
-            if(rc.Contains(pt)) {
-                return i;
+        auto get_impl = [this](wxPoint pt, BusDirection dir) -> std::optional<Pin> {
+            int const n = node_->GetProcessor()->GetAudioChannelCount(dir);
+            
+            for(int i = 0; i < n; ++i) {
+                Pin pin { dir, i };
+                auto center = GetPinCenter(pin);
+                auto rc = wxRect(center.x - kPinSize, center.y - kPinSize,
+                                 kPinSize * 2, kPinSize * 2);
+                if(rc.Contains(pt)) {
+                    return pin;
+                }
             }
+            
+            return std::nullopt;
+        };
+        
+        auto pin = get_impl(pt, BusDirection::kInputSide);
+        if(!pin) {
+            pin = get_impl(pt, BusDirection::kOutputSide);
         }
         
-        return -1;
+        return pin;
     }
     
-    wxPoint GetPinCenter(BusDirection dir, int pin_index)
+    wxPoint GetPinCenter(Pin pin) const
     {
         auto rect = GetClientRect();
         
-        int const n = node_->GetProcessor()->GetAudioChannelCount(dir);
+        int const n = node_->GetProcessor()->GetAudioChannelCount(pin.dir_);
         int const width_audio_pins = rect.GetWidth() - 20;
         
         double const width_audio_pin = width_audio_pins / (double)n;
-        return wxPoint(width_audio_pin * (pin_index + 0.5),
-                       (dir == BusDirection::kInputSide ? kPinSize : rect.GetHeight() - kPinSize)
+        return wxPoint(width_audio_pin * (pin.index_ + 0.5),
+                       (pin.dir_ == BusDirection::kInputSide ? kPinSize : rect.GetHeight() - kPinSize)
                        );
     }
     
@@ -238,24 +304,26 @@ public:
         wxMenu menu;
         menu.Append(kID_RequestToUnload, "Unload");
         menu.Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) {
-            if(ev.GetId() == kID_RequestToUnload) { request_to_unload_(); }
+            if(ev.GetId() == kID_RequestToUnload) { callback_->OnRequestToUnload(this); }
         });
         
         PopupMenu(&menu);
     }
-
+    
     GraphProcessor::Node *node_ = nullptr;
     wxStaticText    *st_plugin_name_ = nullptr;
     wxButton        *btn_open_editor_ = nullptr;
     wxFrame         *editor_frame_ = nullptr;
-    wxPoint delta_;
+    std::optional<Pin> selected_pin_;
+    std::optional<wxPoint> delta_; // window 移動
+    std::optional<wxPoint> pin_drag_begin_; // pin選択
     std::function<void()> request_to_unload_;
-    int selected_input_pin_ = -1;
-    int selected_output_pin_ = -1;
+    Callback *callback_ = nullptr;
 };
 
 class GraphEditor
 :   public wxPanel
+,   public NodeComponent::Callback
 {
 public:
     GraphEditor(wxWindow *parent)
@@ -318,29 +386,28 @@ public:
         auto proc = std::make_shared<Vst3AudioProcessor>(app->CreateVst3Plugin(desc));
         auto node = graph_->AddNode(proc);
         
-        auto request_to_unload = [this, p = proc.get()]() { RemoveNode(p); };
-        auto nc = std::make_unique<NodeComponent>(this, node.get(), request_to_unload);
+        auto nc = std::make_unique<NodeComponent>(this, node.get(), this);
         nc->MoveConstrained(pt);
         node_components_.push_back(std::move(nc));
         
         auto audio_input = graph_->GetAudioInput(0);
         auto audio_output = graph_->GetAudioOutput(0);
         
-        int const in_channels = std::min<int>(node->GetProcessor()->GetAudioChannelCount(BusDirection::kInputSide),
-                                              audio_input->GetAudioChannelCount(BusDirection::kOutputSide));
-        
-        for(int ch = 0; ch < in_channels; ++ch) {
-            auto device_node = graph_->GetNodeOf(audio_input);
-            graph_->ConnectAudio(device_node.get(), node.get(), ch, ch);
-        }
-        
-        int const out_channels = std::min<int>(node->GetProcessor()->GetAudioChannelCount(BusDirection::kOutputSide),
-                                               audio_output->GetAudioChannelCount(BusDirection::kInputSide));
-        
-        for(int ch = 0; ch < out_channels; ++ch) {
-            auto device_node = graph_->GetNodeOf(audio_output);
-            graph_->ConnectAudio(node.get(), device_node.get(), ch, ch);
-        }
+//        int const in_channels = std::min<int>(node->GetProcessor()->GetAudioChannelCount(BusDirection::kInputSide),
+//                                              audio_input->GetAudioChannelCount(BusDirection::kOutputSide));
+//
+//        for(int ch = 0; ch < in_channels; ++ch) {
+//            auto device_node = graph_->GetNodeOf(audio_input);
+//            graph_->ConnectAudio(device_node.get(), node.get(), ch, ch);
+//        }
+//
+//        int const out_channels = std::min<int>(node->GetProcessor()->GetAudioChannelCount(BusDirection::kOutputSide),
+//                                               audio_output->GetAudioChannelCount(BusDirection::kInputSide));
+//
+//        for(int ch = 0; ch < out_channels; ++ch) {
+//            auto device_node = graph_->GetNodeOf(audio_output);
+//            graph_->ConnectAudio(node.get(), device_node.get(), ch, ch);
+//        }
     }
     
     void RemoveNode(Processor const *proc)
@@ -364,8 +431,7 @@ public:
         auto nodes = graph_->GetNodes();
         
         for(auto node: nodes) {
-            auto request_to_unload = [this, p = node->GetProcessor().get()]() { RemoveNode(p); };
-            auto nc = std::make_unique<NodeComponent>(this, node.get(), request_to_unload);
+            auto nc = std::make_unique<NodeComponent>(this, node.get(), this);
             node_components_.push_back(std::move(nc));
         }
     }
@@ -374,6 +440,55 @@ public:
     {
         node_components_.clear();
         graph_ = nullptr;
+    }
+    
+    void OnRequestToUnload(NodeComponent *nc) override
+    {
+        RemoveNode(nc->node_->GetProcessor().get());
+    }
+    
+    //! ptはparent基準
+    void OnMouseMove(NodeComponent *nc, wxPoint pt) override
+    {
+        
+    }
+    
+    //! ptはparent基準
+    void OnReleaseMouse(NodeComponent *nc, wxPoint pt_begin, wxPoint pt_end) override
+    {
+        auto pin_begin = nc->GetPin(pt_begin - nc->GetPosition());
+        if(!pin_begin) { return; }
+        
+        BusDirection const opposite_dir =
+        (pin_begin->dir_ == BusDirection::kInputSide) ? BusDirection::kOutputSide : BusDirection::kInputSide;
+        
+        for(auto &node: node_components_) {
+            auto const pt = pt_end - node->GetPosition();
+            auto const opposite_pin = node->GetPin(pt);
+            if(!opposite_pin) { continue; }
+            if(opposite_pin->dir_ != opposite_dir) { return; }
+            
+            GraphProcessor::Node *nup = nullptr;
+            GraphProcessor::Node *ndown = nullptr;
+            int chup = 0;
+            int chdown = 0;
+            
+            if(pin_begin->dir_ == BusDirection::kOutputSide) {
+                nup = nc->node_;
+                ndown = node->node_;
+                chup = pin_begin->index_;
+                chdown = opposite_pin->index_;
+            } else {
+                ndown = nc->node_;
+                nup = node->node_;
+                chdown = pin_begin->index_;
+                chup = opposite_pin->index_;
+            }
+            
+            graph_->ConnectAudio(nup, ndown, chup, chdown);
+            Refresh();
+            break;
+        }
     }
     
 private:
@@ -393,25 +508,32 @@ private:
                        rect.GetY() + rect.GetHeight() / 2);
     }
     
+    void DrawConnection(wxDC &dc,
+                        GraphProcessor::AudioConnection const &conn,
+                        NodeComponent *nc_upstream,
+                        NodeComponent *nc_downstream
+                        )
+    {
+        auto pt_up = nc_upstream->GetPinCenter(NodeComponent::Pin::MakeOutput(conn.upstream_channel_index_));
+        pt_up += nc_upstream->GetPosition();
+        auto pt_down = nc_downstream->GetPinCenter(NodeComponent::Pin::MakeInput(conn.downstream_channel_index_));
+        pt_down += nc_downstream->GetPosition();
+        
+        dc.SetPen(wxPen(wxColour(0xDD, 0xDD, 0x35, 0xCC), 2, wxPENSTYLE_SOLID));
+        dc.DrawLine(pt_up, pt_down);
+    }
+    
     void Draw(wxDC &dc)
     {
         dc.SetBrush(wxBrush(wxColour(33, 33, 33)));
         dc.DrawRectangle(GetClientRect());
 
         // draw connection;
-        for(auto const &nc: node_components_) {
-            auto node = nc->node_;
-            std::for_each(node_components_.begin(),
-                          node_components_.end(),
-                          [&](auto &nc2) {
-                              auto conns = node->GetAudioConnectionsTo(BusDirection::kOutputSide, nc2->node_);
-                              if(conns.empty()) { return; }
-                              
-                              auto pt_upstream = GetCenter(nc->GetRect());
-                              auto pt_downstream = GetCenter(nc2->GetRect());
-                              
-                              dc.SetPen(wxPen(wxColour(0xDD, 0xDD, 0x35, 0xCC), 2, wxPENSTYLE_SOLID));
-                              dc.DrawLine(pt_upstream, pt_downstream);
+        for(auto const &nc_upstream: node_components_) {
+            std::for_each(node_components_.begin(), node_components_.end(),
+                          [&](auto &nc_downstream) {
+                              auto conns = nc_upstream->node_->GetAudioConnectionsTo(BusDirection::kOutputSide, nc_downstream->node_);
+                              for(auto conn: conns) { DrawConnection(dc, *conn, nc_upstream.get(), nc_downstream.get()); }
                           });
         }
     }

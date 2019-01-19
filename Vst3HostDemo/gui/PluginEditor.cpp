@@ -396,7 +396,6 @@ private:
 class PluginEditorFrame
 :   public wxFrame
 ,   public PluginEditorControl::Listener
-,   public MyApp::Vst3PluginLoadListener
 {
     static constexpr UInt32 kControlHeight = 20;
 public:
@@ -411,8 +410,6 @@ public:
                 wxDEFAULT_FRAME_STYLE & ~(wxMAXIMIZE_BOX)
                 )
     {
-        MyApp::GetInstance()->AddVst3PluginLoadListener(this);
-        
         on_destroy_ = on_destroy;
         
         Bind(wxEVT_CLOSE_WINDOW, [this](auto &ev) {
@@ -442,7 +439,6 @@ public:
     }
     
     ~PluginEditorFrame() {
-        MyApp::GetInstance()->RemoveVst3PluginLoadListener(this);
         control_->RemoveListener(this);
     }
     
@@ -498,11 +494,6 @@ private:
         if(genedit_->IsShown()) {
             genedit_->UpdateParameters();
         }
-    }
-    
-    void OnBeforeVst3PluginUnloaded(Vst3Plugin *plugin) override
-    {
-        Close();
     }
     
 private:

@@ -392,7 +392,7 @@ void Vst3Plugin::Impl::SetProgramIndex(UInt32 index, Vst::UnitID unit_id)
 bool Vst3Plugin::Impl::HasEditor() const
 {
 	assert(component_);
-	assert(is_resumed_);
+	//assert(is_resumed_);
 	return has_editor_.get();
 }
 
@@ -648,24 +648,25 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
         }
     }
 	
-    auto copy_buffer = [&](auto const &src, auto &dest,
-                           SampleCount length_to_copy,
-                           SampleCount src_offset, SampleCount dest_offset)
+    auto copy_buffer = [&](BufferRef<const float> src, BufferRef<float> dest,
+                           SampleCount length_to_copy)
     {
         size_t const min_ch = std::min(src.channels(), dest.channels());
         if(min_ch == 0) { return; }
 
-        assert(src.samples() - src_offset >= length_to_copy);
-        assert(dest.samples() - dest_offset >= length_to_copy);
+        assert(src.samples() >= length_to_copy);
+        assert(dest.samples() >= length_to_copy);
         
         for(size_t ch = 0; ch < min_ch; ++ch) {
-            std::copy_n(src.data()[ch] + src_offset, length_to_copy, dest.data()[ch] + dest_offset);
+            std::copy_n(src.get_channel_data(ch),
+                        length_to_copy,
+                        dest.get_channel_data(ch));
         }
     };
     
-    copy_buffer(pi.input_audio_buffer_.buffer_, input_buffer_,
-                pi.time_info_->GetSmpDuration(),
-                pi.input_audio_buffer_.sample_offset_, 0);
+    copy_buffer(pi.input_audio_buffer_, input_buffer_,
+                pi.time_info_->GetSmpDuration()
+                );
 
 	PopFrontParameterChanges(input_params_);
 
@@ -688,9 +689,9 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
         hwm::dout << "process failed: {}"_format(tresult_to_string(res)) << std::endl;
     }
     
-    copy_buffer(output_buffer_, pi.output_audio_buffer_.buffer_,
-                pi.time_info_->GetSmpDuration(),
-                0, pi.output_audio_buffer_.sample_offset_);
+    copy_buffer(output_buffer_, pi.output_audio_buffer_,
+                pi.time_info_->GetSmpDuration()
+                );
 
 	for(int i = 0; i < output_params_.getParameterCount(); ++i) {
 		auto *queue = output_params_.getParameterData(i);

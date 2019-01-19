@@ -1,6 +1,7 @@
 #include "Project.hpp"
 #include "../transport/Traverser.hpp"
 #include "../device/MidiDeviceManager.hpp"
+#include "./GraphProcessor.hpp"
 
 NS_HWM_BEGIN
 
@@ -113,7 +114,6 @@ private:
 struct Project::Impl
 {
     LockFactory lf_;
-    std::shared_ptr<Vst3Plugin> plugin_;
     std::vector<ProcessInfo::MidiMessage> midis_;
     Transporter tp_;
     double sample_rate_ = 0;
@@ -128,6 +128,12 @@ struct Project::Impl
     std::atomic<bool> inputs_enabled_ = { false };
     SampleCount smp_last_pos_ = 0;
     std::vector<DeviceMidiMessage> device_midis_;
+    GraphProcessor graph_;
+    
+    //! input from device
+    BufferRef<float const> input_;
+    //! output to device
+    BufferRef<float> output_;
 };
 
 Project::Project()
@@ -143,57 +149,86 @@ Project::Project()
 Project::~Project()
 {}
 
+void Project::AddAudioInput(String name, UInt32 channel_index, UInt32 num_channels)
+{
+    pimpl_->graph_.AddAudioInput(name, num_channels,
+                                 [channel_index, this](GraphProcessor::AudioInput *in,
+                                                       ProcessInfo const &pi)
+                                 {
+                                     OnSetAudio(in, pi, channel_index);
+                                 });
+}
+
+void Project::AddAudioOutput(String name, UInt32 channel_index, UInt32 num_channels)
+{
+    pimpl_->graph_.AddAudioOutput(name, num_channels,
+                                  [channel_index, this](GraphProcessor::AudioOutput *out,
+                                                        ProcessInfo const &pi) {
+                                     OnGetAudio(out, pi, channel_index);
+                                 });
+}
+
+void Project::AddMidiInput(String name)
+{
+    
+}
+
+void Project::AddMidiOutput(String name)
+{
+    
+}
+
 Project * Project::GetActiveProject()
 {
     return GetInstance();
 }
 
-void Project::SetInstrument(std::shared_ptr<Vst3Plugin> plugin)
-{
-    assert(plugin);
-    
-    RemoveInstrument();
+//void Project::SetInstrument(std::shared_ptr<Vst3Plugin> plugin)
+//{
+//    assert(plugin);
+//    
+//    RemoveInstrument();
+//
+//    //! sample_rate_とblock_size_が変更される処理は、再生スレッドの処理の前に完了している。
+//    plugin->SetBlockSize(pimpl_->block_size_);
+//    plugin->SetSamplingRate(pimpl_->sample_rate_);
+//    plugin->Resume();
+//    
+//    //! フレーム処理中は実行しない。
+//    //! (既存のpluginがフレーム処理の中だけで参照されて、リアルタイムスレッド上でdeleteされてしまうのを防ぐため)
+//    auto bypass = MakeScopedBypassRequest(pimpl_->bypass_, true);
+//    
+//    auto lock = pimpl_->lf_.make_lock();
+//    pimpl_->plugin_ = plugin;
+//}
 
-    //! sample_rate_とblock_size_が変更される処理は、再生スレッドの処理の前に完了している。
-    plugin->SetBlockSize(pimpl_->block_size_);
-    plugin->SetSamplingRate(pimpl_->sample_rate_);
-    plugin->Resume();
-    
-    //! フレーム処理中は実行しない。
-    //! (既存のpluginがフレーム処理の中だけで参照されて、リアルタイムスレッド上でdeleteされてしまうのを防ぐため)
-    auto bypass = MakeScopedBypassRequest(pimpl_->bypass_, true);
-    
-    auto lock = pimpl_->lf_.make_lock();
-    pimpl_->plugin_ = plugin;
-}
+//std::shared_ptr<Vst3Plugin> Project::RemoveInstrument()
+//{
+//    //! フレーム処理中は実行しない。
+//    //! (seqがフレーム処理の中だけで参照されて、リアルタイムスレッド上でdeleteされてしまうのを防ぐため)
+//    auto bypass = MakeScopedBypassRequest(pimpl_->bypass_, true);
+//
+//    auto lock = pimpl_->lf_.make_lock();
+//    auto plugin = std::move(pimpl_->plugin_);
+//    lock.unlock();
+//
+//    bypass.reset();
+//
+//    pimpl_->playing_sequence_notes_.Clear();
+//    pimpl_->requested_sample_notes_.Clear();
+//    pimpl_->playing_sample_notes_.Clear();
+//    if(plugin) {
+//        plugin->Suspend();
+//    }
+//
+//    return plugin;
+//}
 
-std::shared_ptr<Vst3Plugin> Project::RemoveInstrument()
-{
-    //! フレーム処理中は実行しない。
-    //! (seqがフレーム処理の中だけで参照されて、リアルタイムスレッド上でdeleteされてしまうのを防ぐため)
-    auto bypass = MakeScopedBypassRequest(pimpl_->bypass_, true);
-    
-    auto lock = pimpl_->lf_.make_lock();
-    auto plugin = std::move(pimpl_->plugin_);
-    lock.unlock();
-
-    bypass.reset();
-
-    pimpl_->playing_sequence_notes_.Clear();
-    pimpl_->requested_sample_notes_.Clear();
-    pimpl_->playing_sample_notes_.Clear();
-    if(plugin) {
-        plugin->Suspend();
-    }
-    
-    return plugin;
-}
-
-std::shared_ptr<Vst3Plugin> Project::GetInstrument() const
-{
-    auto lock = pimpl_->lf_.make_lock();
-    return pimpl_->plugin_;
-}
+//std::shared_ptr<Vst3Plugin> Project::GetInstrument() const
+//{
+//    auto lock = pimpl_->lf_.make_lock();
+//    return pimpl_->plugin_;
+//}
 
 std::shared_ptr<Sequence> Project::GetSequence() const
 {
@@ -219,6 +254,11 @@ Transporter & Project::GetTransporter()
 Transporter const & Project::GetTransporter() const
 {
     return pimpl_->tp_;
+}
+
+GraphProcessor & Project::GetGraph()
+{
+    return pimpl_->graph_;
 }
 
 bool Project::CanInputsEnabled() const
@@ -276,6 +316,16 @@ SampleCount Project::PPQToSample(double ppq_pos) const
     return (SampleCount)std::round(ppq_pos * (60.0 / info.tempo_) * info.sample_rate_);
 }
 
+//void Project::OnAfterActivated()
+//{
+//    
+//}
+//
+//void Project::OnBeforeDeactivated()
+//{
+//    
+//}
+
 void Project::StartProcessing(double sample_rate,
                               SampleCount max_block_size,
                               int num_input_channels,
@@ -285,6 +335,7 @@ void Project::StartProcessing(double sample_rate,
     pimpl_->block_size_ = max_block_size;
     pimpl_->num_device_inputs_ = num_input_channels;
     pimpl_->num_device_outputs_ = num_output_channels;
+    pimpl_->graph_.StartProcessing(sample_rate, max_block_size);
 }
 
 template<class F>
@@ -319,9 +370,6 @@ void Project::Process(SampleCount block_size, float const * const * input, float
     
     if(!guard) { return; }
     
-    auto plugin = GetInstrument();
-    if(!plugin) { return; }
-    
     SampleCount num_processed = 0;
     
     auto cb = MakeTraversalCallback([&, this](TransportInfo const &ti) {
@@ -329,10 +377,8 @@ void Project::Process(SampleCount block_size, float const * const * input, float
         auto const frame_end = ti.smp_end_pos_;
         
         pimpl_->midis_.clear();
-        {
-            auto mdm = MidiDeviceManager::GetInstance();
-            auto const timestamp = mdm->GetMessages(pimpl_->device_midis_);
-            
+        if(auto mdm = MidiDeviceManager::GetInstance()) {
+            auto const timestamp = mdm->GetMessages(pimpl_->device_midis_);            
             auto frame_length = ti.GetSmpDuration() / pimpl_->sample_rate_;
             auto frame_begin_time = timestamp - frame_length;
             pimpl_->midis_.clear();
@@ -411,15 +457,27 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             }
         });
         
-        ProcessInfo pi;
-        pi.time_info_ = &ti;
         if(pimpl_->inputs_enabled_) {
-            pi.input_audio_buffer_ = { BufferRef<float const>(input, pimpl_->num_device_inputs_, block_size), num_processed };
+            pimpl_->input_ = BufferRef<float const> {
+                input,
+                0,
+                (UInt32)pimpl_->num_device_inputs_,
+                (UInt32)num_processed,
+                (UInt32)ti.GetSmpDuration()
+            };
+        } else {
+            pimpl_->input_ = BufferRef<float const>{};
         }
-        pi.output_audio_buffer_ = { BufferRef<float>(output, pimpl_->num_device_outputs_, block_size), num_processed };
-        pi.input_midi_buffer_ = { pimpl_->midis_, (UInt32)pimpl_->midis_.size() };
-
-        plugin->Process(pi);
+        
+        pimpl_->output_ = BufferRef<float> {
+            output,
+            0,
+            (UInt32)pimpl_->num_device_outputs_,
+            (UInt32)num_processed,
+            (UInt32)ti.GetSmpDuration(),
+        };
+        
+        pimpl_->graph_.Process(ti);
 
         num_processed += ti.GetSmpDuration();
     });
@@ -430,7 +488,40 @@ void Project::Process(SampleCount block_size, float const * const * input, float
 
 void Project::StopProcessing()
 {
+    pimpl_->graph_.StopProcessing();
+}
+
+void Project::OnSetAudio(GraphProcessor::AudioInput *input, ProcessInfo const &pi, UInt32 channel_index)
+{
+    if(pimpl_->input_.samples() == 0) { return; }
     
+    assert(pi.time_info_->GetSmpDuration() == pimpl_->input_.samples());
+    BufferRef<float const> ref {
+        pimpl_->input_.data(),
+        channel_index,
+        input->GetAudioChannelCount(BusDirection::kOutputSide),
+        0,
+        pimpl_->input_.samples()
+    };
+    
+    input->SetData(ref);
+}
+
+void Project::OnGetAudio(GraphProcessor::AudioOutput *output, ProcessInfo const &pi, UInt32 channel_index)
+{
+    auto src = output->GetData();
+    auto dest = pimpl_->output_;
+    
+    assert(pi.time_info_->GetSmpDuration() == src.samples());
+    assert(pi.time_info_->GetSmpDuration() == dest.samples());
+    
+    for(int ch = 0; ch < src.channels(); ++ch) {
+        auto ch_src = src.data()[ch + src.channel_from()] + src.sample_from();
+        auto ch_dest = dest.data()[ch + dest.channel_from()] + dest.sample_from();
+        for(int smp = 0; smp < src.samples(); ++smp) {
+            ch_dest[smp] += ch_src[smp];
+        }
+    }
 }
 
 NS_HWM_END

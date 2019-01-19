@@ -32,13 +32,6 @@ struct ProcessInfo
     };
     
     template<class T>
-    struct AudioBufferInfo
-    {
-        BufferRef<T> buffer_;
-        SampleCount sample_offset_ = 0;
-    };
-    
-    template<class T>
     struct MidiBufferInfo
     {
         ArrayRef<T> buffer_;
@@ -46,8 +39,8 @@ struct ProcessInfo
     };
     
     TransportInfo const *               time_info_ = nullptr;
-    AudioBufferInfo<float const>        input_audio_buffer_;
-    AudioBufferInfo<float>              output_audio_buffer_;
+    BufferRef<float const>              input_audio_buffer_;
+    BufferRef<float>                    output_audio_buffer_;
     MidiBufferInfo<MidiMessage const>   input_midi_buffer_;
     MidiBufferInfo<MidiMessage>         output_midi_buffer_;    
 };

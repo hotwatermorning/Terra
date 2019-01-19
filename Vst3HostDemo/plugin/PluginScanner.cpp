@@ -255,4 +255,23 @@ void PluginScanner::Wait()
     }
 }
 
+bool HasPluginCategory(PluginDescription const &desc, std::string category_name)
+{
+    if(desc.vst3info().has_classinfo2()) {
+        return desc.vst3info().classinfo2().subcategories().find(category_name) != std::string::npos;
+    } else {
+        return false;
+    }
+}
+
+bool IsEffectPlugin(PluginDescription const &desc)
+{
+    return HasPluginCategory(desc, "Fx");
+}
+
+bool IsInstrumentPlugin(PluginDescription const &desc)
+{
+    return HasPluginCategory(desc, "Inst");
+}
+
 NS_HWM_END

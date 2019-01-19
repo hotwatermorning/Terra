@@ -85,9 +85,7 @@ struct MyApp::Impl
     std::vector<MidiDevice *> midi_ins_;
     std::vector<MidiDevice *> midi_outs_;
     ListenerService<ProjectActivationListener> pa_listeners_;
-    ListenerService<Vst3PluginLoadListener> vl_listeners_;
     Vst3PluginFactoryList factory_list_;
-    std::shared_ptr<Vst3Plugin> plugin_;
     std::shared_ptr<Project> project_;
     wxString device_name_;
     
@@ -176,6 +174,7 @@ bool MyApp::OnInit()
         throw std::runtime_error("No audio output devices found");
     }
     
+    //! may not found
     auto input_device = find_entry(DeviceIOType::kInput, 2, output_device->driver_);
     
     bool const opened = pimpl_->adm_->Open(input_device, output_device, kSampleRate, kBlockSize);
@@ -185,6 +184,25 @@ bool MyApp::OnInit()
     
     pimpl_->adm_->Start();
     
+    if(input_device) {
+        pimpl_->project_->AddAudioInput(input_device->name_, 0, input_device->num_channels_);
+    }
+    
+    if(output_device) {
+        pimpl_->project_->AddAudioOutput(output_device->name_, 0, output_device->num_channels_);
+    }
+    
+    if(input_device && output_device) {
+        auto &graph = pimpl_->project_->GetGraph();
+        auto nodes = graph.GetNodes();
+        
+        auto channels = std::min<int>(input_device->num_channels_, output_device->num_channels_);
+        for(int ch = 0; ch < channels; ++ch) {
+            graph.ConnectAudio(nodes[0].get(), nodes[1].get(), ch, ch);
+        }
+    }
+    
+    pimpl_->adm_->Stop();
     pimpl_->mdm_ = std::make_unique<MidiDeviceManager>();
     auto midi_device_infos = pimpl_->mdm_->Enumerate();
     for(auto info: midi_device_infos) {
@@ -201,6 +219,7 @@ bool MyApp::OnInit()
             pimpl_->midi_outs_.push_back(d);
         }
     }
+    pimpl_->adm_->Start();
     
     MyFrame *frame = new MyFrame( "Vst3HostDemo", wxPoint(50, 50), wxSize(450, 340) );
     frame->Show( true );
@@ -219,25 +238,18 @@ int MyApp::OnExit()
     for(auto d: pimpl_->midi_outs_) { pimpl_->mdm_->Close(d); }
     
     pimpl_->adm_->Close();
-    pimpl_->project_->RemoveInstrument();
     pimpl_->project_.reset();
-    pimpl_->plugin_.reset();
     pimpl_->factory_list_.Shrink();
     return 0;
 }
 
 void MyApp::BeforeExit()
-{
-    pimpl_->project_->RemoveInstrument();
-}
+{}
 
 void MyApp::AddProjectActivationListener(ProjectActivationListener *li) { pimpl_->pa_listeners_.AddListener(li); }
 void MyApp::RemoveProjectActivationListener(ProjectActivationListener const *li) { pimpl_->pa_listeners_.RemoveListener(li); }
 
-void MyApp::AddVst3PluginLoadListener(MyApp::Vst3PluginLoadListener *li) { pimpl_->vl_listeners_.AddListener(li); }
-void MyApp::RemoveVst3PluginLoadListener(MyApp::Vst3PluginLoadListener const *li) { pimpl_->vl_listeners_.RemoveListener(li); }
-
-Vst3Plugin * MyApp::LoadVst3Plugin(PluginDescription const &desc)
+std::unique_ptr<Vst3Plugin> MyApp::CreateVst3Plugin(PluginDescription const &desc)
 {
     hwm::dout << "Load VST3 Module: " << desc.vst3info().filepath() << std::endl;
     
@@ -253,48 +265,11 @@ Vst3Plugin * MyApp::LoadVst3Plugin(PluginDescription const &desc)
     assert(cid);
     
     try {
-        auto tmp_plugin = factory->CreateByID(*cid);
-        UnloadVst3Plugin();
-        
-        pimpl_->plugin_ = std::move(tmp_plugin);
-        pimpl_->project_->SetInstrument(pimpl_->plugin_);
-        pimpl_->vl_listeners_.Invoke([this](auto li) {
-            li->OnAfterVst3PluginLoaded(pimpl_->plugin_.get());
-        });
+        return factory->CreateByID(*cid);
     } catch(std::exception &e) {
         hwm::dout << "Failed to create a Vst3Plugin: " << e.what() << std::endl;
         return nullptr;
     }
-    
-    return pimpl_->plugin_.get();
-}
-
-void MyApp::UnloadVst3Plugin()
-{
-    if(!pimpl_->plugin_) { return; }
-    
-    pimpl_->project_->RemoveInstrument();
-    
-    pimpl_->vl_listeners_.InvokeReversed([this](auto li) {
-        li->OnBeforeVst3PluginUnloaded(pimpl_->plugin_.get());
-    });
-    auto tmp = std::move(pimpl_->plugin_);
-    tmp.reset();
-}
-
-bool MyApp::IsVst3PluginLoaded() const
-{
-    return !!pimpl_->plugin_;
-}
-
-Vst3Plugin * MyApp::GetVst3Plugin()
-{
-    return pimpl_->plugin_.get();
-}
-
-Vst3Plugin const * MyApp::GetVst3Plugin() const
-{
-    return pimpl_->plugin_.get();
 }
 
 void MyApp::RescanPlugins()

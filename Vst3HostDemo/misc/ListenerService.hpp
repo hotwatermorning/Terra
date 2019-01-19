@@ -49,4 +49,13 @@ private:
     std::vector<ListenerType *> listeners_;
 };
 
+struct ListenerBase
+{
+protected:
+    ListenerBase() {}
+    
+public:
+    virtual ~ListenerBase() {}
+};
+
 NS_HWM_END

@@ -57,6 +57,10 @@ private:
     std::unique_ptr<Impl> pimpl_;
 };
 
+bool HasPluginCategory(PluginDescription const &desc, std::string category_name);
+bool IsEffectPlugin(PluginDescription const &desc);
+bool IsInstrumentPlugin(PluginDescription const &desc);
+
 std::optional<ClassInfo::CID> to_cid(std::string str);
 
 NS_HWM_END

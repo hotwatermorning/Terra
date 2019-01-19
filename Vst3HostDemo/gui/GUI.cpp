@@ -14,6 +14,7 @@
 #include "./PluginEditor.hpp"
 #include "./Keyboard.hpp"
 #include "./UnitData.hpp"
+#include "./GraphEditor.hpp"
 
 NS_HWM_BEGIN
 
@@ -427,7 +428,6 @@ private:
 class MyPanel
 :   public wxPanel
 ,   public SingleInstance<MyPanel>
-,   public MyApp::Vst3PluginLoadListener
 ,   public PluginScanner::Listener
 {
 public:
@@ -437,40 +437,16 @@ public:
         this->SetBackgroundColour(wxColour(0x09, 0x21, 0x33));
         
         header_panel_ = new HeaderPanel(this);
-
-        cho_select_component_ = new wxChoice(this, 102, wxDefaultPosition, wxSize(100, 20), 0, 0, wxCB_SORT);
-        cho_select_component_->Show();
         
-        tc_plugin_info_ = new wxTextCtrl(this, 103, "",
-                                         wxDefaultPosition, wxSize(100, 100),
-                                         wxTE_READONLY|wxTE_MULTILINE|wxTE_DONTWRAP);
-        tc_plugin_info_->SetBackgroundColour(*wxWHITE);
-        tc_plugin_info_->SetFont(wxFontInfo(12).Family(wxFONTFAMILY_MODERN));
-        tc_plugin_info_->Hide();
-        
-        cho_select_unit_ = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxSize(100, 20));
-        cho_select_unit_->Hide();
-        
-        cho_select_program_ = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxSize(100, 20));
-        cho_select_program_->Hide();
-        
-        btn_open_editor_ = new wxButton(this, wxID_ANY, "Open Editor", wxDefaultPosition, wxSize(100, 20));
-        btn_open_editor_->Hide();
+        auto pj = Project::GetInstance();
+        graph_panel_ = CreateGraphEditorComponent(this, pj->GetGraph()).release();
+        graph_panel_->Show();
         
         keyboard_ = CreateVirtualKeyboard(this);
   
         auto vbox = new wxBoxSizer(wxVERTICAL);
         vbox->Add(header_panel_, wxSizerFlags(0).Expand());
-        vbox->Add(cho_select_component_, wxSizerFlags(0).Expand().Border(wxALL, 2));
-        vbox->Add(tc_plugin_info_, wxSizerFlags(5).Expand().Border(wxALL, 2));
-        vbox->Add(btn_open_editor_, wxSizerFlags(0).Border(wxALL, 2));
-        unit_param_box_ = new wxStaticBoxSizer(wxVERTICAL, this, "Units && Programs");
-        unit_param_box_->GetStaticBox()->Hide();
-        unit_param_box_->GetStaticBox()->SetForegroundColour(wxColour(0xFF, 0xFF, 0xFF));
-        unit_param_box_->Add(cho_select_unit_, wxSizerFlags(0).Expand().Border(wxBOTTOM|wxTOP, 2));
-        unit_param_box_->Add(cho_select_program_, wxSizerFlags(0).Expand().Border(wxBOTTOM|wxTOP, 2));
-        vbox->Add(unit_param_box_, wxSizerFlags(0).Expand().Border(wxALL, 2));
-        vbox->AddStretchSpacer(1);
+        vbox->Add(graph_panel_, wxSizerFlags(1).Expand());
         vbox->Add(keyboard_, wxSizerFlags(0).Expand());
         
         SetSizerAndFit(vbox);
@@ -479,22 +455,10 @@ public:
         Bind(wxEVT_KEY_UP, [this](auto &ev) { keyboard_->HandleWindowEvent(ev); });
         
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(ev); });
-        cho_select_component_->Bind(wxEVT_CHOICE, [this](auto &ev) { OnSelectComponent(); });
-        btn_open_editor_->Bind(wxEVT_BUTTON, [this](auto &ev) { OnOpenEditor(); });
-        cho_select_unit_->Bind(wxEVT_CHOICE, [this](auto &ev) { OnSelectUnit(); });
-        cho_select_program_->Bind(wxEVT_CHOICE, [this](auto &ev) { OnSelectProgram(); });
-        
-        MyApp::GetInstance()->AddVst3PluginLoadListener(this);
-        PluginScanner::GetInstance()->AddListener(this);
-        
-        UpdateComponentList();
     }
     
     ~MyPanel()
     {
-        if(editor_frame_) { editor_frame_->Destroy(); }
-        PluginScanner::GetInstance()->RemoveListener(this);
-        MyApp::GetInstance()->RemoveVst3PluginLoadListener(this);
     }
     
 private:
@@ -520,218 +484,9 @@ private:
         PluginDescription desc_;
     };
     
-    class UnitData : public wxClientData
-    {
-    public:
-        UnitData(Steinberg::Vst::UnitID unit_id)
-        :   unit_id_(unit_id)
-        {}
-        
-        Steinberg::Vst::UnitID unit_id_ = -1;
-    };
-    
-    void OnAfterVst3PluginLoaded(Vst3Plugin *plugin) override
-    {
-        auto factory_info = plugin->GetFactoryInfo();
-        auto class_info = plugin->GetComponentInfo();
-        
-        auto str = (L"[Plugin Name]\n"
-                    L"{}\n"
-                    L"\n[Factory Info]\n"
-                    L"Vendor: {}\n"
-                    L"URL: {}\n"
-                    L"Email: {}\n"
-                    L"\n[Component Info]\n"
-                    L"ID: {}\n"
-                    L"Name: {}\n"
-                    L"Category: {}\n"
-                    L"Cardinality: {}"
-                    L""_format(plugin->GetEffectName(),
-                               factory_info.vendor(),
-                               factory_info.url(),
-                               factory_info.email(),
-                               to_wstr(std::string{ class_info.cid().begin(), class_info.cid().end() }),
-                               class_info.name(),
-                               class_info.category(),
-                               class_info.cardinality())
-                    );
-        
-        if(class_info.has_classinfo2()) {
-            auto &ci2 = class_info.classinfo2();
-            str += (L"\n"
-                    L"\n[Additional Component Info]\n"
-                    L"Sub Categories: {}\n"
-                    L"Vendor: {}\n"
-                    L"Version: {}\n"
-                    L"SDK Version: {}"
-                    L""_format(ci2.sub_categories(),
-                               ci2.vendor(),
-                               ci2.version(),
-                               ci2.sdk_version())
-                    );
-        }
-
-        tc_plugin_info_->Clear();
-        *tc_plugin_info_ << str;
-        tc_plugin_info_->ShowPosition(0);
-        
-        cho_select_unit_->Clear();
-        cho_select_program_->Clear();
-        
-        auto list = GetSelectableUnitInfos(plugin);
-        for(auto const &info: list) {            
-            cho_select_unit_->Append(info.name_, new UnitData{info.id_});
-        }
-        
-        if(cho_select_unit_->GetCount() == 0) {
-            // nothing to do for cho_select_unit_ and cho_select_program_
-        } else if(cho_select_unit_->GetCount() == 1) {
-            unit_param_box_->GetStaticBox()->Show();
-            cho_select_unit_->SetSelection(0);
-            cho_select_unit_->Show();
-            cho_select_unit_->Disable();
-            OnSelectUnit();
-        } else {
-            unit_param_box_->GetStaticBox()->Show();
-            cho_select_unit_->SetSelection(0);
-            cho_select_unit_->Show();
-            cho_select_unit_->Enable();
-            OnSelectUnit();
-        }
-        
-        tc_plugin_info_->Show();
-        btn_open_editor_->Show();
-        btn_open_editor_->Enable();
-        
-        Layout();
-    }
-    
-    void OnBeforeVst3PluginUnloaded(Vst3Plugin *plugin) override
-    {
-        tc_plugin_info_->Hide();
-        btn_open_editor_->Hide();
-        cho_select_unit_->Hide();
-        cho_select_program_->Hide();
-        unit_param_box_->GetStaticBox()->Hide();
-    }
-    
-    void OnScanningProgressUpdated(PluginScanner *) override {
-        CallAfter([this] { UpdateComponentList(); });
-    }
-    
-    void OnScanningFinished(PluginScanner *) override {
-        CallAfter([this] { UpdateComponentList(); });
-    }
-    
-    void UpdateComponentList()
-    {
-        auto ps = PluginScanner::GetInstance();
-        auto descs = ps->GetPluginDescriptions();
-        
-        auto const contains = [](PluginDescription const &desc, std::string const &str) {
-            if(desc.vst3info().has_classinfo2()) {
-                return desc.vst3info().classinfo2().subcategories().find(str) != std::string::npos;
-            } else {
-                return false;
-            }
-        };
-        
-        cho_select_component_->Clear();
-        for(auto const &desc: descs) {
-            bool const is_inst = contains(desc, "Instrument");
-            bool const is_fx = contains(desc, "Fx");
-            
-            std::wstring type;
-            if(is_inst && is_fx) { type = L"[Inst|Fx]"; }
-            else if(is_inst) { type = L"[Inst]"; }
-            else if(is_fx) { type = L"[Fx]"; }
-            else { type = L"[Unknown]"; }
-            
-            cho_select_component_->Append(type + L" " + to_wstr(desc.name()), new ComponentData(desc));
-        }
-        cho_select_component_->SetSelection(wxNOT_FOUND);
-    }
-    
-    void OnSelectComponent() {
-        auto sel = cho_select_component_->GetSelection();
-        if(sel == wxNOT_FOUND) { return; }
-        
-        auto const p = static_cast<ComponentData const *>(cho_select_component_->GetClientObject(sel));
-        MyApp::GetInstance()->LoadVst3Plugin(p->desc_);
-    }
-    
-    Vst3Plugin::UnitID GetCurrentUnitID() const
-    {
-        auto const sel = cho_select_unit_->GetSelection();
-        if(sel == wxNOT_FOUND) { return -1; }
-        
-        assert(cho_select_unit_->HasClientObjectData());
-        auto data = static_cast<UnitData *>(cho_select_unit_->GetClientObject(sel));
-        return data->unit_id_;
-    }
-    
-    void OnOpenEditor()
-    {
-        if(editor_frame_) { return; }
-        
-        editor_frame_ = CreatePluginEditorFrame(this,
-                                                MyApp::GetInstance()->GetVst3Plugin(),
-                                                [this] {
-                                                    editor_frame_ = nullptr;
-                                                    btn_open_editor_->Enable();
-                                                });
-        btn_open_editor_->Disable();
-    }
-    
-    void OnSelectUnit()
-    {
-        auto sel = cho_select_unit_->GetSelection();
-        if(sel == wxNOT_FOUND) { return; }
-        
-        auto unit_id = GetCurrentUnitID();
-        assert(unit_id != -1);
-        
-        auto plugin = MyApp::GetInstance()->GetVst3Plugin();
-        auto info = plugin->GetUnitInfoByID(unit_id);
-        
-        assert(info.program_list_.programs_.size() >= 1);
-
-        // update program list
-        cho_select_program_->Clear();
-        for(UInt32 i = 0; i < info.program_list_.programs_.size(); ++i) {
-            cho_select_program_->Append(info.program_list_.programs_[i].name_);
-        }
-        
-        cho_select_program_->Select(plugin->GetProgramIndex(unit_id));
-        cho_select_program_->Show();
-        Layout();
-    }
-    
-    void OnSelectProgram()
-    {
-        auto sel = cho_select_program_->GetSelection();
-        if(sel == wxNOT_FOUND) { return; }
-        
-        assert(cho_select_unit_->GetSelection() != wxNOT_FOUND);
-        
-        auto const unit_id = GetCurrentUnitID();
-        assert(unit_id != -1);
-        
-        auto plugin = MyApp::GetInstance()->GetVst3Plugin();
-        auto info = plugin->GetUnitInfoByID(unit_id);
-        
-        plugin->SetProgramIndex(sel, unit_id);
-    }
-    
-    wxStaticBoxSizer *unit_param_box_;
-    wxChoice        *cho_select_component_;
-    wxTextCtrl      *tc_plugin_info_;
-    wxChoice        *cho_select_unit_;
-    wxChoice        *cho_select_program_;
-    wxButton        *btn_open_editor_;
     wxPanel         *keyboard_;
-    wxFrame         *editor_frame_ = nullptr;
     wxPanel         *header_panel_ = nullptr;
+    wxPanel         *graph_panel_ = nullptr;
 };
 
 enum
@@ -787,8 +542,6 @@ MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
 
 MyFrame::~MyFrame()
 {
-    int x = 0;
-    x = 1;
 }
 
 bool MyFrame::Destroy()

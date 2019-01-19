@@ -12,6 +12,7 @@
 #include "../plugin/vst3/Vst3Plugin.hpp"
 #include "../transport/Transporter.hpp"
 #include "./Sequence.hpp"
+#include "./GraphProcessor.hpp"
 
 NS_HWM_BEGIN
 
@@ -37,15 +38,22 @@ public:
     Project();
     ~Project();
     
-    void SetInstrument(std::shared_ptr<Vst3Plugin> plugin);
-    std::shared_ptr<Vst3Plugin> RemoveInstrument();
-    std::shared_ptr<Vst3Plugin> GetInstrument() const;
+    void AddAudioInput(String name, UInt32 channel_index, UInt32 num_channel);
+    void AddAudioOutput(String name, UInt32 channel_index, UInt32 num_channel);
+    void AddMidiInput(String name);
+    void AddMidiOutput(String name);
+    
+//    void SetInstrument(std::shared_ptr<Vst3Plugin> plugin);
+//    std::shared_ptr<Vst3Plugin> RemoveInstrument();
+//    std::shared_ptr<Vst3Plugin> GetInstrument() const;
     
     std::shared_ptr<Sequence> GetSequence() const;
     void SetSequence(std::shared_ptr<Sequence> seq);
     
     Transporter & GetTransporter();
     Transporter const & GetTransporter() const;
+    
+    GraphProcessor & GetGraph();
   
     bool CanInputsEnabled() const;
     bool IsInputsEnabled() const;
@@ -66,6 +74,9 @@ private:
     struct Impl;
     std::unique_ptr<Impl> pimpl_;
     
+//    void OnAfterActivated();
+//    void OnBeforeDeactivated();
+    
     void StartProcessing(double sample_rate,
                          SampleCount max_block_size,
                          int num_input_channels,
@@ -75,6 +86,8 @@ private:
     
     void StopProcessing() override;
     
+    void OnSetAudio(GraphProcessor::AudioInput *input, ProcessInfo const &pi, UInt32 channel_index);
+    void OnGetAudio(GraphProcessor::AudioOutput *output, ProcessInfo const &pi, UInt32 channel_index);
 };
 
 NS_HWM_END

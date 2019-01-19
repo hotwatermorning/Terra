@@ -96,16 +96,92 @@ private:
 
 class MidiInputImpl : public GraphProcessor::MidiInput
 {
- public:
+public:
+    MidiInputImpl(String name,
+                  std::function<void(MidiInput *, ProcessInfo const &)> callback)
+    :   name_(name)
+    ,   callback_(callback)
+    {
+    }
+    
+    void SetData(BufferType buf) override
+    {
+        ref_ = buf;
+    }
+    
+    String GetName() const override { return name_; }
+    
+    UInt32 GetMidiChannelCount(BusDirection dir) const override
+    {
+        return (dir == BusDirection::kOutputSide) ? 1 : 0;
+    }
+    
+    void OnStartProcessing(double sample_rate, SampleCount block_size) override
+    {
+        
+    }
+    
     void Process(ProcessInfo &pi) override
+    {
+        callback_(this, pi);
+        
+        auto &dest = pi.output_midi_buffer_;
+
+        assert(ref_.size() <= dest.buffer_.size());
+        std::copy_n(ref_.data(), ref_.size(), dest.buffer_.begin());
+        dest.num_used_ = ref_.size();
+    }
+    
+    void OnStopProcessing() override
     {}
+    
+private:
+    String name_;
+    std::function<void(MidiInput *, ProcessInfo const &)> callback_;
+    BufferType ref_;
 };
 
 class MidiOutputImpl : public GraphProcessor::MidiOutput
 {
 public:
-    void Process(ProcessInfo &pi) override
+    MidiOutputImpl(String name,
+                    std::function<void(MidiOutput *, ProcessInfo const &)> callback)
+    :   name_(name)
+    ,   callback_(callback)
+    {
+    }
+    
+    BufferType GetData() const override
+    {
+        return ref_;
+    }
+    
+    String GetName() const override { return name_; }
+    
+    UInt32 GetMidiChannelCount(BusDirection dir) const override
+    {
+        return (dir == BusDirection::kInputSide) ? 1 : 0;
+    }
+    
+    void OnStartProcessing(double sample_rate, SampleCount block_size) override
     {}
+    
+    void Process(ProcessInfo &pi) override
+    {
+        ref_ = BufferType {
+            pi.output_midi_buffer_.buffer_.begin(),
+            pi.output_midi_buffer_.buffer_.begin() + pi.output_midi_buffer_.num_used_
+        };
+        callback_(this, pi);
+    }
+    
+    void OnStopProcessing() override
+    {}
+    
+private:
+    String name_;
+    std::function<void(MidiOutput *, ProcessInfo const &)> callback_;
+    BufferType ref_;
 };
 
 //================================================================================================
@@ -253,8 +329,8 @@ public:
         
         input_audio_buffer_.resize(num_inputs, block_size);
         output_audio_buffer_.resize(num_outputs, block_size);
-        input_midi_buffer_.resize(block_size);
-        output_midi_buffer_.resize(block_size);
+        input_midi_buffer_.reserve(block_size);
+        output_midi_buffer_.reserve(block_size);
         
         processor_->OnStartProcessing(sample_rate, block_size);
     }
@@ -266,8 +342,21 @@ public:
         
         ProcessInfo pi;
         pi.time_info_ = &ti;
-        pi.input_audio_buffer_ = input_audio_buffer_;
-        pi.output_audio_buffer_ = output_audio_buffer_;
+        pi.input_audio_buffer_ = BufferRef<float const > {
+            input_audio_buffer_,
+            0,
+            input_audio_buffer_.channels(),
+            0,
+            (UInt32)ti.GetSmpDuration()
+        };
+        pi.output_audio_buffer_ = BufferRef<float> {
+            output_audio_buffer_,
+            0,
+            output_audio_buffer_.channels(),
+            0,
+            (UInt32)ti.GetSmpDuration()
+        };
+        
         pi.input_midi_buffer_ = { input_midi_buffer_, (UInt32)input_midi_buffer_.size() };
         output_midi_buffer_.resize(output_midi_buffer_.capacity());
         pi.output_midi_buffer_ = { output_midi_buffer_, 0 };
@@ -369,7 +458,6 @@ struct GraphProcessor::Impl
     bool prepared_ = false;
     
     LockFactory lf_;
-    std::vector<Node *> ordered_nodes_;
     
     using FrameProcedure = std::vector<ConnectionPtr>;
     std::shared_ptr<FrameProcedure> frame_procedure_;
@@ -462,14 +550,24 @@ GraphProcessor::AddAudioOutput(String name, UInt32 num_channels,
     return p.get();
 }
 
-GraphProcessor::MidiInput *    GraphProcessor::AddMidiInput(String name)
+GraphProcessor::MidiInput *
+GraphProcessor::AddMidiInput(String name,
+                             std::function<void(MidiInput *, ProcessInfo const &)> callback)
 {
-    return nullptr;
+    auto p = std::make_shared<MidiInputImpl>(name, callback);
+    AddNode(p);
+    pimpl_->AddIONode(p.get());
+    return p.get();
 }
 
-GraphProcessor::MidiOutput *   GraphProcessor::AddMidiOutput(String name)
+GraphProcessor::MidiOutput *
+GraphProcessor::AddMidiOutput(String name,
+                              std::function<void(MidiOutput *, ProcessInfo const &)> callback)
 {
-    return nullptr;
+    auto p = std::make_shared<MidiOutputImpl>(name, callback);
+    AddNode(p);
+    pimpl_->AddIONode(p.get());
+    return p.get();
 }
 
 void GraphProcessor::RemoveAudioInput(AudioInput const *p)
@@ -484,11 +582,17 @@ void GraphProcessor::RemoveAudioOutput(AudioOutput const *p)
     pimpl_->RemoveIONode(p);
 }
 
-void GraphProcessor::RemoveMidiInput(MidiInput const *)
-{}
+void GraphProcessor::RemoveMidiInput(MidiInput const *p)
+{
+    RemoveNode(p);
+    pimpl_->RemoveIONode(p);
+}
 
-void GraphProcessor::RemoveMidiOutput(MidiOutput const *)
-{}
+void GraphProcessor::RemoveMidiOutput(MidiOutput const *p)
+{
+    RemoveNode(p);
+    pimpl_->RemoveIONode(p);
+}
 
 UInt32 GraphProcessor::GetNumAudioInputs() const
 {
@@ -556,8 +660,8 @@ void GraphProcessor::StartProcessing(double sample_rate, SampleCount block_size)
     
     pimpl_->sample_rate_ = sample_rate;
     pimpl_->block_size_ = block_size;
-    for(auto *node: pimpl_->ordered_nodes_) {
-        ToNodeImpl(node)->OnStartProcessing(sample_rate, block_size);
+    for(auto &node: pimpl_->nodes_) {
+        ToNodeImpl(node.get())->OnStartProcessing(sample_rate, block_size);
     }
     
     pimpl_->prepared_ = true;
@@ -606,8 +710,8 @@ void GraphProcessor::StopProcessing()
 {
     auto lock = pimpl_->lf_.make_lock();
     
-    for(auto *node: pimpl_->ordered_nodes_) {
-        ToNodeImpl(node)->OnStopProcessing();
+    for(auto node: pimpl_->nodes_) {
+        ToNodeImpl(node.get())->OnStopProcessing();
     }
     
     pimpl_->prepared_ = false;
@@ -734,8 +838,13 @@ bool GraphProcessor::ConnectAudio(Node *upstream,
     return true;
 }
 
-bool GraphProcessor::ConnectMidi(Node *upstream, Node *downstream)
+bool GraphProcessor::ConnectMidi(Node *upstream, Node *downstream,
+                                 UInt32 upstream_channel_index,
+                                 UInt32 downstream_channel_index)
 {
+    assert(upstream_channel_index < upstream->GetProcessor()->GetMidiChannelCount(BusDirection::kOutputSide));
+    assert(downstream_channel_index < downstream->GetProcessor()->GetMidiChannelCount(BusDirection::kInputSide));
+    
     //! loop-back connection is not supported yet.
     if(downstream->HasPathTo(upstream)) { return false; }
     
@@ -743,13 +852,18 @@ bool GraphProcessor::ConnectMidi(Node *upstream, Node *downstream)
     auto const list = upstream->GetMidiConnections(BusDirection::kOutputSide);
     
     bool const has_same_connection = std::any_of(list.begin(), list.end(), [&](auto conn) {
-        return conn->upstream_ == upstream
-        &&     conn->downstream_ == downstream;
+        if(conn->upstream_ != upstream) { return false; }
+        if(conn->downstream_ != downstream) { return false; }
+        if(conn->upstream_channel_index_ != upstream_channel_index) { return false; }
+        if(conn->downstream_channel_index_ != downstream_channel_index) { return false; }
+
+        return true;
     });
     
     if(has_same_connection) { return false; }
     
-    auto c = std::make_shared<MidiConnection>(upstream, downstream);
+    auto c = std::make_shared<MidiConnection>(upstream, downstream,
+                                               upstream_channel_index, downstream_channel_index);
     
     ToNodeImpl(upstream)->AddConnection(c, BusDirection::kOutputSide);
     ToNodeImpl(downstream)->AddConnection(c, BusDirection::kInputSide);

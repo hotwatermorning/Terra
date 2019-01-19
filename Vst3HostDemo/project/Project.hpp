@@ -9,6 +9,7 @@
 #include "../misc/Bypassable.hpp"
 #include "../misc/LockFactory.hpp"
 #include "../device/AudioDeviceManager.hpp"
+#include "../device/MidiDevice.hpp"
 #include "../plugin/vst3/Vst3Plugin.hpp"
 #include "../transport/Transporter.hpp"
 #include "./Sequence.hpp"
@@ -40,8 +41,8 @@ public:
     
     void AddAudioInput(String name, UInt32 channel_index, UInt32 num_channel);
     void AddAudioOutput(String name, UInt32 channel_index, UInt32 num_channel);
-    void AddMidiInput(String name);
-    void AddMidiOutput(String name);
+    void AddMidiInput(MidiDevice *device);
+    void AddMidiOutput(MidiDevice *device);
     
 //    void SetInstrument(std::shared_ptr<Vst3Plugin> plugin);
 //    std::shared_ptr<Vst3Plugin> RemoveInstrument();
@@ -88,6 +89,8 @@ private:
     
     void OnSetAudio(GraphProcessor::AudioInput *input, ProcessInfo const &pi, UInt32 channel_index);
     void OnGetAudio(GraphProcessor::AudioOutput *output, ProcessInfo const &pi, UInt32 channel_index);
+    void OnSetMidi(GraphProcessor::MidiInput *input, ProcessInfo const &pi, MidiDevice *device);
+    void OnGetMidi(GraphProcessor::MidiOutput *output, ProcessInfo const &pi, MidiDevice *device);
 };
 
 NS_HWM_END

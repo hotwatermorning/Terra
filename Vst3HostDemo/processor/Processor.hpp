@@ -32,14 +32,16 @@ public:
     virtual
     SampleCount GetLatencySample() const { return 0; }
     
-    //! 入出力チャンネル数
+    //! オーディオ入出力チャンネル数
     virtual
     UInt32 GetAudioChannelCount(BusDirection dir) const { return 0; }
     
-    //! 入出力チャンネルマスク。
-    //! LSBから16bit分を、1chから16chまでに割り当て、受信するチャンネルを各ビットのOn/Offで表す
+    //! Midi入出力チャンネル数
+    /*! ここでいうチャンネルは、Midiメッセージのチャンネルではなく、
+     *  VST3のEventBusのインデックスを表す。
+     */
     virtual
-    UInt16 GetMidiChannelCount(BusDirection dir) const { return -1; }
+    UInt32 GetMidiChannelCount(BusDirection dir) const { return 0; }
 };
 
 NS_HWM_END
@@ -89,9 +91,10 @@ public:
         else                                { return plugin_->GetNumOutputs(); }
     }
     
-    UInt16 GetMidiChannelCount(BusDirection dir) const override
+    UInt32 GetMidiChannelCount(BusDirection dir) const override
     {
-        return -1;
+        if(dir == BusDirection::kInputSide) { return 1; }
+        else                                { return 0; }
     }
     
     std::shared_ptr<Vst3Plugin> plugin_;

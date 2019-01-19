@@ -23,15 +23,24 @@ public:
     
     struct Pin
     {
-        static Pin MakeInput(int index) { return Pin { BusDirection::kInputSide, index }; }
-        static Pin MakeOutput(int index) { return Pin { BusDirection::kOutputSide, index }; }
+        enum class Type { kAudio, kMidi };
         
+        static Pin MakeAudioInput(int index) { return Pin { Type::kAudio, BusDirection::kInputSide, index }; }
+        static Pin MakeAudioOutput(int index) { return Pin { Type::kAudio, BusDirection::kOutputSide, index }; }
+        static Pin MakeMidiInput(int index) { return Pin { Type::kMidi, BusDirection::kInputSide, index }; }
+        static Pin MakeMidiOutput(int index) { return Pin { Type::kMidi, BusDirection::kOutputSide, index }; }
+     
+        Type type_;
         BusDirection dir_;
         int index_;
         
         bool operator==(Pin const &rhs) const
         {
-            return dir_ == rhs.dir_ && index_ == rhs.index_;
+            auto to_tuple = [](auto &self) {
+                return std::tie(self.type_, self.dir_, self.index_);
+            };
+            
+            return to_tuple(*this) == to_tuple(rhs);
         }
         
         bool operator!=(Pin const &rhs) const
@@ -134,10 +143,25 @@ public:
             dc.SetPen(pen_);
         }
     };
+
+    struct BrushPenSet {
+        BrushPen normal_;
+        BrushPen hover_;
+        BrushPen selected_;
+    };
     
-    BrushPen const pin_selected = BrushPen(HSVToColour(0.5, 0.9, 0.7), HSVToColour(0.5, 0.9, 0.8));
-    BrushPen const pin_normal = BrushPen(HSVToColour(0.5, 0.9, 0.5), HSVToColour(0.5, 0.9, 0.6));
-    BrushPen const pin_hover = BrushPen(HSVToColour(0.5, 0.9, 0.8), HSVToColour(0.5, 0.9, 0.9));
+    BrushPenSet bps_audio_pin_ = {
+        { HSVToColour(0.2, 0.6, 0.7), HSVToColour(0.2, 0.6, 0.8) },
+        { HSVToColour(0.2, 0.6, 0.95), HSVToColour(0.2, 0.6, 1.0) },
+        { HSVToColour(0.2, 0.6, 0.9), HSVToColour(0.2, 0.6, 0.95)}
+    };
+    
+    BrushPenSet bps_midi_pin_ = {
+        { HSVToColour(0.5, 0.6, 0.7), HSVToColour(0.5, 0.6, 0.8) },
+        { HSVToColour(0.5, 0.6, 0.95), HSVToColour(0.5, 0.6, 1.0) },
+        { HSVToColour(0.5, 0.6, 0.9), HSVToColour(0.5, 0.6, 0.95)}
+    };
+    
     BrushPen const background = BrushPen(HSVToColour(0.0, 0.0, 0.9));
     BrushPen const background_having_focus = BrushPen(HSVToColour(0.0, 0.0, 0.9), HSVToColour(0.7, 1.0, 0.9));
     
@@ -157,26 +181,30 @@ public:
         
         auto pt = ScreenToClient(::wxGetMousePosition());
         
-        int const ninput = p->GetAudioChannelCount(BusDirection::kInputSide);
-        int const noutput = p->GetAudioChannelCount(BusDirection::kOutputSide);
+        int const num_ai = p->GetAudioChannelCount(BusDirection::kInputSide);
+        int const num_ao = p->GetAudioChannelCount(BusDirection::kOutputSide);
+        int const num_mi = p->GetMidiChannelCount(BusDirection::kInputSide);
+        int const num_mo = p->GetMidiChannelCount(BusDirection::kOutputSide);
         
         auto hover_pin = GetPin(pt);
 
-        auto draw_pin = [&, this](auto pin) {
+        auto draw_pin = [&, this](auto pin, auto &brush_pen_set) {
             if(pin == hover_pin) {
-                pin_hover.ApplyTo(dc);
+                brush_pen_set.hover_.ApplyTo(dc);
             } else if(pin == selected_pin_) {
-                pin_selected.ApplyTo(dc);
+                brush_pen_set.selected_.ApplyTo(dc);
             } else {
-                pin_normal.ApplyTo(dc);
+                brush_pen_set.normal_.ApplyTo(dc);
             }
             
             auto center = GetPinCenter(pin);
             dc.DrawCircle(center, kPinSize);
         };
         
-        for(int i = 0; i < ninput; ++i) { draw_pin(Pin::MakeInput(i)); }
-        for(int i = 0; i < noutput; ++i) { draw_pin(Pin::MakeOutput(i)); }
+        for(int i = 0; i < num_ai; ++i) { draw_pin(Pin::MakeAudioInput(i), bps_audio_pin_); }
+        for(int i = 0; i < num_ao; ++i) { draw_pin(Pin::MakeAudioOutput(i), bps_audio_pin_); }
+        for(int i = 0; i < num_mi; ++i) { draw_pin(Pin::MakeMidiInput(i), bps_midi_pin_); }
+        for(int i = 0; i < num_mo; ++i) { draw_pin(Pin::MakeMidiOutput(i), bps_midi_pin_); }
     }
     
     void OnLeftDown(wxMouseEvent& ev)
@@ -250,11 +278,17 @@ public:
     // 見つからないときはnulloptが返る。
     std::optional<Pin> GetPin(wxPoint pt) const
     {
-        auto get_impl = [this](wxPoint pt, BusDirection dir) -> std::optional<Pin> {
-            int const n = node_->GetProcessor()->GetAudioChannelCount(dir);
+        auto get_impl = [this](wxPoint pt, Pin::Type type, BusDirection dir) -> std::optional<Pin> {
             
-            for(int i = 0; i < n; ++i) {
-                Pin pin { dir, i };
+            int num = 0;
+            if(type == Pin::Type::kAudio) {
+                num = node_->GetProcessor()->GetAudioChannelCount(dir);
+            } else {
+                num = node_->GetProcessor()->GetMidiChannelCount(dir);
+            }
+            
+            for(int i = 0; i < num; ++i) {
+                Pin pin { type, dir, i };
                 auto center = GetPinCenter(pin);
                 auto rc = wxRect(center.x - kPinSize, center.y - kPinSize,
                                  kPinSize * 2, kPinSize * 2);
@@ -266,23 +300,39 @@ public:
             return std::nullopt;
         };
         
-        auto pin = get_impl(pt, BusDirection::kInputSide);
-        if(!pin) {
-            pin = get_impl(pt, BusDirection::kOutputSide);
+        if(auto pin = get_impl(pt, Pin::Type::kAudio, BusDirection::kInputSide)) {
+            return pin;
+        } else if(auto pin = get_impl(pt, Pin::Type::kAudio, BusDirection::kOutputSide)) {
+            return pin;
+        } else if(auto pin = get_impl(pt, Pin::Type::kMidi, BusDirection::kInputSide)) {
+            return pin;
+        } else if(auto pin = get_impl(pt, Pin::Type::kMidi, BusDirection::kOutputSide)) {
+            return pin;
+        } else {
+            return std::nullopt;
         }
-        
-        return pin;
     }
+    
+    int const kPinWidthTrunc = 20;
     
     wxPoint GetPinCenter(Pin pin) const
     {
         auto rect = GetClientRect();
         
-        int const n = node_->GetProcessor()->GetAudioChannelCount(pin.dir_);
-        int const width_audio_pins = rect.GetWidth() - 20;
+        int const na = node_->GetProcessor()->GetAudioChannelCount(pin.dir_);
+        int const nm = node_->GetProcessor()->GetMidiChannelCount(pin.dir_);
+        int const width_audio_pins = rect.GetWidth() - kPinWidthTrunc;
         
-        double const width_audio_pin = width_audio_pins / (double)n;
-        return wxPoint(width_audio_pin * (pin.index_ + 0.5),
+        double const width_audio_pin = width_audio_pins / (double)(na + nm);
+        
+        int index = 0;
+        if(pin.type_ == Pin::Type::kAudio) {
+            index = pin.index_;
+        } else {
+            index = na + pin.index_;
+        }
+        
+        return wxPoint(width_audio_pin * (index + 0.5),
                        (pin.dir_ == BusDirection::kInputSide ? kPinSize : rect.GetHeight() - kPinSize)
                        );
     }
@@ -467,6 +517,7 @@ public:
             auto const opposite_pin = node->GetPin(pt);
             if(!opposite_pin) { continue; }
             if(opposite_pin->dir_ != opposite_dir) { return; }
+            if(pin_begin->type_ != opposite_pin->type_) { return; }
             
             GraphProcessor::Node *nup = nullptr;
             GraphProcessor::Node *ndown = nullptr;
@@ -485,7 +536,12 @@ public:
                 chup = opposite_pin->index_;
             }
             
-            graph_->ConnectAudio(nup, ndown, chup, chdown);
+            if(pin_begin->type_ == NodeComponent::Pin::Type::kAudio) {
+                graph_->ConnectAudio(nup, ndown, chup, chdown);
+            } else {
+                graph_->ConnectMidi(nup, ndown, chup, chdown);
+            }
+            
             Refresh();
             break;
         }
@@ -514,9 +570,24 @@ private:
                         NodeComponent *nc_downstream
                         )
     {
-        auto pt_up = nc_upstream->GetPinCenter(NodeComponent::Pin::MakeOutput(conn.upstream_channel_index_));
+        auto pt_up = nc_upstream->GetPinCenter(NodeComponent::Pin::MakeAudioOutput(conn.upstream_channel_index_));
         pt_up += nc_upstream->GetPosition();
-        auto pt_down = nc_downstream->GetPinCenter(NodeComponent::Pin::MakeInput(conn.downstream_channel_index_));
+        auto pt_down = nc_downstream->GetPinCenter(NodeComponent::Pin::MakeAudioInput(conn.downstream_channel_index_));
+        pt_down += nc_downstream->GetPosition();
+        
+        dc.SetPen(wxPen(wxColour(0xDD, 0xDD, 0x35, 0xCC), 2, wxPENSTYLE_SOLID));
+        dc.DrawLine(pt_up, pt_down);
+    }
+    
+    void DrawConnection(wxDC &dc,
+                        GraphProcessor::MidiConnection const &conn,
+                        NodeComponent *nc_upstream,
+                        NodeComponent *nc_downstream
+                        )
+    {
+        auto pt_up = nc_upstream->GetPinCenter(NodeComponent::Pin::MakeMidiOutput(conn.upstream_channel_index_));
+        pt_up += nc_upstream->GetPosition();
+        auto pt_down = nc_downstream->GetPinCenter(NodeComponent::Pin::MakeMidiInput(conn.downstream_channel_index_));
         pt_down += nc_downstream->GetPosition();
         
         dc.SetPen(wxPen(wxColour(0xDD, 0xDD, 0x35, 0xCC), 2, wxPENSTYLE_SOLID));
@@ -532,8 +603,13 @@ private:
         for(auto const &nc_upstream: node_components_) {
             std::for_each(node_components_.begin(), node_components_.end(),
                           [&](auto &nc_downstream) {
-                              auto conns = nc_upstream->node_->GetAudioConnectionsTo(BusDirection::kOutputSide, nc_downstream->node_);
-                              for(auto conn: conns) { DrawConnection(dc, *conn, nc_upstream.get(), nc_downstream.get()); }
+                              auto audio_conns = nc_upstream->node_->GetAudioConnectionsTo(BusDirection::kOutputSide,
+                                                                                           nc_downstream->node_);
+                              for(auto conn: audio_conns) { DrawConnection(dc, *conn, nc_upstream.get(), nc_downstream.get()); }
+                              
+                              auto midi_conns = nc_upstream->node_->GetMidiConnectionsTo(BusDirection::kOutputSide,
+                                                                                           nc_downstream->node_);
+                              for(auto conn: midi_conns) { DrawConnection(dc, *conn, nc_upstream.get(), nc_downstream.get()); }
                           });
         }
     }

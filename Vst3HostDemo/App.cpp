@@ -191,17 +191,7 @@ bool MyApp::OnInit()
     if(output_device) {
         pimpl_->project_->AddAudioOutput(output_device->name_, 0, output_device->num_channels_);
     }
-    
-    if(input_device && output_device) {
-        auto &graph = pimpl_->project_->GetGraph();
-        auto nodes = graph.GetNodes();
         
-        auto channels = std::min<int>(input_device->num_channels_, output_device->num_channels_);
-        for(int ch = 0; ch < channels; ++ch) {
-            graph.ConnectAudio(nodes[0].get(), nodes[1].get(), ch, ch);
-        }
-    }
-    
     pimpl_->adm_->Stop();
     pimpl_->mdm_ = std::make_unique<MidiDeviceManager>();
     auto midi_device_infos = pimpl_->mdm_->Enumerate();
@@ -215,8 +205,10 @@ bool MyApp::OnInit()
         auto d = pimpl_->mdm_->Open(info);
         if(info.io_type_ == DeviceIOType::kInput) {
             pimpl_->midi_ins_.push_back(d);
+            pimpl_->project_->AddMidiInput(d);
         } else {
             pimpl_->midi_outs_.push_back(d);
+            pimpl_->project_->AddMidiOutput(d);
         }
     }
     pimpl_->adm_->Start();

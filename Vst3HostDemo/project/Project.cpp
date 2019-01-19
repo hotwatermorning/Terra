@@ -2,8 +2,24 @@
 #include "../transport/Traverser.hpp"
 #include "../device/MidiDeviceManager.hpp"
 #include "./GraphProcessor.hpp"
+#include <map>
 
 NS_HWM_BEGIN
+
+namespace {
+    
+    class VirtualMidiDevice : public MidiDevice {
+    public:
+        VirtualMidiDevice(String name_id) : name_id_(name_id) {}
+        ~VirtualMidiDevice() {}
+        String GetNameID() const override { return name_id_; }
+    private:
+        String name_id_;
+    };
+    
+    VirtualMidiDevice kSoftwareKeyboardMidiInput = { L"Software Keyboard" };
+    VirtualMidiDevice kSequencerMidiInput = { L"Sequencer" };
+}
 
 struct InternalPlayingNoteInfo
 {
@@ -114,7 +130,6 @@ private:
 struct Project::Impl
 {
     LockFactory lf_;
-    std::vector<ProcessInfo::MidiMessage> midis_;
     Transporter tp_;
     double sample_rate_ = 0;
     SampleCount block_size_ = 0;
@@ -127,13 +142,15 @@ struct Project::Impl
     PlayingNoteList playing_sample_notes_;
     std::atomic<bool> inputs_enabled_ = { false };
     SampleCount smp_last_pos_ = 0;
-    std::vector<DeviceMidiMessage> device_midis_;
     GraphProcessor graph_;
     
     //! input from device
     BufferRef<float const> input_;
     //! output to device
     BufferRef<float> output_;
+    
+    std::vector<DeviceMidiMessage> device_midi_input_buffer_;
+    std::map<MidiDevice const *, std::vector<ProcessInfo::MidiMessage>> midi_input_table_;
 };
 
 Project::Project()
@@ -142,8 +159,9 @@ Project::Project()
     pimpl_->playing_sequence_notes_.Clear();
     pimpl_->requested_sample_notes_.Clear();
     pimpl_->playing_sample_notes_.Clear();
-    pimpl_->midis_.reserve(128);
-    pimpl_->device_midis_.reserve(2048);
+    pimpl_->device_midi_input_buffer_.reserve(2048);
+    AddMidiInput(&kSoftwareKeyboardMidiInput);
+    AddMidiInput(&kSequencerMidiInput);
 }
 
 Project::~Project()
@@ -168,67 +186,31 @@ void Project::AddAudioOutput(String name, UInt32 channel_index, UInt32 num_chann
                                  });
 }
 
-void Project::AddMidiInput(String name)
+void Project::AddMidiInput(MidiDevice *device)
 {
-    
+    pimpl_->midi_input_table_[device].reserve(2048);
+    pimpl_->graph_.AddMidiInput(device->GetNameID(),
+                                [device, this](GraphProcessor::MidiInput *in,
+                                               ProcessInfo const &pi)
+                                {
+                                    OnSetMidi(in, pi, device);
+                                });
 }
 
-void Project::AddMidiOutput(String name)
+void Project::AddMidiOutput(MidiDevice *device)
 {
-    
+//    pimpl_->graph_.AddMidiOutput(name,
+//                                 [device, this](GraphProcessor::MidiOutput *out,
+//                                                ProcessInfo const &pi)
+//                                 {
+//                                     OnGetMidi(out, pi, device);
+//                                 });
 }
 
 Project * Project::GetActiveProject()
 {
     return GetInstance();
 }
-
-//void Project::SetInstrument(std::shared_ptr<Vst3Plugin> plugin)
-//{
-//    assert(plugin);
-//    
-//    RemoveInstrument();
-//
-//    //! sample_rate_とblock_size_が変更される処理は、再生スレッドの処理の前に完了している。
-//    plugin->SetBlockSize(pimpl_->block_size_);
-//    plugin->SetSamplingRate(pimpl_->sample_rate_);
-//    plugin->Resume();
-//    
-//    //! フレーム処理中は実行しない。
-//    //! (既存のpluginがフレーム処理の中だけで参照されて、リアルタイムスレッド上でdeleteされてしまうのを防ぐため)
-//    auto bypass = MakeScopedBypassRequest(pimpl_->bypass_, true);
-//    
-//    auto lock = pimpl_->lf_.make_lock();
-//    pimpl_->plugin_ = plugin;
-//}
-
-//std::shared_ptr<Vst3Plugin> Project::RemoveInstrument()
-//{
-//    //! フレーム処理中は実行しない。
-//    //! (seqがフレーム処理の中だけで参照されて、リアルタイムスレッド上でdeleteされてしまうのを防ぐため)
-//    auto bypass = MakeScopedBypassRequest(pimpl_->bypass_, true);
-//
-//    auto lock = pimpl_->lf_.make_lock();
-//    auto plugin = std::move(pimpl_->plugin_);
-//    lock.unlock();
-//
-//    bypass.reset();
-//
-//    pimpl_->playing_sequence_notes_.Clear();
-//    pimpl_->requested_sample_notes_.Clear();
-//    pimpl_->playing_sample_notes_.Clear();
-//    if(plugin) {
-//        plugin->Suspend();
-//    }
-//
-//    return plugin;
-//}
-
-//std::shared_ptr<Vst3Plugin> Project::GetInstrument() const
-//{
-//    auto lock = pimpl_->lf_.make_lock();
-//    return pimpl_->plugin_;
-//}
 
 std::shared_ptr<Sequence> Project::GetSequence() const
 {
@@ -376,25 +358,29 @@ void Project::Process(SampleCount block_size, float const * const * input, float
         auto const frame_begin = ti.smp_begin_pos_;
         auto const frame_end = ti.smp_end_pos_;
         
-        pimpl_->midis_.clear();
+        for(auto &entry: pimpl_->midi_input_table_) {
+            entry.second.clear();
+        }
+        
         if(auto mdm = MidiDeviceManager::GetInstance()) {
-            auto const timestamp = mdm->GetMessages(pimpl_->device_midis_);            
+            auto const timestamp = mdm->GetMessages(pimpl_->device_midi_input_buffer_);
             auto frame_length = ti.GetSmpDuration() / pimpl_->sample_rate_;
             auto frame_begin_time = timestamp - frame_length;
-            pimpl_->midis_.clear();
-            for(auto dm: pimpl_->device_midis_) {
+            for(auto dm: pimpl_->device_midi_input_buffer_) {
                 auto const pos = std::max<double>(0, dm.time_stamp_ - frame_begin_time);
                 ProcessInfo::MidiMessage pm((SampleCount)std::round(pos * pimpl_->sample_rate_),
                                             dm.channel_,
                                             0,
                                             dm.data_);
-                pimpl_->midis_.push_back(pm);
+                pimpl_->midi_input_table_[dm.device_].push_back(pm);
             }
         }
         
         auto in_this_frame = [&](auto pos) { return frame_begin <= pos && pos < frame_end; };
         
-        auto add_note = [&, this](SampleCount sample_pos, UInt8 channel, UInt8 pitch, UInt8 velocity, bool is_note_on)
+        auto add_note = [&, this](SampleCount sample_pos,
+                                  UInt8 channel, UInt8 pitch, UInt8 velocity, bool is_note_on,
+                                  MidiDevice *device)
         {
             ProcessInfo::MidiMessage mm;
             mm.offset_ = sample_pos - ti.smp_begin_pos_;
@@ -405,7 +391,7 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             } else {
                 mm.data_ = MidiDataType::NoteOff { pitch, velocity };
             }
-            pimpl_->midis_.push_back(mm);
+            pimpl_->midi_input_table_[device].push_back(mm);
         };
         
         std::shared_ptr<Sequence> seq = GetSequence();
@@ -424,7 +410,7 @@ void Project::Process(SampleCount block_size, float const * const * input, float
                 auto note = x.load();
                 if(note) {
                     assert(note.IsNoteOn());
-                    add_note(ti.smp_begin_pos_, ch, pi, 0, false);
+                    add_note(ti.smp_begin_pos_, ch, pi, 0, false, &kSequencerMidiInput);
                     x.store(InternalPlayingNoteInfo());
                 }
             });
@@ -433,11 +419,11 @@ void Project::Process(SampleCount block_size, float const * const * input, float
         if(ti.playing_) {
             std::for_each(seq->notes_.begin(), seq->notes_.end(), [&](Sequence::Note const &note) {
                 if(in_this_frame(note.pos_)) {
-                    add_note(note.pos_, note.channel_, note.pitch_, note.velocity_, true);
+                    add_note(note.pos_, note.channel_, note.pitch_, note.velocity_, true, &kSequencerMidiInput);
                     pimpl_->playing_sequence_notes_.SetNoteOn(note.channel_, note.pitch_, note.velocity_);
                 }
                 if(in_this_frame(note.GetEndPos()-1)) {
-                    add_note(note.GetEndPos(), note.channel_, note.pitch_, note.off_velocity_, false);
+                    add_note(note.GetEndPos(), note.channel_, note.pitch_, note.off_velocity_, false, &kSequencerMidiInput);
                     pimpl_->playing_sequence_notes_.ClearNote(note.channel_, note.pitch_);
                 }
             });
@@ -449,10 +435,10 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             bool const playing = (playing_note && playing_note.IsNoteOn());
             if(!note) { return; }
             if(note.IsNoteOn() && !playing) {
-                add_note(ti.smp_begin_pos_, ch, pi, note.velocity_, true);
+                add_note(ti.smp_begin_pos_, ch, pi, note.velocity_, true, &kSoftwareKeyboardMidiInput);
                 pimpl_->playing_sample_notes_.SetNoteOn(ch, pi, note.velocity_);
             } else if(note.IsNoteOff()) {
-                add_note(ti.smp_begin_pos_, ch, pi, note.velocity_, false);
+                add_note(ti.smp_begin_pos_, ch, pi, note.velocity_, false, &kSoftwareKeyboardMidiInput);
                 pimpl_->playing_sample_notes_.ClearNote(ch, pi);
             }
         });
@@ -522,6 +508,15 @@ void Project::OnGetAudio(GraphProcessor::AudioOutput *output, ProcessInfo const 
             ch_dest[smp] += ch_src[smp];
         }
     }
+}
+
+void Project::OnSetMidi(GraphProcessor::MidiInput *input, ProcessInfo const &pi, MidiDevice *device)
+{
+    input->SetData(pimpl_->midi_input_table_[device]);
+}
+
+void Project::OnGetMidi(GraphProcessor::MidiOutput *output, ProcessInfo const &pi, MidiDevice *device)
+{
 }
 
 NS_HWM_END

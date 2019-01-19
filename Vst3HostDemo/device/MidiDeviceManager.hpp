@@ -1,8 +1,9 @@
 #pragma once
 
 #include "../misc/SingleInstance.hpp"
-#include "./DeviceIOType.hpp"
 #include "../data_type/MidiDataType.hpp"
+#include "./DeviceIOType.hpp"
+#include "./MidiDevice.hpp"
 
 NS_HWM_BEGIN
 
@@ -10,12 +11,6 @@ struct MidiDeviceInfo
 {
     DeviceIOType io_type_;
     String name_id_;
-};
-
-class MidiDevice {
-public:
-    virtual ~MidiDevice() {}
-    virtual String GetNameID() const = 0;
 };
 
 //! デバイスとやり取りするMIDI

@@ -47,8 +47,17 @@ public:
         virtual BufferRef<float const> GetData() const = 0;
     };
     
-    class MidiInput : public Processor {};
-    class MidiOutput : public Processor {};
+    class MidiInput : public Processor {
+    public:
+        using BufferType = ArrayRef<ProcessInfo::MidiMessage const>;
+        virtual void SetData(BufferType buf) = 0;
+    };
+    
+    class MidiOutput : public Processor {
+    public:
+        using BufferType = ArrayRef<ProcessInfo::MidiMessage const>;
+        virtual BufferType GetData() const = 0;
+    };
     
 public:
     //! @param
@@ -56,8 +65,8 @@ public:
                                   std::function<void(AudioInput *, ProcessInfo const &)> callback);
     AudioOutput *   AddAudioOutput(String name, UInt32 num_channels,
                                    std::function<void(AudioOutput *, ProcessInfo const &)> callback);
-    MidiInput *    AddMidiInput(String name);
-    MidiOutput *   AddMidiOutput(String name);
+    MidiInput *    AddMidiInput(String name, std::function<void(MidiInput *, ProcessInfo const &)> callback);
+    MidiOutput *   AddMidiOutput(String name, std::function<void(MidiOutput *, ProcessInfo const &)> callback);
     
     void RemoveAudioInput(AudioInput const *);
     void RemoveAudioOutput(AudioOutput const *);
@@ -118,11 +127,15 @@ public:
     class MidiConnection : public Connection
     {
     public:
-        MidiConnection(Node *upstream, Node *downstream)
+        MidiConnection(Node *upstream, Node *downstream,
+                       UInt32 upstream_channel_index, UInt32 downstream_channel_index)
         :   Connection(upstream, downstream)
+        ,   upstream_channel_index_(upstream_channel_index)
+        ,   downstream_channel_index_(downstream_channel_index)
         {}
         
-        //std::array<UInt32, 16> channel_map_;
+        UInt32 upstream_channel_index_;
+        UInt32 downstream_channel_index_;
     };
     
     class Node
@@ -172,7 +185,10 @@ public:
                       UInt32 downstream_channel_index,
                       UInt32 num_channels = 1);
     
-    bool ConnectMidi(Node *upstream, Node *downstream);
+    bool ConnectMidi(Node *upstream,
+                     Node *downstream,
+                     UInt32 upstream_channel_index,
+                     UInt32 downstream_channel_index);
     
     //! このノードに繋がる接続をすべて切断する
     /*! @return 接続を切断した場合はtrueが帰る。接続が一つも見つからないために何もしなかった場合はfalseが帰る。

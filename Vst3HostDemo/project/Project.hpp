@@ -55,10 +55,6 @@ public:
     Transporter const & GetTransporter() const;
     
     GraphProcessor & GetGraph();
-  
-    bool CanInputsEnabled() const;
-    bool IsInputsEnabled() const;
-    void SetInputsEnabled(bool state);
     
     //! 再生中のシーケンスノート情報のリストが返る。
     std::vector<PlayingNoteInfo> GetPlayingSequenceNotes() const;

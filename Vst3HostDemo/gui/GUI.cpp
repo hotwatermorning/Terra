@@ -492,7 +492,6 @@ private:
 enum
 {
     ID_Play = 1,
-    ID_EnableInputs,
     ID_RescanPlugin,
     ID_ForceRescanPlugin,
 };
@@ -507,12 +506,7 @@ MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
     menuFile->Append(wxID_EXIT);
     
     wxMenu *menuPlay = new wxMenu;
-    menuPlay->Append(ID_Play, "&Play\tCtrl-P", "Start playback", wxITEM_CHECK);
-    menuPlay->Append(ID_EnableInputs,
-                     "&Enable Mic Inputs\tCtrl-I",
-                     "Input Mic Inputs",
-                     wxITEM_CHECK)
-    ->Enable(Project::GetInstance()->CanInputsEnabled());
+    menuPlay->Append(ID_Play, "&Play\tSpace", "Start playback", wxITEM_CHECK);
 
     wxMenu *menuHelp = new wxMenu;
     menuHelp->Append(wxID_ABOUT);
@@ -528,7 +522,6 @@ MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
     Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { MyApp::GetInstance()->RescanPlugins(); }, ID_RescanPlugin);
     Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { MyApp::GetInstance()->ForceRescanPlugins(); }, ID_ForceRescanPlugin);
     Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { OnPlay(ev); }, ID_Play);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { OnEnableInputs(ev); }, ID_EnableInputs);
     
     Bind(wxEVT_MENU, [this](auto &ev) { OnAbout(ev); }, wxID_ABOUT);
     
@@ -567,12 +560,6 @@ void MyFrame::OnPlay(wxCommandEvent &ev)
 {
     auto &tp = Project::GetInstance()->GetTransporter();
     tp.SetPlaying(ev.IsChecked());
-}
-
-void MyFrame::OnEnableInputs(wxCommandEvent &ev)
-{
-    auto *pj = Project::GetInstance();
-    pj->SetInputsEnabled(ev.IsChecked());
 }
 
 void MyFrame::OnTimer()

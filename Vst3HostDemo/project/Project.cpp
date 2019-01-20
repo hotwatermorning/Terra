@@ -140,7 +140,6 @@ struct Project::Impl
     PlayingNoteList playing_sequence_notes_;
     PlayingNoteList requested_sample_notes_;
     PlayingNoteList playing_sample_notes_;
-    std::atomic<bool> inputs_enabled_ = { false };
     SampleCount smp_last_pos_ = 0;
     GraphProcessor graph_;
     
@@ -241,23 +240,6 @@ Transporter const & Project::GetTransporter() const
 GraphProcessor & Project::GetGraph()
 {
     return pimpl_->graph_;
-}
-
-bool Project::CanInputsEnabled() const
-{
-    return pimpl_->num_device_inputs_ > 0;
-}
-
-bool Project::IsInputsEnabled() const
-{
-    return pimpl_->inputs_enabled_.load();
-}
-
-void Project::SetInputsEnabled(bool state)
-{
-    if(!CanInputsEnabled()) { return; }
-    
-    pimpl_->inputs_enabled_.store(state);
 }
 
 std::vector<Project::PlayingNoteInfo> Project::GetPlayingSequenceNotes() const
@@ -443,7 +425,7 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             }
         });
         
-        if(pimpl_->inputs_enabled_) {
+        if(pimpl_->graph_.GetNumAudioInputs() > 0) {
             pimpl_->input_ = BufferRef<float const> {
                 input,
                 0,

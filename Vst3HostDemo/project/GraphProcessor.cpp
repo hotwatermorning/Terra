@@ -311,7 +311,7 @@ public:
     
     void RemoveConnection(GraphProcessor::ConnectionPtr conn)
     {
-        auto remove = [](auto list, auto conn) {
+        auto remove = [](auto &list, auto conn) {
             auto found = std::find(list.begin(), list.end(), conn);
             if(found != list.end()) { list.erase(found); }
         };
@@ -920,7 +920,7 @@ bool GraphProcessor::Disconnect(Node const *node)
 }
 
 //! この接続を解除する
-bool GraphProcessor::Disconnect(std::shared_ptr<Connection> conn)
+bool GraphProcessor::Disconnect(ConnectionPtr conn)
 {
     if(auto procedure = pimpl_->DuplicateFrameProcedure()) {
         auto removed = std::remove(procedure->begin(), procedure->end(), conn);

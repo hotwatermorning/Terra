@@ -42,6 +42,9 @@ public:
      */
     virtual
     UInt32 GetMidiChannelCount(BusDirection dir) const { return 0; }
+    
+    virtual
+    bool HasEditor() const { return false; }
 };
 
 NS_HWM_END
@@ -96,6 +99,8 @@ public:
         if(dir == BusDirection::kInputSide) { return 1; }
         else                                { return 0; }
     }
+    
+    bool HasEditor() const override { return plugin_->HasEditor(); }
     
     std::shared_ptr<Vst3Plugin> plugin_;
 };

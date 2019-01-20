@@ -95,16 +95,21 @@ public:
     class Connection
     {
     protected:
-        Connection(Node *upstream, Node *downstream)
+        Connection(Node *upstream, Node *downstream,
+                   UInt32 upstream_channel_index, UInt32 downstream_channel_index)
         :   upstream_(upstream)
         ,   downstream_(downstream)
+        ,   upstream_channel_index_(upstream_channel_index)
+        ,   downstream_channel_index_(downstream_channel_index)
         {}
         
     public:
         virtual ~Connection() {}
         
-        Node *upstream_;
-        Node *downstream_;
+        UInt32 upstream_channel_index_ = 0;
+        UInt32 downstream_channel_index_ = 0;
+        Node *upstream_ = nullptr;
+        Node *downstream_ = nullptr;
     };
     
     class AudioConnection : public Connection
@@ -113,14 +118,10 @@ public:
         AudioConnection(Node *upstream, Node *downstream,
                         UInt32 upstream_channel_index, UInt32 downstream_channel_index,
                         UInt32 num_channels)
-        :   Connection(upstream, downstream)
-        ,   upstream_channel_index_(upstream_channel_index)
-        ,   downstream_channel_index_(downstream_channel_index)
+        :   Connection(upstream, downstream, upstream_channel_index, downstream_channel_index)
         ,   num_channels_(num_channels)
         {}
         
-        UInt32 upstream_channel_index_;
-        UInt32 downstream_channel_index_;
         UInt32 num_channels_; // 1 means mono
     };
     
@@ -129,13 +130,8 @@ public:
     public:
         MidiConnection(Node *upstream, Node *downstream,
                        UInt32 upstream_channel_index, UInt32 downstream_channel_index)
-        :   Connection(upstream, downstream)
-        ,   upstream_channel_index_(upstream_channel_index)
-        ,   downstream_channel_index_(downstream_channel_index)
+        :   Connection(upstream, downstream, upstream_channel_index, downstream_channel_index)
         {}
-        
-        UInt32 upstream_channel_index_;
-        UInt32 downstream_channel_index_;
     };
     
     class Node
@@ -198,7 +194,7 @@ public:
     //! この接続を切断する
     /*! @return 接続を切断した場合はtrueが帰る。接続が一つも見つからないために何もしなかった場合はfalseが帰る。
      */
-    bool Disconnect(std::shared_ptr<Connection> conn);
+    bool Disconnect(ConnectionPtr conn);
 
 private:
     struct Impl;

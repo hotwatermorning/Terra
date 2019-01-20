@@ -1,12 +1,69 @@
 #include "GraphEditor.hpp"
 
 #include <tuple>
+#include <wx/stdpaths.h>
 
 #include "../App.hpp"
 #include "./PluginEditor.hpp"
 #include "../plugin/PluginScanner.hpp"
 
 NS_HWM_BEGIN
+
+wxColour HSVToColour(float hue, float saturation, float value, float opaque = 1.0)
+{
+    assert(0 <= hue && hue <= 1.0);
+    assert(0 <= saturation && saturation <= 1.0);
+    assert(0 <= value && value <= 1.0);
+    assert(0 <= opaque && opaque <= 1.0);
+    
+    wxImage::HSVValue hsv { hue, saturation, value };
+    auto rgb = wxImage::HSVtoRGB(hsv);
+    wxColour col;
+    col.Set(rgb.red, rgb.green, rgb.blue, std::min<int>(std::round(opaque * 256), 255));
+    return col;
+}
+
+struct BrushPen
+{
+    BrushPen(wxColour col) : BrushPen(col, col) {}
+    BrushPen(wxColour brush, wxColour pen)
+    : brush_(wxBrush(brush))
+    , pen_(wxPen(pen))
+    {}
+    
+    wxBrush brush_;
+    wxPen pen_;
+    
+    void ApplyTo(wxDC &dc) const {
+        dc.SetBrush(brush_);
+        dc.SetPen(pen_);
+    }
+};
+
+struct BrushPenSet {
+    BrushPen normal_;
+    BrushPen hover_;
+    BrushPen selected_;
+};
+
+BrushPenSet bps_audio_pin_ = {
+    { HSVToColour(0.2, 0.6, 0.7), HSVToColour(0.2, 0.6, 0.8) },
+    { HSVToColour(0.2, 0.6, 0.95), HSVToColour(0.2, 0.6, 1.0) },
+    { HSVToColour(0.2, 0.6, 0.9), HSVToColour(0.2, 0.6, 0.95)}
+};
+
+BrushPenSet bps_midi_pin_ = {
+    { HSVToColour(0.5, 0.6, 0.7), HSVToColour(0.5, 0.6, 0.8) },
+    { HSVToColour(0.5, 0.6, 0.95), HSVToColour(0.5, 0.6, 1.0) },
+    { HSVToColour(0.5, 0.6, 0.9), HSVToColour(0.5, 0.6, 0.95)}
+};
+
+wxPen const kAudioLine = wxPen(HSVToColour(0.2, 0.8, 1.0), 2, wxPENSTYLE_SOLID);
+wxPen const kMidiLine = wxPen(HSVToColour(0.5, 0.8, 1.0), 2, wxPENSTYLE_SOLID);
+wxPen const kScissorLine = wxPen(HSVToColour(0.5, 0.0, 0.7), 2, wxPENSTYLE_SHORT_DASH);
+
+BrushPen const background = BrushPen(HSVToColour(0.0, 0.0, 0.9));
+BrushPen const background_having_focus = BrushPen(HSVToColour(0.0, 0.0, 0.9), HSVToColour(0.7, 1.0, 0.9));
 
 class NodeComponent
 :   public wxPanel
@@ -16,7 +73,7 @@ public:
         virtual ~Callback() {}
         virtual void OnRequestToUnload(NodeComponent *nc) = 0;
         //! ptはparent基準
-        virtual void OnMouseMove(NodeComponent *nc, wxPoint pt) = 0;
+        virtual void OnMouseMove(NodeComponent *nc, wxPoint pt_begin, wxPoint pt_end) = 0;
         //! ptはparent基準
         virtual void OnReleaseMouse(NodeComponent *nc, wxPoint pt_begin, wxPoint pt_end) = 0;
     };
@@ -51,12 +108,13 @@ public:
     
 public:
     NodeComponent(wxWindow *parent, GraphProcessor::Node *node, Callback *callback)
-    :   wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(240, 80))
+    :   wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(200, 60))
     ,   node_(node)
     ,   callback_(callback)
     {
         btn_open_editor_ = new wxButton(this, wxID_ANY, "E", wxDefaultPosition, wxSize(20, 20));
         btn_open_editor_->Bind(wxEVT_BUTTON, [this](auto &ev) { OnOpenEditor(); });
+        if(!node->GetProcessor()->HasEditor()) { btn_open_editor_->Hide(); }
         
         st_plugin_name_ = new wxStaticText(this, wxID_ANY, node->GetProcessor()->GetName(),
                                            wxDefaultPosition, wxSize(1, 20), wxALIGN_CENTRE_HORIZONTAL);
@@ -64,6 +122,7 @@ public:
         auto vbox = new wxBoxSizer(wxVERTICAL);
         auto hbox = new wxBoxSizer(wxHORIZONTAL);
         hbox->AddStretchSpacer();
+        hbox->Add(1, btn_open_editor_->GetSize().y);
         hbox->Add(btn_open_editor_, wxSizerFlags(0).Expand());
         vbox->Add(hbox, wxSizerFlags(0).Expand());
         vbox->Add(st_plugin_name_, wxSizerFlags(0).Expand());
@@ -73,8 +132,9 @@ public:
 
         Layout();
 
-        st_plugin_name_->Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { GetParent()->ProcessWindowEvent(ev); });
-        st_plugin_name_->Bind(wxEVT_LEFT_UP, [this](auto &ev) { GetParent()->ProcessWindowEvent(ev); });
+        //! wxStaticText eats mouse down events.
+        //! Pass the events to the parent by callking Skip().
+        st_plugin_name_->Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { ev.Skip(); });
         
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(ev); });
         Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { OnLeftDown(ev); });
@@ -113,58 +173,6 @@ public:
         Draw(pdc);
     }
     
-    wxColour HSVToColour(float hue, float saturation, float value, float opaque = 1.0)
-    {
-        assert(0 <= hue && hue <= 1.0);
-        assert(0 <= saturation && saturation <= 1.0);
-        assert(0 <= value && value <= 1.0);
-        assert(0 <= opaque && opaque <= 1.0);
-        
-        wxImage::HSVValue hsv { hue, saturation, value };
-        auto rgb = wxImage::HSVtoRGB(hsv);
-        wxColour col;
-        col.Set(rgb.red, rgb.green, rgb.blue, std::min<int>(std::round(opaque * 256), 255));
-        return col;
-    }
-    
-    struct BrushPen
-    {
-        BrushPen(wxColour col) : BrushPen(col, col) {}
-        BrushPen(wxColour brush, wxColour pen)
-        : brush_(wxBrush(brush))
-        , pen_(wxPen(pen))
-        {}
-        
-        wxBrush brush_;
-        wxPen pen_;
-        
-        void ApplyTo(wxDC &dc) const {
-            dc.SetBrush(brush_);
-            dc.SetPen(pen_);
-        }
-    };
-
-    struct BrushPenSet {
-        BrushPen normal_;
-        BrushPen hover_;
-        BrushPen selected_;
-    };
-    
-    BrushPenSet bps_audio_pin_ = {
-        { HSVToColour(0.2, 0.6, 0.7), HSVToColour(0.2, 0.6, 0.8) },
-        { HSVToColour(0.2, 0.6, 0.95), HSVToColour(0.2, 0.6, 1.0) },
-        { HSVToColour(0.2, 0.6, 0.9), HSVToColour(0.2, 0.6, 0.95)}
-    };
-    
-    BrushPenSet bps_midi_pin_ = {
-        { HSVToColour(0.5, 0.6, 0.7), HSVToColour(0.5, 0.6, 0.8) },
-        { HSVToColour(0.5, 0.6, 0.95), HSVToColour(0.5, 0.6, 1.0) },
-        { HSVToColour(0.5, 0.6, 0.9), HSVToColour(0.5, 0.6, 0.95)}
-    };
-    
-    BrushPen const background = BrushPen(HSVToColour(0.0, 0.0, 0.9));
-    BrushPen const background_having_focus = BrushPen(HSVToColour(0.0, 0.0, 0.9), HSVToColour(0.7, 1.0, 0.9));
-    
     void Draw(wxDC &dc)
     {
         auto const rect = GetClientRect();
@@ -175,7 +183,11 @@ public:
             background.ApplyTo(dc);
         }
         
-        dc.DrawRectangle(rect);
+        auto rc_bg = rect;
+        //rc_bg.Offset(0, kPinSize);
+        //rc_bg.Deflate(0, kPinSize * 2);
+        
+        dc.DrawRectangle(rc_bg);
         
         auto const p = node_->GetProcessor().get();
         
@@ -253,7 +265,7 @@ public:
                 MoveConstrained(pos - *delta_);
             } else if(pin_drag_begin_) {
                 auto pt = ev.GetPosition() + GetPosition();
-                callback_->OnMouseMove(this, pt);
+                callback_->OnMouseMove(this, *pin_drag_begin_, pt);
             }
         }
     }
@@ -269,6 +281,7 @@ public:
     void OnCaptureLost()
     {
         selected_pin_ = std::nullopt;
+        callback_->OnMouseMove(this, wxPoint(-1, -1), wxPoint(-1, -1));
         Refresh();
     }
     
@@ -313,15 +326,13 @@ public:
         }
     }
     
-    int const kPinWidthTrunc = 20;
-    
     wxPoint GetPinCenter(Pin pin) const
     {
         auto rect = GetClientRect();
         
         int const na = node_->GetProcessor()->GetAudioChannelCount(pin.dir_);
         int const nm = node_->GetProcessor()->GetMidiChannelCount(pin.dir_);
-        int const width_audio_pins = rect.GetWidth() - kPinWidthTrunc;
+        int const width_audio_pins = rect.GetWidth();
         
         double const width_audio_pin = width_audio_pins / (double)(na + nm);
         
@@ -371,16 +382,146 @@ public:
     Callback *callback_ = nullptr;
 };
 
+bool Intersect(wxPoint a1, wxPoint a2, wxPoint b1, wxPoint b2)
+{
+    int a = (a2.x - a1.x) * (b1.y - a1.y) - (a2.y - a1.y) * (b1.x - a1.x);
+    int b = (a2.x - a1.x) * (b2.y - a1.y) - (a2.y - a1.y) * (b2.x - a1.x);
+    
+    int c = (b2.x - b1.x) * (a1.y - b1.y) - (b2.y - b1.y) * (a1.x - b1.x);
+    int d = (b2.x - b1.x) * (a2.y - b1.y) - (b2.y - b1.y) * (a2.x - b1.x);
+    
+    auto is_same_sign = [](auto p, auto q) { return (p >= 0) == (q >= 0); };
+    return !is_same_sign(a, b) && !is_same_sign(c, d);
+}
+
 class GraphEditor
 :   public wxPanel
 ,   public NodeComponent::Callback
 {
 public:
+    wxCursor scissors_;
     GraphEditor(wxWindow *parent)
     :   wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize)
     {
+        wxImage img;
+        
+        img.LoadFile(wxStandardPaths::Get().GetResourcesDir() + L"/cursor/scissors.png");
+        int const cursor_x = 24;
+        int const cursor_y = 24;
+
+        img = img.Scale(cursor_x, cursor_y, wxIMAGE_QUALITY_HIGH);
+        img.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_X, cursor_x / 2);
+        img.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_Y, cursor_y / 2);
+        
+        scissors_ = wxCursor(img);
+        
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(ev); });
+        Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { OnLeftDown(ev); });
+        Bind(wxEVT_LEFT_UP, [this](auto &ev) { OnLeftUp(ev); });
+        Bind(wxEVT_MOTION, [this](auto &ev) { OnMouseMove(ev); });
         Bind(wxEVT_RIGHT_UP, [this](auto &ev) { OnRightUp(ev); });
+        Bind(wxEVT_KEY_DOWN, [this](auto &ev) { OnKeyDown(ev); });
+        Bind(wxEVT_KEY_UP, [this](auto &ev) { OnKeyUp(ev); });
+        Bind(wxEVT_KILL_FOCUS, [this](auto &ev) { OnKillFocus(); });
+        Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](auto &ev) { OnReleaseMouse(); });
+    }
+    
+    void OnLeftDown(wxMouseEvent const &ev)
+    {
+        if(ev.GetModifiers() == wxMOD_SHIFT) {
+            LineSetting ls;
+            ls.begin_ = ev.GetPosition();
+            ls.end_ = ls.begin_;
+            ls.pen_ = kScissorLine;
+            dragging_line_ = ls;
+            CaptureMouse();
+            SetCursor(scissors_);
+        }
+    }
+    
+    void OnLeftUp(wxMouseEvent const &ev)
+    {
+        if(HasCapture()) {
+            assert(dragging_line_);
+            RemoveConnection(dragging_line_->begin_, dragging_line_->end_);
+            ReleaseMouse();
+            OnReleaseMouse();
+            Refresh();
+        }
+    }
+    
+    std::vector<GraphProcessor::ConnectionPtr>
+    FindConnectionsToRemove(wxPoint begin, wxPoint end,
+                           NodeComponent::Pin::Type pin_type)
+    {
+        static auto find_node_component = [this](auto *node) -> NodeComponent * {
+            auto found = std::find_if(node_components_.begin(),
+                                      node_components_.end(),
+                                      [node](auto &nc) { return nc->node_ == node; });
+            if(found == node_components_.end()) {
+                return nullptr;
+            } else {
+                return found->get();
+            }
+        };
+        
+        std::vector<GraphProcessor::ConnectionPtr> ret;
+        
+        for(auto const &nc: node_components_) {
+            auto *node = nc->node_;
+            
+            std::vector<GraphProcessor::ConnectionPtr> conns;
+            if(pin_type == NodeComponent::Pin::Type::kAudio) {
+                auto tmp = node->GetAudioConnections(BusDirection::kOutputSide);
+                conns.assign(tmp.begin(), tmp.end());
+            } else {
+                auto tmp = node->GetMidiConnections(BusDirection::kOutputSide);
+                conns.assign(tmp.begin(), tmp.end());
+            }
+            
+            for(auto conn: conns) {
+                auto *node_down = conn->downstream_;
+                auto nc2 = find_node_component(node_down);
+                if(!nc2) { continue; }
+                
+                auto upstream_pin_center
+                = nc->GetPinCenter(NodeComponent::Pin { pin_type, BusDirection::kOutputSide, (Int32)conn->upstream_channel_index_ })
+                + nc->GetPosition();
+                
+                auto downstream_pin_center
+                = nc2->GetPinCenter(NodeComponent::Pin { pin_type, BusDirection::kInputSide, (Int32)conn->downstream_channel_index_ })
+                + nc2->GetPosition();
+                
+                if(Intersect(begin, end, upstream_pin_center, downstream_pin_center)) {
+                    ret.push_back(conn);
+                }
+            }
+        }
+        
+        return ret;
+    }
+    
+    void RemoveConnection(wxPoint begin, wxPoint end)
+    {
+        for(auto const &conn: FindConnectionsToRemove(begin, end, NodeComponent::Pin::Type::kAudio)) {
+            graph_->Disconnect(conn);
+        }
+        
+        for(auto const &conn: FindConnectionsToRemove(begin, end, NodeComponent::Pin::Type::kMidi)) {
+            graph_->Disconnect(conn);
+        }
+        
+        Refresh();
+    }
+    
+    void OnMouseMove(wxMouseEvent const &ev)
+    {
+        if(ev.Dragging()) {
+            if(dragging_line_) {
+                dragging_line_->end_ = ev.GetPosition();
+                Refresh();
+            }
+        }
     }
     
     void OnRightUp(wxMouseEvent const &ev)
@@ -439,37 +580,22 @@ public:
         auto nc = std::make_unique<NodeComponent>(this, node.get(), this);
         nc->MoveConstrained(pt);
         node_components_.push_back(std::move(nc));
-        
-        auto audio_input = graph_->GetAudioInput(0);
-        auto audio_output = graph_->GetAudioOutput(0);
-        
-//        int const in_channels = std::min<int>(node->GetProcessor()->GetAudioChannelCount(BusDirection::kInputSide),
-//                                              audio_input->GetAudioChannelCount(BusDirection::kOutputSide));
-//
-//        for(int ch = 0; ch < in_channels; ++ch) {
-//            auto device_node = graph_->GetNodeOf(audio_input);
-//            graph_->ConnectAudio(device_node.get(), node.get(), ch, ch);
-//        }
-//
-//        int const out_channels = std::min<int>(node->GetProcessor()->GetAudioChannelCount(BusDirection::kOutputSide),
-//                                               audio_output->GetAudioChannelCount(BusDirection::kInputSide));
-//
-//        for(int ch = 0; ch < out_channels; ++ch) {
-//            auto device_node = graph_->GetNodeOf(audio_output);
-//            graph_->ConnectAudio(node.get(), device_node.get(), ch, ch);
-//        }
     }
-    
-    void RemoveNode(Processor const *proc)
+
+    //! return true if removed.
+    //! return false if not found.
+    bool RemoveNode(Processor const *proc)
     {
         auto found = std::find_if(node_components_.begin(), node_components_.end(),
                                   [proc](auto const &nc) { return nc->node_->GetProcessor().get() == proc; });
-        assert(found != node_components_.end());
+        if(found == node_components_.end()) { return false; }
         
         auto node = std::move(*found);
         
         node_components_.erase(found);
         graph_->RemoveNode(proc);
+        Refresh();
+        return true;
     }
     
     void SetGraph(GraphProcessor &graph)
@@ -494,13 +620,34 @@ public:
     
     void OnRequestToUnload(NodeComponent *nc) override
     {
-        RemoveNode(nc->node_->GetProcessor().get());
+        this->CallAfter([proc = nc->node_->GetProcessor().get(), this] {
+            RemoveNode(proc);
+        });
     }
     
     //! ptはparent基準
-    void OnMouseMove(NodeComponent *nc, wxPoint pt) override
+    void OnMouseMove(NodeComponent *nc, wxPoint pt_begin, wxPoint pt_end) override
     {
+        auto pin_begin = nc->GetPin(pt_begin - nc->GetPosition());
+        if(!pin_begin) {
+            if(dragging_line_) { Refresh(); }
+            dragging_line_ = std::nullopt;
+            return;
+        }
         
+        LineSetting ls;
+        ls.begin_ = pt_begin;
+        ls.end_ = pt_end;
+        ls.pen_ = kAudioLine;
+        ls.pen_.SetStyle(wxPENSTYLE_DOT);
+        dragging_line_ = ls;
+        Refresh();
+    }
+    
+    void OnReleaseMouse()
+    {
+        dragging_line_ = std::nullopt;
+        SetCursor(wxNullCursor);
     }
     
     //! ptはparent基準
@@ -547,10 +694,37 @@ public:
         }
     }
     
+    void OnKeyDown(wxKeyEvent const &ev)
+    {
+        if(ev.GetModifiers() == wxMOD_SHIFT) {
+            SetCursor(scissors_);
+        }
+    }
+    
+    void OnKeyUp(wxKeyEvent const &ev)
+    {
+        if(!dragging_line_ && ev.GetModifiers() != wxMOD_SHIFT) {
+            SetCursor(wxNullCursor);
+        }
+    }
+    
+    void OnKillFocus()
+    {
+        SetCursor(wxNullCursor);
+    }
+    
 private:
     using NodeComponentPtr = std::unique_ptr<NodeComponent>;
     std::vector<NodeComponentPtr> node_components_;
     GraphProcessor *graph_ = nullptr;
+    
+    struct LineSetting {
+        wxPoint begin_;
+        wxPoint end_;
+        wxPen pen_;
+    };
+    
+    std::optional<LineSetting> dragging_line_;
     
     void OnPaint(wxPaintEvent &)
     {
@@ -575,7 +749,7 @@ private:
         auto pt_down = nc_downstream->GetPinCenter(NodeComponent::Pin::MakeAudioInput(conn.downstream_channel_index_));
         pt_down += nc_downstream->GetPosition();
         
-        dc.SetPen(wxPen(wxColour(0xDD, 0xDD, 0x35, 0xCC), 2, wxPENSTYLE_SOLID));
+        dc.SetPen(kAudioLine);
         dc.DrawLine(pt_up, pt_down);
     }
     
@@ -590,7 +764,7 @@ private:
         auto pt_down = nc_downstream->GetPinCenter(NodeComponent::Pin::MakeMidiInput(conn.downstream_channel_index_));
         pt_down += nc_downstream->GetPosition();
         
-        dc.SetPen(wxPen(wxColour(0xDD, 0xDD, 0x35, 0xCC), 2, wxPENSTYLE_SOLID));
+        dc.SetPen(kMidiLine);
         dc.DrawLine(pt_up, pt_down);
     }
     
@@ -611,6 +785,13 @@ private:
                                                                                            nc_downstream->node_);
                               for(auto conn: midi_conns) { DrawConnection(dc, *conn, nc_upstream.get(), nc_downstream.get()); }
                           });
+        }
+        
+        if(dragging_line_) {
+            dc.SetPen(dragging_line_->pen_);
+            dc.DrawLine(dragging_line_->begin_,
+                        dragging_line_->end_
+                        );
         }
     }
 };

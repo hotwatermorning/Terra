@@ -1,11 +1,25 @@
 #pragma once
 
+#include "./DeviceIOType.hpp"
+
 NS_HWM_BEGIN
 
-class MidiDevice {
+struct MidiDeviceInfo
+{
+    DeviceIOType io_type_;
+    String name_id_;
+};
+
+class MidiDevice
+{
+protected:
+    MidiDevice() {}
+    
 public:
     virtual ~MidiDevice() {}
-    virtual String GetNameID() const = 0;
+    
+    virtual
+    MidiDeviceInfo const & GetDeviceInfo() const = 0;
 };
 
 NS_HWM_END

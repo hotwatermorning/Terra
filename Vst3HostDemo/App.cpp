@@ -177,12 +177,10 @@ bool MyApp::OnInit()
     //! may not found
     auto input_device = find_entry(DeviceIOType::kInput, 2, output_device->driver_);
     
-    bool const opened = pimpl_->adm_->Open(input_device, output_device, kSampleRate, kBlockSize);
-    if(!opened) {
-        throw std::runtime_error("Failed to open the device");
+    auto result = pimpl_->adm_->Open(input_device, output_device, kSampleRate, kBlockSize);
+    if(result.is_right() == false) {
+        throw std::runtime_error(to_utf8(L"Failed to open the device: " + result.left().error_msg_));
     }
-    
-    pimpl_->adm_->Start();
     
     if(input_device) {
         pimpl_->project_->AddAudioInput(input_device->name_, 0, input_device->num_channels_);
@@ -191,8 +189,7 @@ bool MyApp::OnInit()
     if(output_device) {
         pimpl_->project_->AddAudioOutput(output_device->name_, 0, output_device->num_channels_);
     }
-        
-    pimpl_->adm_->Stop();
+
     pimpl_->mdm_ = std::make_unique<MidiDeviceManager>();
     auto midi_device_infos = pimpl_->mdm_->Enumerate();
     for(auto info: midi_device_infos) {
@@ -211,7 +208,8 @@ bool MyApp::OnInit()
             pimpl_->project_->AddMidiOutput(d);
         }
     }
-    pimpl_->adm_->Start();
+    
+    pimpl_->adm_->GetDevice()->Start();
     
     MyFrame *frame = new MyFrame( "Vst3HostDemo", wxPoint(50, 50), wxSize(450, 340) );
     frame->Show( true );

@@ -60,17 +60,93 @@ PaHostApiIndex FromAudioDriverType(AudioDriverType type)
     }
 }
 
-class AudioDeviceManager::Impl
+class AudioDeviceImpl
+:   public AudioDevice
 {
 public:
-    Impl()
-    {}
+    AudioDeviceImpl(AudioDeviceInfo const *input,
+                    AudioDeviceInfo const *output,
+                    double sample_rate,
+                    SampleCount block_size,
+                    std::vector<IAudioDeviceCallback *> &callbacks,
+                    PaStream *stream)
+    :   sample_rate_(sample_rate)
+    ,   block_size_(block_size)
+    ,   callbacks_(callbacks)
+    ,   stream_(stream)
+    {
+        if(input) { input_ = *input; }
+        if(output) { output_ = *output; }
+        
+        assert(input_ || output_);
+        assert(!input_ || input_->io_type_ == DeviceIOType::kInput);
+        assert(!output_ || output_->io_type_ == DeviceIOType::kOutput);
+        assert(sample_rate_ > 0);
+        assert(block_size_ > 0);
+        assert(stream_);
+        
+        num_inputs_ = (input_ ? input_->num_channels_ : 0);
+        num_outputs_ = (output_ ? output_->num_channels_ : 0);
+        tmp_input_float_.resize(num_inputs_, block_size);
+        tmp_output_float_.resize(num_outputs_, block_size);
+    }
     
-    std::vector<IAudioDeviceCallback *> callbacks_;
+    AudioDeviceImpl(AudioDeviceImpl const &rhs) = delete;
+    AudioDeviceImpl & operator=(AudioDeviceImpl const &rhs) = delete;
+    AudioDeviceImpl(AudioDeviceImpl &&rhs) = delete;
+    AudioDeviceImpl & operator=(AudioDeviceImpl &&rhs) = delete;
     
-    PaStream *stream_ = nullptr;
+    AudioDeviceInfo const * GetInfo(DeviceIOType io) const override
+    {
+        auto const &info = (io == DeviceIOType::kInput) ? input_ : output_;
+        return info ? &*info : nullptr;
+    }
+    
+    double GetSampleRate() const override { return sample_rate_; }
+    SampleCount GetBlockSize() const override { return block_size_; }
+    
+    void Start() override
+    {
+        if(Pa_IsStreamStopped(stream_)) {
+            ForEachCallbacks([this](auto *cb) {
+                cb->StartProcessing(sample_rate_, block_size_, num_inputs_, num_outputs_);
+            });
+            Pa_StartStream(stream_);
+        }
+    }
+    
+    void Stop() override
+    {
+        if(!Pa_IsStreamStopped(stream_)) {
+            Pa_StopStream(stream_);
+            ForEachCallbacks([](auto *cb) { cb->StopProcessing(); });
+        }
+    }
+    
+    bool IsStopped() const override
+    {
+        return Pa_IsStreamStopped(stream_);
+    }
+    
+    PaStream * GetStream() { return stream_; }
+    
+    PaStreamCallbackResult StreamCallback(const void *input, void *output,
+                                          unsigned long block_size, const PaStreamCallbackTimeInfo *timeInfo,
+                                          PaStreamCallbackFlags statusFlags)
+    {
+        ClearBuffer<float>(output, block_size);
+        InvokeCallbacks<float>(input, output, block_size);
+        return paContinue;
+    }
+    
+private:
+    std::optional<AudioDeviceInfo> input_;
+    std::optional<AudioDeviceInfo> output_;
     double sample_rate_ = 0;
     SampleCount block_size_ = 0;
+    
+    std::vector<IAudioDeviceCallback *> &callbacks_;
+    PaStream *stream_ = nullptr;
     int num_inputs_ = 0;
     int num_outputs_ = 0;
     Buffer<float> tmp_input_float_, tmp_output_float_;
@@ -117,23 +193,29 @@ public:
             }
         }
     }
+};
+
+class AudioDeviceManager::Impl
+{
+public:
+    Impl()
+    {}
     
-    PaStreamCallbackResult StreamCallback(const void *input, void *output,
-                                          unsigned long block_size, const PaStreamCallbackTimeInfo *timeInfo,
-                                          PaStreamCallbackFlags statusFlags)
-    {
-        ClearBuffer<float>(output, block_size);
-        InvokeCallbacks<float>(input, output, block_size);
-        return paContinue;
-    }
+    std::vector<IAudioDeviceCallback *> callbacks_;
+    std::unique_ptr<AudioDeviceImpl> device_;
     
     static
     int StaticStreamCallback(const void *input, void *output,
-                                                unsigned long frameCount, const PaStreamCallbackTimeInfo *timeInfo,
-                                                PaStreamCallbackFlags statusFlags, void *userData)
+                             unsigned long frameCount, const PaStreamCallbackTimeInfo *timeInfo,
+                             PaStreamCallbackFlags statusFlags, void *userData)
     {
         auto *self = reinterpret_cast<Impl *>(userData);
-        return self->StreamCallback(input, output, frameCount, timeInfo, statusFlags);
+        assert(self);
+        
+        auto *device = self->device_.get();
+        assert(device);
+        
+        return device->StreamCallback(input, output, frameCount, timeInfo, statusFlags);
     }
 };
 
@@ -173,12 +255,12 @@ AudioDriverType AudioDeviceManager::GetDefaultDriver() const
 std::vector<AudioDeviceInfo> AudioDeviceManager::Enumerate()
 {
     auto const device_count = Pa_GetDeviceCount();
-
+    
     if(device_count < 0) {
         ShowErrorMsg(device_count);
         return {};
     }
-
+    
     std::vector<AudioDeviceInfo> result;
     for(PaDeviceIndex i = 0; i < device_count; ++i) {
         auto *info = Pa_GetDeviceInfo(i);
@@ -208,14 +290,19 @@ std::vector<AudioDeviceInfo> AudioDeviceManager::Enumerate()
     return result;
 }
 
-bool AudioDeviceManager::Open(AudioDeviceInfo const *input_device,
-                              AudioDeviceInfo const *output_device,
-                              double sample_rate,
-                              SampleCount block_size)
+AudioDeviceManager::OpenResult
+AudioDeviceManager::Open(AudioDeviceInfo const *input_device,
+                         AudioDeviceInfo const *output_device,
+                         double sample_rate,
+                         SampleCount block_size)
 {
-    assert(!IsOpened());
+    if(IsOpened()) {
+        return Error(ErrorCode::kAlreadyOpened, L"Device already opened.");
+    }
     
-    if(input_device == nullptr && output_device == nullptr) { return false; }
+    if(input_device == nullptr && output_device == nullptr) {
+        return Error(ErrorCode::kInvalidParameters, L"Invalid parameters.");
+    }
     
     PaStreamParameters ip = {};
     PaStreamParameters op = {};
@@ -254,72 +341,49 @@ bool AudioDeviceManager::Open(AudioDeviceInfo const *input_device,
     hwm::wdout << L"Open Device ({}, {})"_format(pip ? input_device->name_ : L"N/A",
                                                  pop ? output_device->name_ : L"N/A")
     << std::endl;
-
-    pimpl_->sample_rate_ = sample_rate;
-    pimpl_->block_size_ = block_size;
-    pimpl_->num_inputs_ = (pip ? pip->channelCount : 0);
-    pimpl_->num_outputs_ = (pop ? pop->channelCount : 0);
-    pimpl_->tmp_input_float_.resize(pimpl_->num_inputs_, block_size);
-    pimpl_->tmp_output_float_.resize(pimpl_->num_outputs_, block_size);
     
-    PaError err = Pa_OpenStream(&pimpl_->stream_, pip, pop,
+    if(!pip && !pop) {
+        return Error(ErrorCode::kDeviceNotFound, L"Device not found");
+    }
+    
+    PaStream *stream;
+    PaError err = Pa_OpenStream(&stream, pip, pop,
                                 sample_rate, block_size, flags,
                                 &Impl::StaticStreamCallback, pimpl_.get());
     ShowErrorMsg(err);
     if(err != paNoError) {
-        return false;
+        // todo portaudioのエラーコードに合わせて整理
+        return Error(ErrorCode::kUnknown, L"Unknown Error");
     }
     
-    return true;
-}
-
-void AudioDeviceManager::Start()
-{
-    assert(IsOpened());
+    pimpl_->device_ = std::make_unique<AudioDeviceImpl>(input_device, output_device,
+                                                        sample_rate, block_size,
+                                                        pimpl_->callbacks_,
+                                                        stream);
     
-    if(Pa_IsStreamStopped(pimpl_->stream_)) {
-        
-        pimpl_->ForEachCallbacks([this](auto *cb) {
-            cb->StartProcessing(pimpl_->sample_rate_,
-                                pimpl_->block_size_,
-                                pimpl_->num_inputs_,
-                                pimpl_->num_outputs_);
-        });
-        Pa_StartStream(pimpl_->stream_);
-    }
+    return pimpl_->device_.get();
 }
 
-void AudioDeviceManager::Stop()
+AudioDevice * AudioDeviceManager::GetDevice() const
 {
-    assert(IsOpened());
-    
-    if(!Pa_IsStreamStopped(pimpl_->stream_)) {
-        Pa_StopStream(pimpl_->stream_);
-        pimpl_->ForEachCallbacks([](auto *cb) {
-            cb->StopProcessing();
-        });
-    }
-}
-
-bool AudioDeviceManager::IsStopped() const
-{
-    assert(IsOpened());
-    return Pa_IsStreamStopped(pimpl_->stream_);
+    return pimpl_->device_.get();
 }
 
 void AudioDeviceManager::Close()
 {
     if(!IsOpened()) { return; }
     
-    Stop();
+    pimpl_->device_->Stop();
     
-    PaError err = Pa_CloseStream(pimpl_->stream_);
+    PaError err = Pa_CloseStream(pimpl_->device_->GetStream());
     ShowErrorMsg(err);
+    
+    pimpl_->device_.reset();
 }
 
 bool AudioDeviceManager::IsOpened() const
 {
-    return pimpl_->stream_;
+    return !!pimpl_->device_;
 }
 
 void AudioDeviceManager::AddCallback(IAudioDeviceCallback *cb)
@@ -334,6 +398,8 @@ void AudioDeviceManager::AddCallback(IAudioDeviceCallback *cb)
 
 bool AudioDeviceManager::RemoveCallback(IAudioDeviceCallback const *cb)
 {
+    assert(!IsOpened());
+    
     auto found = std::find(pimpl_->callbacks_.begin(),
                            pimpl_->callbacks_.end(),
                            cb);
@@ -348,6 +414,8 @@ bool AudioDeviceManager::RemoveCallback(IAudioDeviceCallback const *cb)
 
 void AudioDeviceManager::RemoveAllCallbacks()
 {
+    assert(!IsOpened());
+    
     pimpl_->callbacks_.clear();
 }
 

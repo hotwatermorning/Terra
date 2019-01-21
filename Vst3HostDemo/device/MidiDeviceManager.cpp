@@ -123,23 +123,24 @@ struct MidiIn
 :   public MidiDevice
 {
     //! @throw RtMidiError
-    MidiIn(String name_id, std::function<void(DeviceMidiMessage const &)> on_input)
-    :   name_id_(name_id)
+    MidiIn(MidiDeviceInfo const &info, std::function<void(DeviceMidiMessage const &)> on_input)
+    :   info_(info)
     ,   on_input_(on_input)
     {
+        assert(info.io_type_ == DeviceIOType::kInput);
         midi_in_.ignoreTypes();
         midi_in_.setCallback(Callback, this);
         midi_in_.setErrorCallback(ErrorCallback, this);
         
         int n = -1;
         for(int i = 0; i < midi_in_.getPortCount(); ++i) {
-            if(to_wstr(midi_in_.getPortName(i)) == name_id) {
+            if(to_wstr(midi_in_.getPortName(i)) == info_.name_id_) {
                 n = i;
                 break;
             }
         }
         if(n == -1) { throw std::runtime_error("unknown device"); }
-        midi_in_.openPort(n, to_utf8(name_id));
+        midi_in_.openPort(n, to_utf8(info_.name_id_));
     }
     
     ~MidiIn()
@@ -153,11 +154,11 @@ struct MidiIn
     
     void Close() { midi_in_.closePort(); }
     
-    String GetNameID() const override { return name_id_; }
+    MidiDeviceInfo const & GetDeviceInfo() const override { return info_; }
     
     
 private:
-    String name_id_;
+    MidiDeviceInfo const &info_;
     RtMidiIn midi_in_;
     std::optional<UInt8> running_status_;
     std::function<void(DeviceMidiMessage const &)> on_input_;
@@ -241,8 +242,8 @@ struct MidiOut
 :   public MidiDevice
 {
     //! @throw RtMidiError
-    MidiOut(String name_id)
-    :   name_id_(name_id)
+    MidiOut(MidiDeviceInfo const &info)
+    :   info_(info)
     {
         messages_.reserve(2048);
         
@@ -250,13 +251,13 @@ struct MidiOut
         
         int n = -1;
         for(int i = 0; i < midi_out_.getPortCount(); ++i) {
-            if(to_wstr(midi_out_.getPortName(i)) == name_id) {
+            if(to_wstr(midi_out_.getPortName(i)) == info_.name_id_) {
                 n = i;
                 break;
             }
         }
         if(n == -1) { throw std::runtime_error("unknown device"); }
-        midi_out_.openPort(0, to_utf8(name_id));
+        midi_out_.openPort(0, to_utf8(info_.name_id_));
     }
     
     ~MidiOut()
@@ -270,7 +271,7 @@ struct MidiOut
     
     void Close() { midi_out_.closePort(); }
     
-    String GetNameID() const override { return name_id_; }
+    MidiDeviceInfo const & GetDeviceInfo() const override { return info_; }
     
     void SendMessages(std::vector<DeviceMidiMessage> const &ms)
     {
@@ -284,7 +285,7 @@ struct MidiOut
     }
     
 private:
-    String name_id_;
+    MidiDeviceInfo info_;
     RtMidiOut midi_out_;
     
     std::vector<DeviceMidiMessage> messages_;
@@ -367,14 +368,14 @@ MidiDevice * MidiDeviceManager::Open(MidiDeviceInfo const &info, String *error)
 {
     try {
         if(info.io_type_ == DeviceIOType::kInput) {
-            auto p = std::make_shared<MidiIn>(info.name_id_, [this](auto const &m) { pimpl_->AddMidiMessage(m); });
+            auto p = std::make_shared<MidiIn>(info, [this](auto const &m) { pimpl_->AddMidiMessage(m); });
             {
                 auto lock = pimpl_->lf_in_.make_lock();
                 pimpl_->ins_.push_back(p);
             }
             return p.get();
         } else {
-            auto p = std::make_shared<MidiOut>(info.name_id_);
+            auto p = std::make_shared<MidiOut>(info);
             {
                 auto lock = pimpl_->lf_out_.make_lock();
                 pimpl_->outs_.push_back(p);
@@ -390,7 +391,7 @@ MidiDevice * MidiDeviceManager::Open(MidiDeviceInfo const &info, String *error)
 }
 
 auto find_device = [](auto &container, auto name_id) {
-    auto predicate = [name_id](auto const &device) { return device->GetNameID() == name_id; };
+    auto predicate = [name_id](auto const &device) { return device->GetDeviceInfo().name_id_ == name_id; };
     return std::find_if(std::begin(container), std::end(container), predicate);
 };
 
@@ -409,7 +410,7 @@ void MidiDeviceManager::Close(MidiDevice const *device)
 {
     if(auto midi_in = dynamic_cast<MidiIn const *>(device)) {
         auto lock = pimpl_->lf_in_.make_lock();
-        auto found = find_device(pimpl_->ins_, midi_in->GetNameID());
+        auto found = find_device(pimpl_->ins_, midi_in->GetDeviceInfo().name_id_);
         if(found == pimpl_->ins_.end()) { return; }
         
         auto moved = std::move(*found);
@@ -420,7 +421,7 @@ void MidiDeviceManager::Close(MidiDevice const *device)
         
     } else if(auto midi_out = dynamic_cast<MidiOut const *>(device)) {
         auto lock = pimpl_->lf_out_.make_lock();
-        auto found = find_device(pimpl_->outs_, midi_out->GetNameID());
+        auto found = find_device(pimpl_->outs_, midi_out->GetDeviceInfo().name_id_);
         if(found == pimpl_->outs_.end()) { return; }
         
         auto moved = std::move(*found);

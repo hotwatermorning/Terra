@@ -7,7 +7,8 @@
 #include <pluginterfaces/base/ipluginbase.h>
 #include <pluginterfaces/vst/vstspeaker.h>
 
-#include "../../Misc/StrCnv.hpp"
+#include "../../misc/StrCnv.hpp"
+#include "../../misc/Either.hpp"
 
 NS_HWM_BEGIN
 
@@ -30,59 +31,6 @@ vstma_unique_ptr<T>  to_unique(T *p)
 {
 	return vstma_unique_ptr<T>(p);
 }
-
-//! 失敗か成功かどちらかの状況を返すクラス
-//! is_right() == trueの時は成功の状況
-template<class Left, class Right>
-class Either
-{
-public:
-	Either(Left left) : left_(std::move(left)), right_(Right()), is_right_(false) {}
-	Either(Right right) : left_(Left()), right_(std::move(right)), is_right_(true) {}
-
-	bool is_right() const { return is_right_; }
-
-	Left &			left	()
-	{
-		assert(!is_right());
-		return left_;
-	}
-
-	Left const &	left	() const
-	{
-		assert(!is_right());
-		return left_;
-	}
-
-	Right &			right	()
-	{
-		assert(is_right());
-		return right_;
-	}
-
-	Right const &	right	() const
-	{
-		assert(is_right());
-		return right_;
-	}
-    
-	template<class F>
-	void visit(F f) {
-        if(is_right()) { f(right()); }
-        else           { f(left()); }
-    }
-    
-    template<class F>
-    void visit(F f) const {
-        if(is_right()) { f(right()); }
-        else           { f(left()); }
-    }
-
-private:
-	Left left_;
-	Right right_;
-    bool is_right_;
-};
 
 template<class To>
 using maybe_vstma_unique_ptr = Either<Steinberg::tresult, vstma_unique_ptr<To>>;

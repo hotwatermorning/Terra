@@ -8,17 +8,22 @@ NS_HWM_BEGIN
 
 namespace {
     
-    class VirtualMidiDevice : public MidiDevice {
+    class VirtualMidiInDevice : public MidiDevice {
     public:
-        VirtualMidiDevice(String name_id) : name_id_(name_id) {}
-        ~VirtualMidiDevice() {}
-        String GetNameID() const override { return name_id_; }
+        VirtualMidiInDevice(String name_id)
+        {
+            info_.name_id_ = name_id;
+            info_.io_type_ = DeviceIOType::kInput;
+        }
+        
+        ~VirtualMidiInDevice() {}
+        MidiDeviceInfo const & GetDeviceInfo() const override { return info_; }
     private:
-        String name_id_;
+        MidiDeviceInfo info_;
     };
     
-    VirtualMidiDevice kSoftwareKeyboardMidiInput = { L"Software Keyboard" };
-    VirtualMidiDevice kSequencerMidiInput = { L"Sequencer" };
+    VirtualMidiInDevice kSoftwareKeyboardMidiInput = { L"Software Keyboard" };
+    VirtualMidiInDevice kSequencerMidiInput = { L"Sequencer" };
 }
 
 struct InternalPlayingNoteInfo
@@ -188,7 +193,7 @@ void Project::AddAudioOutput(String name, UInt32 channel_index, UInt32 num_chann
 void Project::AddMidiInput(MidiDevice *device)
 {
     pimpl_->midi_input_table_[device].reserve(2048);
-    pimpl_->graph_.AddMidiInput(device->GetNameID(),
+    pimpl_->graph_.AddMidiInput(device->GetDeviceInfo().name_id_,
                                 [device, this](GraphProcessor::MidiInput *in,
                                                ProcessInfo const &pi)
                                 {

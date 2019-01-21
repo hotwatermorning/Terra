@@ -7,12 +7,6 @@
 
 NS_HWM_BEGIN
 
-struct MidiDeviceInfo
-{
-    DeviceIOType io_type_;
-    String name_id_;
-};
-
 //! デバイスとやり取りするMIDI
 struct DeviceMidiMessage
 {

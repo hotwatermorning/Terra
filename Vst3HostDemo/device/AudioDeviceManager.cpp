@@ -160,7 +160,14 @@ AudioDeviceManager::~AudioDeviceManager()
 
 AudioDriverType AudioDeviceManager::GetDefaultDriver() const
 {
-    return ToAudioDriverType(Pa_GetDefaultHostApi());
+    auto index = Pa_GetDefaultHostApi();
+    if(index < 0) {
+        ShowErrorMsg(index);
+        return AudioDriverType::kUnknown;
+    }
+    
+    auto *info = Pa_GetHostApiInfo(index);
+    return ToAudioDriverType(info->type);
 }
 
 std::vector<AudioDeviceInfo> AudioDeviceManager::Enumerate()

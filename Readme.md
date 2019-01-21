@@ -8,11 +8,16 @@ A Demo application which hosts vst3 plugins.
 
 ## 機能
 
-プラグインをロードしてから、GUI上のピアノ鍵盤をクリックしたりPCに接続したMIDIキーボードを操作すると、プラグインで音を鳴らせます。
-また、Ableton Live方式で、PCのキーボードを鍵盤として使用できます。
+プラグインをロードし、そのプラグインにオーディオデバイスやMIDIデバイスのノードを接続して、プラグインから音を鳴らしたりエフェクトをかけたりできます。
 
+各ノードは、ノード下部の出力ピンからノード上部の入力ピンに向かって接続ができます。`Shift`キーを押しながらドラッグすると、接続を解除できます。
+
+`Software Keyboard` デバイスをプラグインを繋ぐと、GUI上のピアノ鍵盤やPCのキーボードからMIDI信号をプラグインに送信できます。
+
+PCのキーボードはAbleton Live方式で、
  * A, W, S, ..., O, L, Pまでの範囲をC3, C#3, D3, ..., C#4, D4, D#4に割り当てています。
  * ZとXでオクターブを変更できます。
+
 
 ## プログラムのビルド方法
 
@@ -34,6 +39,7 @@ open build_debug/Debug/Vst3HostDemo -Pconfig=<Debug or Release>
 * [cppformat](http://fmtlib.net)
 * [RtMidi](https://github.com/thestk/rtmidi)
 * [Protocol Buffers](https://developers.google.com/protocol-buffers/)
+* [MPark.Variant](https://github.com/mpark/variant)
 
 -----
 

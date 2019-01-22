@@ -266,7 +266,7 @@ std::vector<AudioDeviceInfo> AudioDeviceManager::Enumerate()
         auto *info = Pa_GetDeviceInfo(i);
         auto *host_api_info = Pa_GetHostApiInfo(info->hostApi);
         
-        if(info->maxInputChannels >= 0) {
+        if(info->maxInputChannels > 0) {
             AudioDeviceInfo tmp {
                 ToAudioDriverType(host_api_info->type),
                 DeviceIOType::kInput,
@@ -276,7 +276,7 @@ std::vector<AudioDeviceInfo> AudioDeviceManager::Enumerate()
             result.push_back(tmp);
         }
         
-        if(info->maxOutputChannels >= 0) {
+        if(info->maxOutputChannels > 0) {
             AudioDeviceInfo tmp {
                 ToAudioDriverType(host_api_info->type),
                 DeviceIOType::kOutput,

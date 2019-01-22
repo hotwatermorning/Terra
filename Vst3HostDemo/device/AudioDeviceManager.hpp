@@ -38,7 +38,7 @@ public:
     virtual ~AudioDevice() {}
     
     virtual
-    AudioDeviceInfo const * GetInfo(DeviceIOType io) const = 0;
+    AudioDeviceInfo const * GetDeviceInfo(DeviceIOType io) const = 0;
     
     virtual
     double GetSampleRate() const = 0;

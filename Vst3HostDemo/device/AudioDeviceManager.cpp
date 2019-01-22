@@ -96,7 +96,7 @@ public:
     AudioDeviceImpl(AudioDeviceImpl &&rhs) = delete;
     AudioDeviceImpl & operator=(AudioDeviceImpl &&rhs) = delete;
     
-    AudioDeviceInfo const * GetInfo(DeviceIOType io) const override
+    AudioDeviceInfo const * GetDeviceInfo(DeviceIOType io) const override
     {
         auto const &info = (io == DeviceIOType::kInput) ? input_ : output_;
         return info ? &*info : nullptr;

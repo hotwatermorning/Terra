@@ -388,7 +388,7 @@ bool AudioDeviceManager::IsOpened() const
 
 void AudioDeviceManager::AddCallback(IAudioDeviceCallback *cb)
 {
-    assert(!IsOpened());
+    assert(!IsOpened() || GetDevice()->IsStopped());
     
     auto found = std::find(pimpl_->callbacks_.begin(), pimpl_->callbacks_.end(), cb);
     assert(found == pimpl_->callbacks_.end());
@@ -398,7 +398,7 @@ void AudioDeviceManager::AddCallback(IAudioDeviceCallback *cb)
 
 bool AudioDeviceManager::RemoveCallback(IAudioDeviceCallback const *cb)
 {
-    assert(!IsOpened());
+    assert(!IsOpened() || GetDevice()->IsStopped());
     
     auto found = std::find(pimpl_->callbacks_.begin(),
                            pimpl_->callbacks_.end(),
@@ -414,7 +414,7 @@ bool AudioDeviceManager::RemoveCallback(IAudioDeviceCallback const *cb)
 
 void AudioDeviceManager::RemoveAllCallbacks()
 {
-    assert(!IsOpened());
+    assert(!IsOpened() || GetDevice()->IsStopped());
     
     pimpl_->callbacks_.clear();
 }

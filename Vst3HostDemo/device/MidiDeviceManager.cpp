@@ -158,7 +158,7 @@ struct MidiIn
     
     
 private:
-    MidiDeviceInfo const &info_;
+    MidiDeviceInfo info_;
     RtMidiIn midi_in_;
     std::optional<UInt8> running_status_;
     std::function<void(DeviceMidiMessage const &)> on_input_;

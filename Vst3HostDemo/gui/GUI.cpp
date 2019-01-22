@@ -15,6 +15,7 @@
 #include "./Keyboard.hpp"
 #include "./UnitData.hpp"
 #include "./GraphEditor.hpp"
+#include "SettingWindow.hpp"
 
 NS_HWM_BEGIN
 
@@ -531,6 +532,8 @@ MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
     
     my_panel_ = new MyPanel(this);
     my_panel_->SetSize(GetClientSize());
+    
+    CreateSettingWindow(this);
 }
 
 MyFrame::~MyFrame()

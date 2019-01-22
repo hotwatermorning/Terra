@@ -67,12 +67,12 @@ public:
     double SampleToPPQ(SampleCount sample_pos) const;
     SampleCount PPQToSample(double ppq_pos) const;
     
+    void OnAfterActivated();
+    void OnBeforeDeactivated();
+    
 private:
     struct Impl;
     std::unique_ptr<Impl> pimpl_;
-    
-//    void OnAfterActivated();
-//    void OnBeforeDeactivated();
     
     void StartProcessing(double sample_rate,
                          SampleCount max_block_size,

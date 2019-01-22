@@ -134,17 +134,8 @@ bool MyApp::OnInit()
     } else {
         pimpl_->plugin_scanner_.ScanAsync();
     }
-    
-    pimpl_->project_ = std::make_shared<Project>();
-    pimpl_->project_->SetSequence(MakeSequence());
-    pimpl_->project_->GetTransporter().SetLoopRange(0, 4 * kSampleRate);
-    pimpl_->project_->GetTransporter().SetLoopEnabled(true);
-    pimpl_->pa_listeners_.Invoke([this](auto *li) {
-        li->OnAfterProjectActivated(pimpl_->project_.get());
-    });
-    
+
     pimpl_->adm_ = std::make_unique<AudioDeviceManager>();
-    pimpl_->adm_->AddCallback(pimpl_->project_.get());
     
     auto audio_device_infos = pimpl_->adm_->Enumerate();
     for(auto const &info: audio_device_infos) {
@@ -182,13 +173,8 @@ bool MyApp::OnInit()
         throw std::runtime_error(to_utf8(L"Failed to open the device: " + result.left().error_msg_));
     }
     
-    if(input_device) {
-        pimpl_->project_->AddAudioInput(input_device->name_, 0, input_device->num_channels_);
-    }
-    
-    if(output_device) {
-        pimpl_->project_->AddAudioOutput(output_device->name_, 0, output_device->num_channels_);
-    }
+    //! start the audio device.
+    pimpl_->adm_->GetDevice()->Start();
 
     pimpl_->mdm_ = std::make_unique<MidiDeviceManager>();
     auto midi_device_infos = pimpl_->mdm_->Enumerate();
@@ -202,15 +188,35 @@ bool MyApp::OnInit()
         auto d = pimpl_->mdm_->Open(info);
         if(info.io_type_ == DeviceIOType::kInput) {
             pimpl_->midi_ins_.push_back(d);
-            pimpl_->project_->AddMidiInput(d);
         } else {
             pimpl_->midi_outs_.push_back(d);
-            pimpl_->project_->AddMidiOutput(d);
         }
     }
     
-    pimpl_->adm_->GetDevice()->Start();
+    auto pj = std::make_shared<Project>();
+    pj->SetSequence(MakeSequence());
+    pj->GetTransporter().SetLoopRange(0, 4 * kSampleRate);
+    pj->GetTransporter().SetLoopEnabled(true);
     
+    auto dev = pimpl_->adm_->GetDevice();
+    if(auto info = dev->GetDeviceInfo(DeviceIOType::kInput)) {
+        pj->AddAudioInput(info->name_, 0, info->num_channels_);
+    }
+    
+    if(auto info = dev->GetDeviceInfo(DeviceIOType::kOutput)) {
+        pj->AddAudioOutput(info->name_, 0, info->num_channels_);
+    }
+        
+    for(auto mi: pimpl_->midi_ins_) { pj->AddMidiInput(mi); }
+    for(auto mo: pimpl_->midi_outs_) { pj->AddMidiOutput(mo); }
+    
+    pimpl_->project_ = pj; // activation.
+
+    pimpl_->project_->OnAfterActivated();
+    pimpl_->pa_listeners_.Invoke([this](auto *li) {
+        li->OnAfterProjectActivated(pimpl_->project_.get());
+    });
+
     MyFrame *frame = new MyFrame( "Vst3HostDemo", wxPoint(50, 50), wxSize(450, 340) );
     frame->Show( true );
     frame->SetFocus();
@@ -223,6 +229,9 @@ int MyApp::OnExit()
     pimpl_->pa_listeners_.Invoke([this](auto *li) {
         li->OnBeforeProjectDeactivated(pimpl_->project_.get());
     });
+    pimpl_->project_->OnBeforeDeactivated();
+    
+    pimpl_->project_.reset(); // dactivation.
     
     for(auto d: pimpl_->midi_ins_) { pimpl_->mdm_->Close(d); }
     for(auto d: pimpl_->midi_outs_) { pimpl_->mdm_->Close(d); }

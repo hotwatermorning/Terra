@@ -1,6 +1,7 @@
 #include "Project.hpp"
 #include "../transport/Traverser.hpp"
 #include "../device/MidiDeviceManager.hpp"
+#include "../device/AudioDeviceManager.hpp"
 #include "./GraphProcessor.hpp"
 #include <map>
 
@@ -285,15 +286,51 @@ SampleCount Project::PPQToSample(double ppq_pos) const
     return (SampleCount)std::round(ppq_pos * (60.0 / info.tempo_) * info.sample_rate_);
 }
 
-//void Project::OnAfterActivated()
-//{
-//    
-//}
-//
-//void Project::OnBeforeDeactivated()
-//{
-//    
-//}
+struct ScopedAudioDeviceStopper
+{
+    ScopedAudioDeviceStopper(AudioDevice *dev)
+    :   dev_(dev)
+    ,   need_to_restart_(dev->IsStopped() == false)
+    {
+        dev_->Stop();
+    }
+    
+    ~ScopedAudioDeviceStopper()
+    {
+        if(need_to_restart_) {
+            dev_->Start();
+        }
+    }
+    
+    ScopedAudioDeviceStopper(ScopedAudioDeviceStopper const &) = delete;
+    ScopedAudioDeviceStopper & operator=(ScopedAudioDeviceStopper const &) = delete;
+    ScopedAudioDeviceStopper(ScopedAudioDeviceStopper &&) = delete;
+    ScopedAudioDeviceStopper & operator=(ScopedAudioDeviceStopper &&) = delete;
+    
+private:
+    AudioDevice *dev_ = nullptr;
+    bool need_to_restart_ = false;
+};
+
+void Project::OnAfterActivated()
+{
+    auto adm = AudioDeviceManager::GetInstance();
+    auto dev = adm->GetDevice();
+    if(!dev) { return; }
+    
+    ScopedAudioDeviceStopper s(dev);
+    adm->AddCallback(this);
+}
+
+void Project::OnBeforeDeactivated()
+{
+    auto adm = AudioDeviceManager::GetInstance();
+    auto dev = adm->GetDevice();
+    if(!dev) { return; }
+    
+    ScopedAudioDeviceStopper s(dev);
+    adm->RemoveCallback(this);
+}
 
 void Project::StartProcessing(double sample_rate,
                               SampleCount max_block_size,

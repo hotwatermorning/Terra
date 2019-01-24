@@ -171,7 +171,7 @@ private:
 
 class TransportPanel
 :   public wxPanel
-,   MyApp::ProjectActivationListener
+,   MyApp::ChangeProjectListener
 ,   Transporter::ITransportStateListener
 {
     static
@@ -214,15 +214,20 @@ public:
         btn_loop_->Bind(wxEVT_TOGGLEBUTTON, [this](auto &ev) { OnLoop(); });
         //btn_metronome_->Bind(wxEVT_TOGGLEBUTTON, [this](auto &ev) { OnMetronome(); });
         
-        MyApp::GetInstance()->AddProjectActivationListener(this);
+        MyApp::GetInstance()->AddChangeProjectListener(this);
         
-        auto pj = Project::GetInstance();
+        auto pj = Project::GetCurrentProject();
         auto &tp = pj->GetTransporter();
         
         tp.AddListener(this);
         
         btn_play_->SetPushed(tp.IsPlaying());
         btn_loop_->SetPushed(tp.IsLoopEnabled());
+    }
+    
+    ~TransportPanel()
+    {
+        MyApp::GetInstance()->RemoveChangeProjectListener(this);
     }
 
 private:
@@ -236,35 +241,35 @@ private:
     
     void OnRewind()
     {
-        auto pj = Project::GetActiveProject();
+        auto pj = Project::GetCurrentProject();
         auto &tp = pj->GetTransporter();
         tp.Rewind();
     }
     
     void OnStop()
     {
-        auto pj = Project::GetActiveProject();
+        auto pj = Project::GetCurrentProject();
         auto &tp = pj->GetTransporter();
         tp.SetStop();
     }
     
     void OnPlay()
     {
-        auto pj = Project::GetActiveProject();
+        auto pj = Project::GetCurrentProject();
         auto &tp = pj->GetTransporter();
         tp.SetPlaying(tp.IsPlaying() == false);
     }
     
     void OnForward()
     {
-        auto pj = Project::GetActiveProject();
+        auto pj = Project::GetCurrentProject();
         auto &tp = pj->GetTransporter();
         tp.FastForward();
     }
     
     void OnLoop()
     {
-        auto pj = Project::GetActiveProject();
+        auto pj = Project::GetCurrentProject();
         auto &tp = pj->GetTransporter();
         tp.SetLoopEnabled(btn_loop_->IsPushed());
     }
@@ -275,12 +280,15 @@ private:
 //        pj->SetMetronome(btn_metronome_->GetValue());;
     }
     
-    void OnBeforeProjectDeactivated(Project *pj) override
+    void OnChangeCurrentProject(Project *old_pj, Project *new_pj) override
     {
-        auto &tp = pj->GetTransporter();
-        tp.RemoveListener(this);
+        if(old_pj) {
+            old_pj->GetTransporter().RemoveListener(this);
+        }
         
-        MyApp::GetInstance()->RemoveProjectActivationListener(this);
+        if(new_pj) {
+            new_pj->GetTransporter().AddListener(this);
+        }
     }
     
     void OnChanged(TransportInfo const &old_state,
@@ -304,7 +312,7 @@ private:
 
 class TimeIndicator
 :   public wxPanel
-,   public MyApp::ProjectActivationListener
+,   public MyApp::ChangeProjectListener
 ,   public Transporter::ITransportStateListener
 {
 public:
@@ -329,15 +337,20 @@ public:
         vbox->AddStretchSpacer(1);
         SetSizer(vbox);
         
-        MyApp::GetInstance()->AddProjectActivationListener(this);
+        MyApp::GetInstance()->AddChangeProjectListener(this);
         
-        auto pj = Project::GetInstance();
+        auto pj = Project::GetCurrentProject();
         assert(pj);
         
         auto &tp = pj->GetTransporter();
         tp.AddListener(this);
         
         SetBackgroundColour(wxColour(0x3B, 0x3B, 0x3B));
+    }
+    
+    ~TimeIndicator()
+    {
+        MyApp::GetInstance()->RemoveChangeProjectListener(this);
     }
     
 private:
@@ -347,15 +360,18 @@ private:
     wxTimer timer_;
     TransportInfo last_info_;
     wxStaticText *text_;
-    
-    void OnBeforeProjectDeactivated(Project *pj) override
+
+    void OnChangeCurrentProject(Project *old_pj, Project *new_pj) override
     {
-        auto &tp = pj->GetTransporter();
-        tp.RemoveListener(this);
+        if(old_pj) {
+            old_pj->GetTransporter().RemoveListener(this);
+        }
         
-        MyApp::GetInstance()->RemoveProjectActivationListener(this);
+        if(new_pj) {
+            new_pj->GetTransporter().AddListener(this);
+        }
     }
-    
+        
     void OnChanged(TransportInfo const &old_state,
                    TransportInfo const &new_state) override
     {
@@ -383,7 +399,7 @@ private:
     
     void OnTimer()
     {
-        auto pj = Project::GetInstance();
+        auto pj = Project::GetCurrentProject();
         auto &tp = pj->GetTransporter();
         
         if(tp.IsPlaying() && timer_.GetInterval() == kIntervalSlow) {
@@ -438,7 +454,7 @@ public:
         
         header_panel_ = new HeaderPanel(this);
         
-        auto pj = Project::GetInstance();
+        auto pj = Project::GetCurrentProject();
         graph_panel_ = CreateGraphEditorComponent(this, pj->GetGraph()).release();
         graph_panel_->Show();
         
@@ -564,7 +580,7 @@ void MyFrame::OnAbout(wxCommandEvent& event)
 
 void MyFrame::OnPlay(wxCommandEvent &ev)
 {
-    auto &tp = Project::GetInstance()->GetTransporter();
+    auto &tp = Project::GetCurrentProject()->GetTransporter();
     tp.SetPlaying(ev.IsChecked());
 }
 

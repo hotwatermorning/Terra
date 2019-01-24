@@ -1,6 +1,7 @@
 #include "SettingDialog.hpp"
 #include "Util.hpp"
 #include "../device/AudioDeviceManager.hpp"
+#include "../project/Project.hpp"
 
 NS_HWM_BEGIN
 
@@ -614,6 +615,14 @@ public:
         active_panel_ = device_panel_;
         
         SetAutoLayout(true);
+        
+        auto pj = Project::GetCurrentProject();
+        pj->Deactivate();
+        Bind(wxEVT_CLOSE_WINDOW, [pj, this](auto &ev) {
+            pj->Activate();
+            EndModal(wxID_OK);
+        });
+        
         Show(true);
     }
     

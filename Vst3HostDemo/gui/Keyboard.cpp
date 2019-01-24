@@ -214,7 +214,7 @@ public:
         if(uc == WXK_NONE ) { return; }
         
         if(uc == kPlayback) {
-            auto pj = Project::GetInstance();
+            auto pj = Project::GetCurrentProject();
             auto &tp = pj->GetTransporter();
             tp.SetPlaying(!tp.IsPlaying());
         }
@@ -271,7 +271,7 @@ public:
     
     void OnTimer()
     {
-        auto pj = Project::GetActiveProject();
+        auto pj = Project::GetCurrentProject();
         
         std::vector<Project::PlayingNoteInfo> list_seq = pj->GetPlayingSequenceNotes();
         std::vector<Project::PlayingNoteInfo> list_sample = pj->GetPlayingSampleNotes();
@@ -295,9 +295,7 @@ private:
     {
         assert(note_number < 128);
         
-        auto app = MyApp::GetInstance();
-        auto proj = app->GetProject();
-        
+        auto proj = Project::GetCurrentProject();
         proj->SendSampleNoteOn(sample_note_channel, note_number);
     }
     
@@ -305,9 +303,7 @@ private:
     {
         assert(note_number < 128);
         
-        auto app = MyApp::GetInstance();
-        auto proj = app->GetProject();
-        
+        auto proj = Project::GetCurrentProject();
         proj->SendSampleNoteOff(sample_note_channel, note_number);
     }
     

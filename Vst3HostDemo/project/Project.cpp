@@ -3,6 +3,7 @@
 #include "../device/MidiDeviceManager.hpp"
 #include "../device/AudioDeviceManager.hpp"
 #include "./GraphProcessor.hpp"
+#include "../App.hpp"
 #include <map>
 
 NS_HWM_BEGIN
@@ -137,6 +138,7 @@ struct Project::Impl
 {
     LockFactory lf_;
     Transporter tp_;
+    bool is_active_ = false;
     double sample_rate_ = 0;
     SampleCount block_size_ = 0;
     BypassFlag bypass_;
@@ -171,6 +173,12 @@ Project::Project()
 
 Project::~Project()
 {}
+
+Project * Project::GetCurrentProject()
+{
+    auto app = MyApp::GetInstance();
+    return app->GetCurrentProject();
+}
 
 void Project::AddAudioInput(String name, UInt32 channel_index, UInt32 num_channels)
 {
@@ -210,11 +218,6 @@ void Project::AddMidiOutput(MidiDevice *device)
 //                                 {
 //                                     OnGetMidi(out, pi, device);
 //                                 });
-}
-
-Project * Project::GetActiveProject()
-{
-    return GetInstance();
 }
 
 std::shared_ptr<Sequence> Project::GetSequence() const
@@ -312,24 +315,38 @@ private:
     bool need_to_restart_ = false;
 };
 
-void Project::OnAfterActivated()
+void Project::Activate()
 {
+    //! don't call activate twice.
+    assert(IsActive() == false);
+    
     auto adm = AudioDeviceManager::GetInstance();
     auto dev = adm->GetDevice();
     if(!dev) { return; }
     
     ScopedAudioDeviceStopper s(dev);
     adm->AddCallback(this);
+    
+    pimpl_->is_active_ = true;
 }
 
-void Project::OnBeforeDeactivated()
+void Project::Deactivate()
 {
+    if(IsActive() == false) { return; }
+    
     auto adm = AudioDeviceManager::GetInstance();
     auto dev = adm->GetDevice();
     if(!dev) { return; }
     
     ScopedAudioDeviceStopper s(dev);
     adm->RemoveCallback(this);
+    
+    pimpl_->is_active_ = false;
+}
+
+bool Project::IsActive() const
+{
+    return pimpl_->is_active_;
 }
 
 void Project::StartProcessing(double sample_rate,

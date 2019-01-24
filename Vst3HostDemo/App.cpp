@@ -85,9 +85,10 @@ struct MyApp::Impl
     std::unique_ptr<MidiDeviceManager> mdm_;
     std::vector<MidiDevice *> midi_ins_;
     std::vector<MidiDevice *> midi_outs_;
-    ListenerService<ProjectActivationListener> pa_listeners_;
+    ListenerService<ChangeProjectListener> cp_listeners_;
     Vst3PluginFactoryList factory_list_;
-    std::shared_ptr<Project> project_;
+    std::vector<std::shared_ptr<Project>> projects_;
+    Project * current_project_ = nullptr;
     wxString device_name_;
     
     PluginScanner plugin_scanner_;
@@ -213,12 +214,8 @@ bool MyApp::OnInit()
     for(auto mi: pimpl_->midi_ins_) { pj->AddMidiInput(mi); }
     for(auto mo: pimpl_->midi_outs_) { pj->AddMidiOutput(mo); }
     
-    pimpl_->project_ = pj; // activation.
-
-    pimpl_->project_->OnAfterActivated();
-    pimpl_->pa_listeners_.Invoke([this](auto *li) {
-        li->OnAfterProjectActivated(pimpl_->project_.get());
-    });
+    pimpl_->projects_.push_back(pj);
+    SetCurrentProject(pj.get());
 
     MyFrame *frame = new MyFrame( "Vst3HostDemo", wxPoint(50, 50), wxSize(450, 340) );
     frame->Show( true );
@@ -229,18 +226,13 @@ bool MyApp::OnInit()
 
 int MyApp::OnExit()
 {
-    pimpl_->pa_listeners_.Invoke([this](auto *li) {
-        li->OnBeforeProjectDeactivated(pimpl_->project_.get());
-    });
-    pimpl_->project_->OnBeforeDeactivated();
-    
-    pimpl_->project_.reset(); // dactivation.
+    SetCurrentProject(nullptr);
+    pimpl_->projects_.clear();
     
     for(auto d: pimpl_->midi_ins_) { pimpl_->mdm_->Close(d); }
     for(auto d: pimpl_->midi_outs_) { pimpl_->mdm_->Close(d); }
     
     pimpl_->adm_->Close();
-    pimpl_->project_.reset();
     pimpl_->factory_list_.Shrink();
     return 0;
 }
@@ -248,8 +240,8 @@ int MyApp::OnExit()
 void MyApp::BeforeExit()
 {}
 
-void MyApp::AddProjectActivationListener(ProjectActivationListener *li) { pimpl_->pa_listeners_.AddListener(li); }
-void MyApp::RemoveProjectActivationListener(ProjectActivationListener const *li) { pimpl_->pa_listeners_.RemoveListener(li); }
+void MyApp::AddChangeProjectListener(ChangeProjectListener *li) { pimpl_->cp_listeners_.AddListener(li); }
+void MyApp::RemoveChangeProjectListener(ChangeProjectListener const *li) { pimpl_->cp_listeners_.RemoveListener(li); }
 
 std::unique_ptr<Vst3Plugin> MyApp::CreateVst3Plugin(PluginDescription const &desc)
 {
@@ -285,9 +277,45 @@ void MyApp::ForceRescanPlugins()
     pimpl_->plugin_scanner_.ScanAsync();
 }
 
-Project * MyApp::GetProject()
+std::vector<Project *> MyApp::GetProjectList()
 {
-    return pimpl_->project_.get();
+    std::vector<Project *> ret;
+    std::transform(pimpl_->projects_.begin(),
+                   pimpl_->projects_.end(),
+                   std::back_inserter(ret),
+                   [](auto const &x) { return x.get(); });
+    
+    return ret;
+}
+
+template<class Container, class T>
+auto contains(Container const &c, T const &t)
+{
+    return std::find(std::begin(c), std::end(c), t) != std::end(c);
+}
+
+void MyApp::SetCurrentProject(Project *pj)
+{
+    assert(pj == nullptr || contains(GetProjectList(), pj));
+ 
+    auto old_pj = pimpl_->current_project_;
+    if(old_pj) {
+        old_pj->Deactivate();
+    }
+    
+    pimpl_->current_project_ = pj;
+    pimpl_->cp_listeners_.Invoke([old_pj, pj](auto li) {
+        li->OnChangeCurrentProject(old_pj, pj);
+    });
+    
+    if(pj) {
+        pj->Activate();
+    }
+}
+
+Project * MyApp::GetCurrentProject()
+{
+    return pimpl_->current_project_;
 }
 
 void MyApp::ShowSettingDialog()

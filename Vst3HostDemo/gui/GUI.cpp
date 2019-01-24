@@ -15,7 +15,6 @@
 #include "./Keyboard.hpp"
 #include "./UnitData.hpp"
 #include "./GraphEditor.hpp"
-#include "SettingWindow.hpp"
 
 NS_HWM_BEGIN
 
@@ -495,6 +494,7 @@ enum
     ID_Play = 1,
     ID_RescanPlugin,
     ID_ForceRescanPlugin,
+    ID_Setting
 };
 
 MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
@@ -506,14 +506,18 @@ MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
     menuFile->AppendSeparator();
     menuFile->Append(wxID_EXIT);
     
+    wxMenu *menuEdit = new wxMenu;
+    menuEdit->Append(ID_Setting, "&Setting\tCTRL-,", "Open Setting Dialog");
+    
     wxMenu *menuPlay = new wxMenu;
-    menuPlay->Append(ID_Play, "&Play\tSpace", "Start playback", wxITEM_CHECK);
+    menuPlay->Append(ID_Play, "&Play\tSPACE", "Start playback", wxITEM_CHECK);
 
     wxMenu *menuHelp = new wxMenu;
     menuHelp->Append(wxID_ABOUT);
 
     wxMenuBar *menuBar = new wxMenuBar;
     menuBar->Append( menuFile, "&File" );
+    menuBar->Append( menuEdit, "&Edit" );
     menuBar->Append( menuPlay, "&Play" );
     menuBar->Append( menuHelp, "&Help" );
     SetMenuBar( menuBar );
@@ -522,6 +526,7 @@ MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
     //Bind(wxEVT_CLOSE_WINDOW, [this](auto &ev) { OnExit(); });
     Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { MyApp::GetInstance()->RescanPlugins(); }, ID_RescanPlugin);
     Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { MyApp::GetInstance()->ForceRescanPlugins(); }, ID_ForceRescanPlugin);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { MyApp::GetInstance()->ShowSettingDialog(); }, ID_Setting);
     Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { OnPlay(ev); }, ID_Play);
     
     Bind(wxEVT_MENU, [this](auto &ev) { OnAbout(ev); }, wxID_ABOUT);
@@ -532,8 +537,6 @@ MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
     
     my_panel_ = new MyPanel(this);
     my_panel_->SetSize(GetClientSize());
-    
-    CreateSettingWindow(this);
 }
 
 MyFrame::~MyFrame()

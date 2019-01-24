@@ -13,6 +13,7 @@
 
 #include "device/AudioDeviceManager.hpp"
 #include "device/MidiDeviceManager.hpp"
+#include "gui/SettingDialog.hpp"
 
 NS_HWM_BEGIN
 
@@ -136,8 +137,9 @@ bool MyApp::OnInit()
     }
 
     pimpl_->adm_ = std::make_unique<AudioDeviceManager>();
+    auto adm = pimpl_->adm_.get();
     
-    auto audio_device_infos = pimpl_->adm_->Enumerate();
+    auto audio_device_infos = adm->Enumerate();
     for(auto const &info: audio_device_infos) {
         hwm::wdout << L"{} - {}({}ch)"_format(info.name_, to_wstring(info.driver_), info.num_channels_) << std::endl;
     }
@@ -158,7 +160,7 @@ bool MyApp::OnInit()
         else { return &*found; }
     };
 
-    auto output_device = find_entry(DeviceIOType::kOutput, 2, pimpl_->adm_->GetDefaultDriver());
+    auto output_device = find_entry(DeviceIOType::kOutput, 2, adm->GetDefaultDriver());
     if(!output_device) { output_device = find_entry(DeviceIOType::kOutput, 2); }
     
     if(!output_device) {
@@ -168,16 +170,17 @@ bool MyApp::OnInit()
     //! may not found
     auto input_device = find_entry(DeviceIOType::kInput, 2, output_device->driver_);
     
-    auto result = pimpl_->adm_->Open(input_device, output_device, kSampleRate, kBlockSize);
+    auto result = adm->Open(input_device, output_device, kSampleRate, kBlockSize);
     if(result.is_right() == false) {
         throw std::runtime_error(to_utf8(L"Failed to open the device: " + result.left().error_msg_));
     }
     
     //! start the audio device.
-    pimpl_->adm_->GetDevice()->Start();
-
+    adm->GetDevice()->Start();
+    
     pimpl_->mdm_ = std::make_unique<MidiDeviceManager>();
-    auto midi_device_infos = pimpl_->mdm_->Enumerate();
+    auto mdm = pimpl_->mdm_.get();
+    auto midi_device_infos = mdm->Enumerate();
     for(auto info: midi_device_infos) {
         hwm::wdout
         << L"[{:<6s}] {}"_format((info.io_type_ == DeviceIOType::kInput ? L"Input": L"Output"),
@@ -185,7 +188,7 @@ bool MyApp::OnInit()
                                  )
         << std::endl;
         
-        auto d = pimpl_->mdm_->Open(info);
+        auto d = mdm->Open(info);
         if(info.io_type_ == DeviceIOType::kInput) {
             pimpl_->midi_ins_.push_back(d);
         } else {
@@ -198,7 +201,7 @@ bool MyApp::OnInit()
     pj->GetTransporter().SetLoopRange(0, 4 * kSampleRate);
     pj->GetTransporter().SetLoopEnabled(true);
     
-    auto dev = pimpl_->adm_->GetDevice();
+    auto dev = adm->GetDevice();
     if(auto info = dev->GetDeviceInfo(DeviceIOType::kInput)) {
         pj->AddAudioInput(info->name_, 0, info->num_channels_);
     }
@@ -285,6 +288,16 @@ void MyApp::ForceRescanPlugins()
 Project * MyApp::GetProject()
 {
     return pimpl_->project_.get();
+}
+
+void MyApp::ShowSettingDialog()
+{
+    auto dialog = CreateSettingDialog(wxGetActiveWindow());
+    dialog->ShowModal();
+    auto adm = AudioDeviceManager::GetInstance();
+    if(adm->IsOpened()) {
+        adm->GetDevice()->Start();
+    }
 }
 
 namespace {

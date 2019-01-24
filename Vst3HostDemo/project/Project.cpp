@@ -505,11 +505,22 @@ void Project::OnSetAudio(GraphProcessor::AudioInput *input, ProcessInfo const &p
 {
     if(pimpl_->input_.samples() == 0) { return; }
     
+    auto const num_src_channels = pimpl_->input_.channels();
+    auto const num_desired_channels = input->GetAudioChannelCount(BusDirection::kOutputSide);
+    
+    if(channel_index >= num_src_channels) {
+        return;
+    }
+    
+    auto const num_available_channels
+    = std::min<int>(num_src_channels, num_desired_channels + channel_index)
+    - channel_index;
+    
     assert(pi.time_info_->GetSmpDuration() == pimpl_->input_.samples());
     BufferRef<float const> ref {
         pimpl_->input_.data(),
         channel_index,
-        input->GetAudioChannelCount(BusDirection::kOutputSide),
+        num_available_channels,
         0,
         pimpl_->input_.samples()
     };
@@ -525,9 +536,20 @@ void Project::OnGetAudio(GraphProcessor::AudioOutput *output, ProcessInfo const 
     assert(pi.time_info_->GetSmpDuration() == src.samples());
     assert(pi.time_info_->GetSmpDuration() == dest.samples());
     
-    for(int ch = 0; ch < src.channels(); ++ch) {
+    auto const num_desired_channels = output->GetAudioChannelCount(BusDirection::kInputSide);
+    auto const num_dest_channels = pimpl_->output_.channels();
+    
+    if(channel_index >= num_dest_channels) {
+        return;
+    }
+    
+    auto const num_available_channels
+    = std::min<int>(num_dest_channels, num_desired_channels + channel_index)
+    - channel_index;
+    
+    for(int ch = 0; ch < num_available_channels; ++ch) {
         auto ch_src = src.data()[ch + src.channel_from()] + src.sample_from();
-        auto ch_dest = dest.data()[ch + dest.channel_from()] + dest.sample_from();
+        auto ch_dest = dest.data()[ch + dest.channel_from()] + channel_index + dest.sample_from();
         for(int smp = 0; smp < src.samples(); ++smp) {
             ch_dest[smp] += ch_src[smp];
         }

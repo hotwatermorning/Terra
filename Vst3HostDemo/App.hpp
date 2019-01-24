@@ -50,6 +50,9 @@ public:
     
     Project * GetProject();
     
+    //! modal
+    void ShowSettingDialog();
+    
 private:
     struct Impl;
     std::unique_ptr<Impl> pimpl_;

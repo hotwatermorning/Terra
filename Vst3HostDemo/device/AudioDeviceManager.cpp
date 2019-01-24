@@ -254,6 +254,8 @@ AudioDriverType AudioDeviceManager::GetDefaultDriver() const
 
 std::vector<AudioDeviceInfo> AudioDeviceManager::Enumerate()
 {
+    assert(IsOpened() == false);
+    
     auto const device_count = Pa_GetDeviceCount();
     
     if(device_count < 0) {
@@ -265,26 +267,49 @@ std::vector<AudioDeviceInfo> AudioDeviceManager::Enumerate()
     for(PaDeviceIndex i = 0; i < device_count; ++i) {
         auto *info = Pa_GetDeviceInfo(i);
         auto *host_api_info = Pa_GetHostApiInfo(info->hostApi);
+     
+        AudioDeviceInfo tmp_in {
+            ToAudioDriverType(host_api_info->type),
+            DeviceIOType::kInput,
+            to_wstr(info->name),
+            info->maxInputChannels
+        };
         
-        if(info->maxInputChannels > 0) {
-            AudioDeviceInfo tmp {
-                ToAudioDriverType(host_api_info->type),
-                DeviceIOType::kInput,
-                to_wstr(info->name),
-                info->maxInputChannels
-            };
-            result.push_back(tmp);
+        AudioDeviceInfo tmp_out {
+            ToAudioDriverType(host_api_info->type),
+            DeviceIOType::kOutput,
+            to_wstr(info->name),
+            info->maxOutputChannels
+        };
+        
+        for(auto rate: { 44100, 48000, 88200, 96000, 176400, 192000 }) {
+            PaStreamParameters pi;
+            PaStreamParameters po;
+            
+            pi.suggestedLatency = 0;
+            pi.channelCount = info->maxInputChannels;
+            pi.sampleFormat = paFloat32;
+            pi.device = i;
+            pi.hostApiSpecificStreamInfo = nullptr;
+            
+            po.suggestedLatency = 0;
+            po.channelCount = info->maxOutputChannels;
+            po.sampleFormat = paFloat32;
+            po.device = i;
+            po.hostApiSpecificStreamInfo = nullptr;
+            
+            auto result = Pa_IsFormatSupported((info->maxInputChannels > 0) ? &pi : nullptr,
+                                               (info->maxOutputChannels > 0) ? &po : nullptr,
+                                               rate);
+            
+            if(result == paFormatIsSupported) {
+                tmp_in.supported_sample_rates_.push_back(rate);
+                tmp_out.supported_sample_rates_.push_back(rate);
+            }
         }
         
-        if(info->maxOutputChannels > 0) {
-            AudioDeviceInfo tmp {
-                ToAudioDriverType(host_api_info->type),
-                DeviceIOType::kOutput,
-                to_wstr(info->name),
-                info->maxOutputChannels
-            };
-            result.push_back(tmp);
-        }
+        if(info->maxInputChannels > 0) { result.push_back(tmp_in); }
+        if(info->maxOutputChannels > 0) { result.push_back(tmp_out); }
     }
     
     return result;

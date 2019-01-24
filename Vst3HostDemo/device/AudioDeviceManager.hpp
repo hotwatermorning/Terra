@@ -27,6 +27,15 @@ struct AudioDeviceInfo
     DeviceIOType io_type_ = DeviceIOType::kOutput;
     String name_;
     int num_channels_ = 0;
+
+    std::vector<double> supported_sample_rates_;
+    
+    bool IsSampleRateSupported(double rate) const {
+        auto const pred = [rate](auto x) { return x == rate; };
+        return std::any_of(supported_sample_rates_.begin(),
+                           supported_sample_rates_.end(),
+                           pred);
+    }
 };
 
 class AudioDevice
@@ -93,6 +102,9 @@ public:
     
     AudioDriverType GetDefaultDriver() const;
     
+    //! デバイスを列挙する
+    /*! デバイスがオープンした状態で呼び出してはいけない。
+     */
     std::vector<AudioDeviceInfo> Enumerate();
     
     enum ErrorCode {

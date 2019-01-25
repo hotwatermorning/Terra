@@ -216,7 +216,6 @@ Vst3Plugin::Impl::Impl(IPluginFactory *factory,
     ,   edit_controller_is_created_new_(false)
 	,	is_editor_opened_(false)
 	,	is_processing_started_(false)
-	,	is_resumed_(false)
 	,	block_size_(2048)
 	,	sampling_rate_(44100)
 	,	has_editor_(false)
@@ -446,24 +445,45 @@ ViewRect Vst3Plugin::Impl::GetPreferredRect() const
 	return rect;
 }
 
+bool operator==(Vst::ProcessSetup const &x, Vst::ProcessSetup const &y)
+{
+    auto to_tuple = [](auto const &s) {
+        return std::tie(s.maxSamplesPerBlock,
+                        s.sampleRate,
+                        s.symbolicSampleSize,
+                        s.processMode);
+    };
+    
+    return to_tuple(x) == to_tuple(y);
+}
+
+bool operator!=(Vst::ProcessSetup const &x, Vst::ProcessSetup const &y)
+{
+    return !(x == y);
+}
+
 void Vst3Plugin::Impl::Resume()
 {
 	assert(status_ == Status::kInitialized || status_ == Status::kSetupDone);
 
 	tresult res;
-	if(status_ != Status::kSetupDone) {
-		Vst::ProcessSetup setup = {};
-		setup.maxSamplesPerBlock = block_size_;
-		setup.sampleRate = sampling_rate_;
-		setup.symbolicSampleSize = Vst::SymbolicSampleSizes::kSample32;
-		setup.processMode = Vst::ProcessModes::kRealtime;
-
-		res = GetAudioProcessor()->setupProcessing(setup);
-		if(res != kResultOk && res != kNotImplemented) {
+    
+    Vst::ProcessSetup new_setup = {};
+    new_setup.maxSamplesPerBlock = block_size_;
+    new_setup.sampleRate = sampling_rate_;
+    new_setup.symbolicSampleSize = Vst::SymbolicSampleSizes::kSample32;
+    new_setup.processMode = Vst::ProcessModes::kRealtime;
+    
+    if(new_setup != applied_process_setup_) {
+        res = GetAudioProcessor()->setupProcessing(new_setup);
+        if(res != kResultOk && res != kNotImplemented) {
             throw Error(res, "setupProcessing failed");
+        } else {
+            applied_process_setup_ = new_setup;
         }
-		status_ = Status::kSetupDone;
-	}
+    }
+
+    status_ = Status::kSetupDone;
     
     auto prepare_bus_buffers = [&](AudioBusesInfo &buses, UInt32 block_size, Buffer<float> &buffer) {
         buffer.resize(buses.GetNumChannels(), block_size);
@@ -492,8 +512,6 @@ void Vst3Plugin::Impl::Resume()
     }
     
 	status_ = Status::kActivated;
-
-	is_resumed_ = true;
 		
 	hwm::dout << "Latency samples : " << GetAudioProcessor()->getLatencySamples() << std::endl;
 
@@ -525,7 +543,7 @@ void Vst3Plugin::Impl::Suspend()
 
 bool Vst3Plugin::Impl::IsResumed() const
 {
-	return is_resumed_.get();
+    return (int)status_ > (int)Status::kSetupDone;
 }
 
 void Vst3Plugin::Impl::SetBlockSize(int block_size)

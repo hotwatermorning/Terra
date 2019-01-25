@@ -200,11 +200,12 @@ private:
     ParameterInfoList       parameter_info_list_;
     vstma_unique_ptr<Vst::IMidiMapping> midi_mapping_;
 
+    Vst::ProcessSetup       applied_process_setup_ = {};
+    
 	Flag					is_processing_started_;
 	Flag					edit_controller_is_created_new_;
 	Flag					has_editor_;
 	Flag					is_editor_opened_;
-	Flag					is_resumed_;
 	Flag					param_value_changes_was_specified_;
 
 	int	sampling_rate_;

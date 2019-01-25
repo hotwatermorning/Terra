@@ -76,7 +76,6 @@ public:
         cho_sample_rates_ = new wxChoice(this, wxID_ANY);
         st_buffer_sizes_ = new wxStaticText(this, wxID_ANY, "Buffer Size: ");
         cho_buffer_sizes_ = new wxChoice(this, wxID_ANY);
-        btn_apply_audio_ = new wxButton(this, wxID_ANY, "Apply");
         
         auto vbox = new wxBoxSizer(wxVERTICAL);
     
@@ -94,14 +93,7 @@ public:
         add_entry(vbox, st_audio_outputs_, cho_audio_outputs_);
         add_entry(vbox, st_sample_rates_, cho_sample_rates_);
         add_entry(vbox, st_buffer_sizes_, cho_buffer_sizes_);
-        
-        {
-            auto hbox = new wxBoxSizer(wxHORIZONTAL);
-            hbox->AddStretchSpacer(1);
-            hbox->Add(btn_apply_audio_, wxSizerFlags(0).Expand());
-            vbox->Add(hbox, wxSizerFlags(0).Expand().Border(wxTOP|wxBOTTOM, 5));
-        }
-        
+                
         auto outer_box = new wxBoxSizer(wxHORIZONTAL);
         outer_box->Add(vbox, wxSizerFlags(1).Expand().Border(wxALL,  5));
         SetSizer(outer_box);
@@ -400,16 +392,14 @@ public:
     }
     
 private:
-    wxStaticText *st_audio_inputs_;
-    wxChoice *cho_audio_inputs_;
-    wxStaticText *st_audio_outputs_;
-    wxChoice *cho_audio_outputs_;
-    wxStaticText *st_sample_rates_;
-    wxChoice *cho_sample_rates_;
-    wxStaticText *st_buffer_sizes_;
-    wxChoice *cho_buffer_sizes_;
-    
-    wxButton *btn_apply_audio_;
+    wxStaticText *st_audio_inputs_ = nullptr;
+    wxChoice *cho_audio_inputs_ = nullptr;
+    wxStaticText *st_audio_outputs_ = nullptr;
+    wxChoice *cho_audio_outputs_ = nullptr;
+    wxStaticText *st_sample_rates_ = nullptr;
+    wxChoice *cho_sample_rates_ = nullptr;
+    wxStaticText *st_buffer_sizes_ = nullptr;
+    wxChoice *cho_buffer_sizes_ = nullptr;
 };
 
 class AppearanceSettingPanel

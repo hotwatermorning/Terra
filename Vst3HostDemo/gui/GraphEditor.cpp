@@ -557,6 +557,11 @@ public:
         auto node = std::move(*found);
         
         node_components_.erase(found);
+        // リストから取り除く最中にデストラクタが走ると、
+        // その中で親のnode_components_を参照することがあった場合に変なアクセスが発生する可能性がある。。
+        // そのようなバグを避けるために、リストから取り除いたあとでデストラクタを実行する。
+        node.reset();
+        
         graph_->RemoveNode(proc);
         Refresh();
         return true;

@@ -574,7 +574,8 @@ MyFrame::~MyFrame()
 bool MyFrame::Destroy()
 {
     MyApp::GetInstance()->BeforeExit();
-    //my_panel_->Destroy();
+    RemoveChild(my_panel_);
+    my_panel_->Destroy();
     return wxFrame::Destroy();
 }
 

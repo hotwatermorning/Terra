@@ -322,6 +322,8 @@ void MyApp::ShowSettingDialog()
 {
     auto dialog = CreateSettingDialog(wxGetActiveWindow());
     dialog->ShowModal();
+    dialog->Destroy();
+    
     auto adm = AudioDeviceManager::GetInstance();
     if(adm->IsOpened()) {
         adm->GetDevice()->Start();

@@ -217,8 +217,9 @@ public:
         MyApp::GetInstance()->AddChangeProjectListener(this);
         
         auto pj = Project::GetCurrentProject();
-        auto &tp = pj->GetTransporter();
+        assert(pj);
         
+        auto &tp = pj->GetTransporter();
         tp.AddListener(this);
         
         btn_play_->SetPushed(tp.IsPlaying());
@@ -228,6 +229,12 @@ public:
     ~TransportPanel()
     {
         MyApp::GetInstance()->RemoveChangeProjectListener(this);
+        
+        auto pj = Project::GetCurrentProject();
+        if(pj) {
+            auto &tp = pj->GetTransporter();
+            tp.RemoveListener(this);
+        }
     }
 
 private:
@@ -351,6 +358,11 @@ public:
     ~TimeIndicator()
     {
         MyApp::GetInstance()->RemoveChangeProjectListener(this);
+        auto pj = Project::GetCurrentProject();
+        if(pj) {
+            auto &tp = pj->GetTransporter();
+            tp.RemoveListener(this);
+        }
     }
     
 private:

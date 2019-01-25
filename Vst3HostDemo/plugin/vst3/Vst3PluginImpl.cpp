@@ -518,7 +518,6 @@ void Vst3Plugin::Impl::Suspend()
 		status_ = Status::kActivated;
 	}
 
-	DeletePlugView();
 
 	GetComponent()->setActive(false);
 	status_ = Status::kSetupDone;

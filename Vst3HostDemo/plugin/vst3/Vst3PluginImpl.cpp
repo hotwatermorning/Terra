@@ -702,6 +702,9 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
 	process_data.outputParameterChanges = &output_params_;
 
 	auto const res = GetAudioProcessor()->process(process_data);
+    
+    static bool kOutputParameter = false;
+    
     if(res != kResultOk) {
         hwm::dout << "process failed: {}"_format(tresult_to_string(res)) << std::endl;
     }
@@ -712,7 +715,7 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
 
 	for(int i = 0; i < output_params_.getParameterCount(); ++i) {
 		auto *queue = output_params_.getParameterData(i);
-		if(queue && queue->getPointCount() > 0) {
+		if(queue && queue->getPointCount() > 0 && kOutputParameter) {
             hwm::dout << "Output parameter count [{}] : {}"_format(i, queue->getPointCount()) << std::endl;
 		}
 	}

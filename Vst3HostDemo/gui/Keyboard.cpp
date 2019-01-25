@@ -39,6 +39,7 @@ public:
         timer_.Bind(wxEVT_TIMER, [this](auto &ev) { OnTimer(); });
         timer_.Start(50);
         Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { OnLeftDown(ev); });
+        Bind(wxEVT_LEFT_DCLICK, [this](auto &ev) { OnLeftDown(ev); });
         Bind(wxEVT_LEFT_UP, [this](auto &ev) { OnLeftUp(ev); });
         Bind(wxEVT_MOTION, [this](auto &ev) { OnMotion(ev); });
         Bind(wxEVT_KEY_DOWN, [this](auto &ev) { OnKeyDown(ev); });

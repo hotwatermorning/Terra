@@ -1,16 +1,19 @@
 #include "SettingDialog.hpp"
+
+#include <unordered_map>
+
 #include "Util.hpp"
 #include "../device/AudioDeviceManager.hpp"
 #include "../project/Project.hpp"
+#include "../resource/ResourceHelper.hpp"
 
 NS_HWM_BEGIN
+
+BrushPen const kPanelBackgroundColour = HSVToColour(0, 0, 14 / 100.0);
 
 class DeviceSettingPanel
 :   public wxPanel
 {
-    BrushPen background = HSVToColour(0.4, 0.7, 0.9);
-    wxPen title = HSVToColour(0.0, 0.0, 1.0);
-    
     struct AudioDeviceInfoWrapper : wxClientData
     {
         AudioDeviceInfoWrapper(AudioDeviceInfo const &info)
@@ -77,6 +80,11 @@ public:
         st_buffer_sizes_ = new wxStaticText(this, wxID_ANY, "Buffer Size: ");
         cho_buffer_sizes_ = new wxChoice(this, wxID_ANY);
         
+        st_audio_inputs_->SetForegroundColour(HSVToColour(0.0, 0.0, 0.9));
+        st_audio_outputs_->SetForegroundColour(HSVToColour(0.0, 0.0, 0.9));
+        st_sample_rates_->SetForegroundColour(HSVToColour(0.0, 0.0, 0.9));
+        st_buffer_sizes_->SetForegroundColour(HSVToColour(0.0, 0.0, 0.9));
+        
         auto vbox = new wxBoxSizer(wxVERTICAL);
     
         auto add_entry = [&](auto parent_box, auto static_text, auto choice) {
@@ -105,6 +113,7 @@ public:
         cho_sample_rates_->Bind(wxEVT_CHOICE, [this](auto &ev) { OnSelectSampleRate(); });
         cho_buffer_sizes_->Bind(wxEVT_CHOICE, [this](auto &ev) { OnSelectBufferSize(); });
         
+        SetCanFocus(false);
         InitializeList();
     }
     
@@ -387,7 +396,7 @@ public:
     {
         wxPaintDC dc(this);
         
-        background.ApplyTo(dc);
+        kPanelBackgroundColour.ApplyTo(dc);
         dc.DrawRectangle(GetClientRect());
     }
     
@@ -402,11 +411,28 @@ private:
     wxChoice *cho_buffer_sizes_ = nullptr;
 };
 
+class GeneralSettingPanel
+:   public wxPanel
+{
+public:
+    GeneralSettingPanel(wxWindow *parent)
+    :   wxPanel(parent)
+    {
+        Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(); });
+    }
+    
+    void OnPaint()
+    {
+        wxPaintDC dc(this);
+        
+        kPanelBackgroundColour.ApplyTo(dc);
+        dc.DrawRectangle(GetClientRect());
+    }
+};
+
 class AppearanceSettingPanel
 :   public wxPanel
 {
-    BrushPen background = HSVToColour(0.6, 0.7, 0.9);
-    
 public:
     AppearanceSettingPanel(wxWindow *parent)
     :   wxPanel(parent)
@@ -418,7 +444,7 @@ public:
     {
         wxPaintDC dc(this);
         
-        background.ApplyTo(dc);
+        kPanelBackgroundColour.ApplyTo(dc);
         dc.DrawRectangle(GetClientRect());
     }
 };
@@ -426,8 +452,6 @@ public:
 class PluginSettingPanel
 :   public wxPanel
 {
-    BrushPen background = HSVToColour(0.8, 0.7, 0.9);
-    
 public:
     PluginSettingPanel(wxWindow *parent)
     :   wxPanel(parent)
@@ -439,20 +463,41 @@ public:
     {
         wxPaintDC dc(this);
         
-        background.ApplyTo(dc);
+        kPanelBackgroundColour.ApplyTo(dc);
         dc.DrawRectangle(GetClientRect());
     }
 };
 
+class LocationSettingPanel
+:   public wxPanel
+{
+public:
+    LocationSettingPanel(wxWindow *parent)
+    :   wxPanel(parent)
+    {
+        Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(); });
+    }
+    
+    void OnPaint()
+    {
+        wxPaintDC dc(this);
+        
+        kPanelBackgroundColour.ApplyTo(dc);
+        dc.DrawRectangle(GetClientRect());
+    }
+};
+
+static wxSize kSettingIconSize = { 64, 64 };
+
 class TabPanel
 :   public wxPanel
 {
-    BrushPen background = { HSVToColour(0.8, 0.3, 0.9) };
-    
 public:
     enum class TabID {
         kDevice,
+        kGeneral,
         kAppearance,
+        kLocation,
         kPlugin,
         kNumIDs,
     };
@@ -474,10 +519,34 @@ public:
     :   wxPanel(parent)
     ,   callback_(callback)
     {
+        auto add_icon = [this](auto id, String filename) {
+            auto image = GetResourceAs<wxImage>({L"setting", filename});
+            if(image.IsOk() == false) {
+                // assign "not found" image
+            }
+            icons_[id] = wxBitmap(image);
+        };
+        
+        add_icon(TabID::kDevice, L"Speaker.png");
+        add_icon(TabID::kGeneral, L"Gear.png");
+        add_icon(TabID::kAppearance, L"Brush.png");
+        add_icon(TabID::kPlugin, L"Plugin.png");
+        add_icon(TabID::kLocation, L"Folder.png");
+        highlight_ = GetResourceAs<wxImage>(L"setting/Button Highlight.png");
+        
         Bind(wxEVT_LEFT_UP, [this](auto &ev) { OnLeftUp(ev); });
         Bind(wxEVT_MOTION, [this](auto &ev) { OnMouseMove(ev); });
-        Bind(wxEVT_KEY_DOWN, [this](auto &ev) { OnKeyDown(ev); });
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(); });
+        Bind(wxEVT_SIZE, [this](auto &ev) { OnSize(); });
+    }
+    
+    void OnSize()
+    {
+        auto size = GetClientSize();
+        auto image = GetResourceAs<wxImage>(L"setting/Background.png");
+        image = image.Scale(size.GetWidth(), size.GetHeight());
+        
+        background_ = wxBitmap(image);
     }
     
     void OnLeftUp(wxMouseEvent &ev)
@@ -498,10 +567,8 @@ public:
     {
         assert(0 <= (int)id && (int)id < GetNumIDs());
         
-        auto this_size = GetSize();
-        wxSize const size(this_size.GetHeight(), this_size.GetHeight()); // square
-        wxPoint const pos((int)id * size.GetWidth(), 0);
-        return wxRect(pos, size);
+        wxPoint const pos((int)id * kSettingIconSize.GetWidth(), 0);
+        return wxRect(pos, kSettingIconSize);
     }
     
     std::optional<TabID> GetTabFromPoint(wxPoint pt) const
@@ -517,47 +584,20 @@ public:
     void OnPaint()
     {
         wxPaintDC dc(this);
-
-        auto rect = GetClientRect();
-        background.ApplyTo(dc);
-        dc.DrawRectangle(rect);
         
-        BrushPen icon_colour = { HSVToColour(0.0, 0.0, 0.6), HSVToColour(0.0, 0.0, 0.4) };
-        wxPen title_colour = HSVToColour(0.0, 0.0, 0.2);
-        
-        auto get_tab_name = [](auto id) {
-            if(id == TabID::kDevice) { return "Device"; }
-            if(id == TabID::kAppearance) { return "Appearance"; }
-            if(id == TabID::kPlugin) { return "Plugin"; }
-            assert(false);
-            return "unknown";
-        };
+        dc.DrawBitmap(background_, 0, 0);
         
         for(int i = 0; i < (int)TabID::kNumIDs; ++i) {
-            icon_colour.ApplyTo(dc);
-            auto rc = GetRectFromTab((TabID)i);
-            dc.DrawRectangle(rc);
-            dc.SetPen(title_colour);
-            auto name = get_tab_name((TabID)i);
-            dc.DrawLabel(name, rc, wxALIGN_CENTER);
+            auto &icon = icons_[(TabID)i];
+            wxPoint pos { i * kSettingIconSize.GetWidth(), 0 };
+            dc.DrawBitmap(icon, pos);
+            if(i == (int)current_tab_) {
+                dc.DrawBitmap(highlight_, pos);
+            }
         }
     }
     
-    void OnKeyDown(wxKeyEvent &ev)
-    {
-        if(ev.GetUnicodeKey() != WXK_NONE) { return; }
-        
-        if(ev.GetKeyCode() == WXK_LEFT) {
-            MoveToPrevTab();
-        } else if(ev.GetKeyCode() == WXK_RIGHT) {
-            MoveToNextTab();
-        } else if(ev.GetKeyCode() == WXK_SHIFT) {
-            bool forward = (ev.ShiftDown() == false);
-            if(forward) { MoveToNextTab(); }
-            else        { MoveToPrevTab(); }
-        }
-        Refresh();
-    }
+    TabID GetCurrentTab() const { return current_tab_; }
     
     void SetTab(TabID id)
     {
@@ -580,14 +620,26 @@ public:
 private:
     Callback *callback_;
     TabID current_tab_ = (TabID)0;
+    std::unordered_map<TabID, wxBitmap> icons_;
+    wxBitmap highlight_;
+    wxBitmap background_;
 };
 
 class SettingFrame
 :   public wxDialog
 ,   TabPanel::Callback
 {
-    wxRect const kTabPanelRect = { wxPoint(0, 0), wxSize(500, 100) };
-    wxRect const kContentPanelRect = { wxPoint(0, 100), wxSize(500, 500) };
+    wxRect const kRect = { wxPoint(0, 0), wxSize(500, 600) };
+    
+    wxRect const kTabPanelRect = {
+        wxPoint(0, 0),
+        wxSize(kRect.GetWidth(), kSettingIconSize.GetHeight())
+    };
+    
+    wxRect const kContentPanelRect = {
+        wxPoint(0, kSettingIconSize.GetHeight()),
+        wxSize(kRect.GetWidth(), kRect.GetHeight() - kSettingIconSize.GetHeight())
+    };
     
 public:
     SettingFrame(wxWindow *parent)
@@ -599,10 +651,14 @@ public:
         SetSize(size);
         
         tab_panel_ = new TabPanel(this, this);
-        device_panel_ = new DeviceSettingPanel(this);
-        appearance_panel_ = new AppearanceSettingPanel(this);
-        plugin_panel_ = new PluginSettingPanel(this);
-        active_panel_ = device_panel_;
+        
+        for(int i = 0; i < (int)TabPanel::TabID::kNumIDs; ++i) {
+            auto const id = (TabPanel::TabID)i;
+            panels_[id] = CreatePanel(id);
+            assert(panels_[id] != nullptr);
+        }
+        
+        active_panel_ = panels_[TabPanel::TabID::kDevice];
         
         SetAutoLayout(true);
         
@@ -612,11 +668,61 @@ public:
             pj->Activate();
             EndModal(wxID_OK);
         });
+        Bind(wxEVT_CHAR_HOOK, [this](wxKeyEvent &ev) {
+            OnCharHook(ev);
+        });
         
         Show(true);
     }
     
     ~SettingFrame() {
+    }
+    
+    void MoveToNextTab()
+    {
+        tab_panel_->MoveToNextTab();
+        OnSelectTab(tab_panel_->GetCurrentTab());
+        Layout();
+    }
+    
+    void MoveToPrevTab()
+    {
+        tab_panel_->MoveToPrevTab();
+        OnSelectTab(tab_panel_->GetCurrentTab());
+        Layout();
+    }
+    
+    void OnCharHook(wxKeyEvent &ev)
+    {
+        if(ev.GetUnicodeKey() == L'\t') {
+            MoveToNextTab();
+            return;
+        }
+        
+        if(ev.GetUnicodeKey() == L'\x19') {
+            MoveToPrevTab();
+            return;
+        }
+        
+        if(ev.GetUnicodeKey() == L'\x1b') {
+            this->Close();
+        }
+
+        if(ev.GetUnicodeKey() != WXK_NONE) {
+            ev.DoAllowNextEvent();
+            return;
+        } else {
+            auto const key_code = ev.GetKeyCode();
+        
+            if(key_code == WXK_LEFT) {
+                MoveToPrevTab();
+            } else if(key_code == WXK_RIGHT) {
+                MoveToNextTab();
+            } else {
+                ev.DoAllowNextEvent();
+                return;
+            }
+        }
     }
     
     bool Layout() override
@@ -625,9 +731,12 @@ public:
 
         assert(active_panel_);
         
-        if(device_panel_ != active_panel_) { device_panel_->Hide(); }
-        if(appearance_panel_ != active_panel_) { appearance_panel_->Hide(); }
-        if(plugin_panel_ != active_panel_) { plugin_panel_->Hide(); }
+        for(auto entry: panels_) {
+            auto panel = entry.second;
+            if(panel != active_panel_) {
+                panel->Hide();
+            }
+        }
         
         active_panel_->Show();
         active_panel_->SetSize(kContentPanelRect);
@@ -635,26 +744,27 @@ public:
         return true;
     }
     
+    wxPanel * CreatePanel(TabPanel::TabID id)
+    {
+        if(id == TabPanel::TabID::kDevice) { return new DeviceSettingPanel(this); }
+        if(id == TabPanel::TabID::kAppearance) { return new AppearanceSettingPanel(this); }
+        if(id == TabPanel::TabID::kPlugin) { return new PluginSettingPanel(this); }
+        if(id == TabPanel::TabID::kLocation) { return new LocationSettingPanel(this); }
+        if(id == TabPanel::TabID::kGeneral) { return new GeneralSettingPanel(this); }
+        assert(false);
+        return nullptr;
+    };
+    
     void OnSelectTab(TabPanel::TabID id) override
     {
-        auto id_to_panel = [this](auto id) -> wxPanel * {
-            if(id == TabPanel::TabID::kDevice) { return device_panel_; }
-            if(id == TabPanel::TabID::kAppearance) { return appearance_panel_; }
-            if(id == TabPanel::TabID::kPlugin) { return plugin_panel_; }
-            assert(false);
-        };
-        
-        active_panel_ = id_to_panel(id);
-
+        active_panel_ = panels_[id];
         Layout();
         Refresh();
     }
     
 private:
     TabPanel *tab_panel_ = nullptr;
-    DeviceSettingPanel *device_panel_ = nullptr;
-    AppearanceSettingPanel *appearance_panel_ = nullptr;
-    PluginSettingPanel *plugin_panel_ = nullptr;
+    std::unordered_map<TabPanel::TabID, wxPanel *> panels_;
     wxWindow *active_panel_ = nullptr;
 };
 

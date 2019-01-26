@@ -1,12 +1,12 @@
 #include "GraphEditor.hpp"
 
 #include <tuple>
-#include <wx/stdpaths.h>
 
 #include "../App.hpp"
 #include "./PluginEditor.hpp"
 #include "../plugin/PluginScanner.hpp"
 #include "./Util.hpp"
+#include "../resource/ResourceHelper.hpp"
 
 NS_HWM_BEGIN
 
@@ -369,7 +369,7 @@ public:
     {
         wxImage img;
         
-        img.LoadFile(wxStandardPaths::Get().GetResourcesDir() + L"/cursor/scissors.png");
+        img.LoadFile(GetResourcePath(L"/cursor/scissors.png"));
         int const cursor_x = 24;
         int const cursor_y = 24;
 

@@ -1,9 +1,9 @@
 #include "Keyboard.hpp"
 
 #include <array>
-#include <wx/stdpaths.h>
 
 #include "../App.hpp"
+#include "../resource/ResourceHelper.hpp"
 
 NS_HWM_BEGIN
 
@@ -16,7 +16,7 @@ public:
     static
     wxImage LoadImage(String filename)
     {
-        return wxStandardPaths::Get().GetResourcesDir() + L"/keyboard/" + filename;
+        return GetResourceAs<wxImage>({L"keyboard", filename});
     }
     
     Keyboard(wxWindow *parent)

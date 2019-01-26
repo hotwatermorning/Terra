@@ -3,7 +3,6 @@
 #include "../project/Project.hpp"
 
 #include <wx/tglbtn.h>
-#include <wx/stdpaths.h>
 
 #include <vector>
 
@@ -15,6 +14,7 @@
 #include "./Keyboard.hpp"
 #include "./UnitData.hpp"
 #include "./GraphEditor.hpp"
+#include "../resource/ResourceHelper.hpp"
 
 NS_HWM_BEGIN
 
@@ -177,7 +177,7 @@ class TransportPanel
     static
     String GetImagePath(String filename)
     {
-        return wxStandardPaths::Get().GetResourcesDir() + L"/transport/" + filename;
+        return GetResourcePath({L"transport", filename});
     }
     
 public:

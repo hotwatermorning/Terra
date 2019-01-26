@@ -14,6 +14,7 @@
 #include "device/AudioDeviceManager.hpp"
 #include "device/MidiDeviceManager.hpp"
 #include "gui/SettingDialog.hpp"
+#include "resource/ResourceHelper.hpp"
 
 NS_HWM_BEGIN
 
@@ -93,6 +94,7 @@ struct MyApp::Impl
     
     PluginScanner plugin_scanner_;
     PluginListExporter plugin_list_exporter_;
+    ResourceHelper resource_helper_;
     
     Impl()
     {
@@ -238,7 +240,8 @@ int MyApp::OnExit()
 }
 
 void MyApp::BeforeExit()
-{}
+{
+}
 
 void MyApp::AddChangeProjectListener(ChangeProjectListener *li) { pimpl_->cp_listeners_.AddListener(li); }
 void MyApp::RemoveChangeProjectListener(ChangeProjectListener const *li) { pimpl_->cp_listeners_.RemoveListener(li); }

@@ -90,7 +90,6 @@ struct MyApp::Impl
     Vst3PluginFactoryList factory_list_;
     std::vector<std::shared_ptr<Project>> projects_;
     Project * current_project_ = nullptr;
-    wxString device_name_;
     
     PluginScanner plugin_scanner_;
     PluginListExporter plugin_list_exporter_;
@@ -337,7 +336,6 @@ namespace {
     wxCmdLineEntryDesc const cmdline_descs [] =
     {
         { wxCMD_LINE_SWITCH, "h", "help", "show help", wxCMD_LINE_VAL_NONE, wxCMD_LINE_OPTION_HELP },
-        { wxCMD_LINE_OPTION, "d", "device", "specify device name", wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL },
         { wxCMD_LINE_NONE },
     };
 }
@@ -350,7 +348,6 @@ void MyApp::OnInitCmdLine(wxCmdLineParser& parser)
 
 bool MyApp::OnCmdLineParsed(wxCmdLineParser& parser)
 {
-    parser.Found(wxString("d"), &pimpl_->device_name_);
     return true;
 }
 

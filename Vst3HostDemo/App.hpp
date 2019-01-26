@@ -28,27 +28,32 @@ public:
     
     void BeforeExit();
     
-    class ProjectActivationListener
+    class ChangeProjectListener : public ListenerBase
     {
+    protected:
+        ChangeProjectListener() {}
+        
     public:
         virtual
-        ~ProjectActivationListener() {}
-        
-        virtual
-        void OnAfterProjectActivated(Project *pj) {}
-        
-        virtual
-        void OnBeforeProjectDeactivated(Project *pj) {}
+        void OnChangeCurrentProject(Project *prev_pj, Project *new_pj) {}
     };
-    void AddProjectActivationListener(ProjectActivationListener *li);
-    void RemoveProjectActivationListener(ProjectActivationListener const *li);
+    void AddChangeProjectListener(ChangeProjectListener *li);
+    void RemoveChangeProjectListener(ChangeProjectListener const *li);
     
     std::unique_ptr<Vst3Plugin> CreateVst3Plugin(PluginDescription const &desc);
 
     void RescanPlugins();
     void ForceRescanPlugins();
     
-    Project * GetProject();
+    //! get added project list.
+    //! (currently, this function returns the default project only.)
+    std::vector<Project *> GetProjectList();
+    
+    void SetCurrentProject(Project *pj);
+    Project * GetCurrentProject();
+    
+    //! modal
+    void ShowSettingDialog();
     
 private:
     struct Impl;

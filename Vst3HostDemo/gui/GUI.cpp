@@ -3,7 +3,6 @@
 #include "../project/Project.hpp"
 
 #include <wx/tglbtn.h>
-#include <wx/stdpaths.h>
 
 #include <vector>
 
@@ -15,6 +14,7 @@
 #include "./Keyboard.hpp"
 #include "./UnitData.hpp"
 #include "./GraphEditor.hpp"
+#include "../resource/ResourceHelper.hpp"
 
 NS_HWM_BEGIN
 
@@ -171,13 +171,13 @@ private:
 
 class TransportPanel
 :   public wxPanel
-,   MyApp::ProjectActivationListener
+,   MyApp::ChangeProjectListener
 ,   Transporter::ITransportStateListener
 {
     static
     String GetImagePath(String filename)
     {
-        return wxStandardPaths::Get().GetResourcesDir() + L"/transport/" + filename;
+        return GetResourcePath({L"transport", filename});
     }
     
 public:
@@ -214,15 +214,27 @@ public:
         btn_loop_->Bind(wxEVT_TOGGLEBUTTON, [this](auto &ev) { OnLoop(); });
         //btn_metronome_->Bind(wxEVT_TOGGLEBUTTON, [this](auto &ev) { OnMetronome(); });
         
-        MyApp::GetInstance()->AddProjectActivationListener(this);
+        MyApp::GetInstance()->AddChangeProjectListener(this);
         
-        auto pj = Project::GetInstance();
+        auto pj = Project::GetCurrentProject();
+        assert(pj);
+        
         auto &tp = pj->GetTransporter();
-        
         tp.AddListener(this);
         
         btn_play_->SetPushed(tp.IsPlaying());
         btn_loop_->SetPushed(tp.IsLoopEnabled());
+    }
+    
+    ~TransportPanel()
+    {
+        MyApp::GetInstance()->RemoveChangeProjectListener(this);
+        
+        auto pj = Project::GetCurrentProject();
+        if(pj) {
+            auto &tp = pj->GetTransporter();
+            tp.RemoveListener(this);
+        }
     }
 
 private:
@@ -236,35 +248,35 @@ private:
     
     void OnRewind()
     {
-        auto pj = Project::GetActiveProject();
+        auto pj = Project::GetCurrentProject();
         auto &tp = pj->GetTransporter();
         tp.Rewind();
     }
     
     void OnStop()
     {
-        auto pj = Project::GetActiveProject();
+        auto pj = Project::GetCurrentProject();
         auto &tp = pj->GetTransporter();
         tp.SetStop();
     }
     
     void OnPlay()
     {
-        auto pj = Project::GetActiveProject();
+        auto pj = Project::GetCurrentProject();
         auto &tp = pj->GetTransporter();
         tp.SetPlaying(tp.IsPlaying() == false);
     }
     
     void OnForward()
     {
-        auto pj = Project::GetActiveProject();
+        auto pj = Project::GetCurrentProject();
         auto &tp = pj->GetTransporter();
         tp.FastForward();
     }
     
     void OnLoop()
     {
-        auto pj = Project::GetActiveProject();
+        auto pj = Project::GetCurrentProject();
         auto &tp = pj->GetTransporter();
         tp.SetLoopEnabled(btn_loop_->IsPushed());
     }
@@ -275,12 +287,15 @@ private:
 //        pj->SetMetronome(btn_metronome_->GetValue());;
     }
     
-    void OnBeforeProjectDeactivated(Project *pj) override
+    void OnChangeCurrentProject(Project *old_pj, Project *new_pj) override
     {
-        auto &tp = pj->GetTransporter();
-        tp.RemoveListener(this);
+        if(old_pj) {
+            old_pj->GetTransporter().RemoveListener(this);
+        }
         
-        MyApp::GetInstance()->RemoveProjectActivationListener(this);
+        if(new_pj) {
+            new_pj->GetTransporter().AddListener(this);
+        }
     }
     
     void OnChanged(TransportInfo const &old_state,
@@ -304,7 +319,7 @@ private:
 
 class TimeIndicator
 :   public wxPanel
-,   public MyApp::ProjectActivationListener
+,   public MyApp::ChangeProjectListener
 ,   public Transporter::ITransportStateListener
 {
 public:
@@ -329,15 +344,25 @@ public:
         vbox->AddStretchSpacer(1);
         SetSizer(vbox);
         
-        MyApp::GetInstance()->AddProjectActivationListener(this);
+        MyApp::GetInstance()->AddChangeProjectListener(this);
         
-        auto pj = Project::GetInstance();
+        auto pj = Project::GetCurrentProject();
         assert(pj);
         
         auto &tp = pj->GetTransporter();
         tp.AddListener(this);
         
         SetBackgroundColour(wxColour(0x3B, 0x3B, 0x3B));
+    }
+    
+    ~TimeIndicator()
+    {
+        MyApp::GetInstance()->RemoveChangeProjectListener(this);
+        auto pj = Project::GetCurrentProject();
+        if(pj) {
+            auto &tp = pj->GetTransporter();
+            tp.RemoveListener(this);
+        }
     }
     
 private:
@@ -347,15 +372,18 @@ private:
     wxTimer timer_;
     TransportInfo last_info_;
     wxStaticText *text_;
-    
-    void OnBeforeProjectDeactivated(Project *pj) override
+
+    void OnChangeCurrentProject(Project *old_pj, Project *new_pj) override
     {
-        auto &tp = pj->GetTransporter();
-        tp.RemoveListener(this);
+        if(old_pj) {
+            old_pj->GetTransporter().RemoveListener(this);
+        }
         
-        MyApp::GetInstance()->RemoveProjectActivationListener(this);
+        if(new_pj) {
+            new_pj->GetTransporter().AddListener(this);
+        }
     }
-    
+        
     void OnChanged(TransportInfo const &old_state,
                    TransportInfo const &new_state) override
     {
@@ -383,7 +411,7 @@ private:
     
     void OnTimer()
     {
-        auto pj = Project::GetInstance();
+        auto pj = Project::GetCurrentProject();
         auto &tp = pj->GetTransporter();
         
         if(tp.IsPlaying() && timer_.GetInterval() == kIntervalSlow) {
@@ -438,7 +466,7 @@ public:
         
         header_panel_ = new HeaderPanel(this);
         
-        auto pj = Project::GetInstance();
+        auto pj = Project::GetCurrentProject();
         graph_panel_ = CreateGraphEditorComponent(this, pj->GetGraph()).release();
         graph_panel_->Show();
         
@@ -494,6 +522,7 @@ enum
     ID_Play = 1,
     ID_RescanPlugin,
     ID_ForceRescanPlugin,
+    ID_Setting
 };
 
 MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
@@ -505,14 +534,18 @@ MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
     menuFile->AppendSeparator();
     menuFile->Append(wxID_EXIT);
     
+    wxMenu *menuEdit = new wxMenu;
+    menuEdit->Append(ID_Setting, "&Setting\tCTRL-,", "Open Setting Dialog");
+    
     wxMenu *menuPlay = new wxMenu;
-    menuPlay->Append(ID_Play, "&Play\tSpace", "Start playback", wxITEM_CHECK);
+    menuPlay->Append(ID_Play, "&Play\tSPACE", "Start playback", wxITEM_CHECK);
 
     wxMenu *menuHelp = new wxMenu;
     menuHelp->Append(wxID_ABOUT);
 
     wxMenuBar *menuBar = new wxMenuBar;
     menuBar->Append( menuFile, "&File" );
+    menuBar->Append( menuEdit, "&Edit" );
     menuBar->Append( menuPlay, "&Play" );
     menuBar->Append( menuHelp, "&Help" );
     SetMenuBar( menuBar );
@@ -521,6 +554,7 @@ MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
     //Bind(wxEVT_CLOSE_WINDOW, [this](auto &ev) { OnExit(); });
     Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { MyApp::GetInstance()->RescanPlugins(); }, ID_RescanPlugin);
     Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { MyApp::GetInstance()->ForceRescanPlugins(); }, ID_ForceRescanPlugin);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { MyApp::GetInstance()->ShowSettingDialog(); }, ID_Setting);
     Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { OnPlay(ev); }, ID_Play);
     
     Bind(wxEVT_MENU, [this](auto &ev) { OnAbout(ev); }, wxID_ABOUT);
@@ -540,7 +574,8 @@ MyFrame::~MyFrame()
 bool MyFrame::Destroy()
 {
     MyApp::GetInstance()->BeforeExit();
-    //my_panel_->Destroy();
+    RemoveChild(my_panel_);
+    my_panel_->Destroy();
     return wxFrame::Destroy();
 }
 
@@ -558,7 +593,7 @@ void MyFrame::OnAbout(wxCommandEvent& event)
 
 void MyFrame::OnPlay(wxCommandEvent &ev)
 {
-    auto &tp = Project::GetInstance()->GetTransporter();
+    auto &tp = Project::GetCurrentProject()->GetTransporter();
     tp.SetPlaying(ev.IsChecked());
 }
 

@@ -1,9 +1,9 @@
 #include "Keyboard.hpp"
 
 #include <array>
-#include <wx/stdpaths.h>
 
 #include "../App.hpp"
+#include "../resource/ResourceHelper.hpp"
 
 NS_HWM_BEGIN
 
@@ -16,7 +16,7 @@ public:
     static
     wxImage LoadImage(String filename)
     {
-        return wxStandardPaths::Get().GetResourcesDir() + L"/keyboard/" + filename;
+        return GetResourceAs<wxImage>({L"keyboard", filename});
     }
     
     Keyboard(wxWindow *parent)
@@ -39,6 +39,7 @@ public:
         timer_.Bind(wxEVT_TIMER, [this](auto &ev) { OnTimer(); });
         timer_.Start(50);
         Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { OnLeftDown(ev); });
+        Bind(wxEVT_LEFT_DCLICK, [this](auto &ev) { OnLeftDown(ev); });
         Bind(wxEVT_LEFT_UP, [this](auto &ev) { OnLeftUp(ev); });
         Bind(wxEVT_MOTION, [this](auto &ev) { OnMotion(ev); });
         Bind(wxEVT_KEY_DOWN, [this](auto &ev) { OnKeyDown(ev); });
@@ -214,7 +215,7 @@ public:
         if(uc == WXK_NONE ) { return; }
         
         if(uc == kPlayback) {
-            auto pj = Project::GetInstance();
+            auto pj = Project::GetCurrentProject();
             auto &tp = pj->GetTransporter();
             tp.SetPlaying(!tp.IsPlaying());
         }
@@ -271,7 +272,7 @@ public:
     
     void OnTimer()
     {
-        auto pj = Project::GetActiveProject();
+        auto pj = Project::GetCurrentProject();
         
         std::vector<Project::PlayingNoteInfo> list_seq = pj->GetPlayingSequenceNotes();
         std::vector<Project::PlayingNoteInfo> list_sample = pj->GetPlayingSampleNotes();
@@ -295,9 +296,7 @@ private:
     {
         assert(note_number < 128);
         
-        auto app = MyApp::GetInstance();
-        auto proj = app->GetProject();
-        
+        auto proj = Project::GetCurrentProject();
         proj->SendSampleNoteOn(sample_note_channel, note_number);
     }
     
@@ -305,9 +304,7 @@ private:
     {
         assert(note_number < 128);
         
-        auto app = MyApp::GetInstance();
-        auto proj = app->GetProject();
-        
+        auto proj = Project::GetCurrentProject();
         proj->SendSampleNoteOff(sample_note_channel, note_number);
     }
     

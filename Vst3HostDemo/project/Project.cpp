@@ -1,24 +1,31 @@
 #include "Project.hpp"
 #include "../transport/Traverser.hpp"
 #include "../device/MidiDeviceManager.hpp"
+#include "../device/AudioDeviceManager.hpp"
 #include "./GraphProcessor.hpp"
+#include "../App.hpp"
 #include <map>
 
 NS_HWM_BEGIN
 
 namespace {
     
-    class VirtualMidiDevice : public MidiDevice {
+    class VirtualMidiInDevice : public MidiDevice {
     public:
-        VirtualMidiDevice(String name_id) : name_id_(name_id) {}
-        ~VirtualMidiDevice() {}
-        String GetNameID() const override { return name_id_; }
+        VirtualMidiInDevice(String name_id)
+        {
+            info_.name_id_ = name_id;
+            info_.io_type_ = DeviceIOType::kInput;
+        }
+        
+        ~VirtualMidiInDevice() {}
+        MidiDeviceInfo const & GetDeviceInfo() const override { return info_; }
     private:
-        String name_id_;
+        MidiDeviceInfo info_;
     };
     
-    VirtualMidiDevice kSoftwareKeyboardMidiInput = { L"Software Keyboard" };
-    VirtualMidiDevice kSequencerMidiInput = { L"Sequencer" };
+    VirtualMidiInDevice kSoftwareKeyboardMidiInput = { L"Software Keyboard" };
+    VirtualMidiInDevice kSequencerMidiInput = { L"Sequencer" };
 }
 
 struct InternalPlayingNoteInfo
@@ -131,6 +138,7 @@ struct Project::Impl
 {
     LockFactory lf_;
     Transporter tp_;
+    bool is_active_ = false;
     double sample_rate_ = 0;
     SampleCount block_size_ = 0;
     BypassFlag bypass_;
@@ -166,6 +174,12 @@ Project::Project()
 Project::~Project()
 {}
 
+Project * Project::GetCurrentProject()
+{
+    auto app = MyApp::GetInstance();
+    return app->GetCurrentProject();
+}
+
 void Project::AddAudioInput(String name, UInt32 channel_index, UInt32 num_channels)
 {
     pimpl_->graph_.AddAudioInput(name, num_channels,
@@ -188,7 +202,7 @@ void Project::AddAudioOutput(String name, UInt32 channel_index, UInt32 num_chann
 void Project::AddMidiInput(MidiDevice *device)
 {
     pimpl_->midi_input_table_[device].reserve(2048);
-    pimpl_->graph_.AddMidiInput(device->GetNameID(),
+    pimpl_->graph_.AddMidiInput(device->GetDeviceInfo().name_id_,
                                 [device, this](GraphProcessor::MidiInput *in,
                                                ProcessInfo const &pi)
                                 {
@@ -204,11 +218,6 @@ void Project::AddMidiOutput(MidiDevice *device)
 //                                 {
 //                                     OnGetMidi(out, pi, device);
 //                                 });
-}
-
-Project * Project::GetActiveProject()
-{
-    return GetInstance();
 }
 
 std::shared_ptr<Sequence> Project::GetSequence() const
@@ -280,15 +289,65 @@ SampleCount Project::PPQToSample(double ppq_pos) const
     return (SampleCount)std::round(ppq_pos * (60.0 / info.tempo_) * info.sample_rate_);
 }
 
-//void Project::OnAfterActivated()
-//{
-//    
-//}
-//
-//void Project::OnBeforeDeactivated()
-//{
-//    
-//}
+struct ScopedAudioDeviceStopper
+{
+    ScopedAudioDeviceStopper(AudioDevice *dev)
+    :   dev_(dev)
+    ,   need_to_restart_(dev->IsStopped() == false)
+    {
+        dev_->Stop();
+    }
+    
+    ~ScopedAudioDeviceStopper()
+    {
+        if(need_to_restart_) {
+            dev_->Start();
+        }
+    }
+    
+    ScopedAudioDeviceStopper(ScopedAudioDeviceStopper const &) = delete;
+    ScopedAudioDeviceStopper & operator=(ScopedAudioDeviceStopper const &) = delete;
+    ScopedAudioDeviceStopper(ScopedAudioDeviceStopper &&) = delete;
+    ScopedAudioDeviceStopper & operator=(ScopedAudioDeviceStopper &&) = delete;
+    
+private:
+    AudioDevice *dev_ = nullptr;
+    bool need_to_restart_ = false;
+};
+
+void Project::Activate()
+{
+    //! don't call activate twice.
+    assert(IsActive() == false);
+    
+    auto adm = AudioDeviceManager::GetInstance();
+    auto dev = adm->GetDevice();
+    if(!dev) { return; }
+    
+    ScopedAudioDeviceStopper s(dev);
+    adm->AddCallback(this);
+    
+    pimpl_->is_active_ = true;
+}
+
+void Project::Deactivate()
+{
+    if(IsActive() == false) { return; }
+    
+    auto adm = AudioDeviceManager::GetInstance();
+    auto dev = adm->GetDevice();
+    if(!dev) { return; }
+    
+    ScopedAudioDeviceStopper s(dev);
+    adm->RemoveCallback(this);
+    
+    pimpl_->is_active_ = false;
+}
+
+bool Project::IsActive() const
+{
+    return pimpl_->is_active_;
+}
 
 void Project::StartProcessing(double sample_rate,
                               SampleCount max_block_size,
@@ -463,11 +522,22 @@ void Project::OnSetAudio(GraphProcessor::AudioInput *input, ProcessInfo const &p
 {
     if(pimpl_->input_.samples() == 0) { return; }
     
+    auto const num_src_channels = pimpl_->input_.channels();
+    auto const num_desired_channels = input->GetAudioChannelCount(BusDirection::kOutputSide);
+    
+    if(channel_index >= num_src_channels) {
+        return;
+    }
+    
+    auto const num_available_channels
+    = std::min<int>(num_src_channels, num_desired_channels + channel_index)
+    - channel_index;
+    
     assert(pi.time_info_->GetSmpDuration() == pimpl_->input_.samples());
     BufferRef<float const> ref {
         pimpl_->input_.data(),
         channel_index,
-        input->GetAudioChannelCount(BusDirection::kOutputSide),
+        num_available_channels,
         0,
         pimpl_->input_.samples()
     };
@@ -483,9 +553,20 @@ void Project::OnGetAudio(GraphProcessor::AudioOutput *output, ProcessInfo const 
     assert(pi.time_info_->GetSmpDuration() == src.samples());
     assert(pi.time_info_->GetSmpDuration() == dest.samples());
     
-    for(int ch = 0; ch < src.channels(); ++ch) {
+    auto const num_desired_channels = output->GetAudioChannelCount(BusDirection::kInputSide);
+    auto const num_dest_channels = pimpl_->output_.channels();
+    
+    if(channel_index >= num_dest_channels) {
+        return;
+    }
+    
+    auto const num_available_channels
+    = std::min<int>(num_dest_channels, num_desired_channels + channel_index)
+    - channel_index;
+    
+    for(int ch = 0; ch < num_available_channels; ++ch) {
         auto ch_src = src.data()[ch + src.channel_from()] + src.sample_from();
-        auto ch_dest = dest.data()[ch + dest.channel_from()] + dest.sample_from();
+        auto ch_dest = dest.data()[ch + dest.channel_from()] + channel_index + dest.sample_from();
         for(int smp = 0; smp < src.samples(); ++smp) {
             ch_dest[smp] += ch_src[smp];
         }

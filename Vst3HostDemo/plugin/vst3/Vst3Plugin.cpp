@@ -149,7 +149,7 @@ void Vst3Plugin::Resume()
 
 void Vst3Plugin::Suspend()
 {
-    CloseEditor();
+    //CloseEditor();
 	pimpl_->Suspend();
 }
 

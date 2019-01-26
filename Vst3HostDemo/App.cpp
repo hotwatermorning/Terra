@@ -13,6 +13,8 @@
 
 #include "device/AudioDeviceManager.hpp"
 #include "device/MidiDeviceManager.hpp"
+#include "gui/SettingDialog.hpp"
+#include "resource/ResourceHelper.hpp"
 
 NS_HWM_BEGIN
 
@@ -84,13 +86,15 @@ struct MyApp::Impl
     std::unique_ptr<MidiDeviceManager> mdm_;
     std::vector<MidiDevice *> midi_ins_;
     std::vector<MidiDevice *> midi_outs_;
-    ListenerService<ProjectActivationListener> pa_listeners_;
+    ListenerService<ChangeProjectListener> cp_listeners_;
     Vst3PluginFactoryList factory_list_;
-    std::shared_ptr<Project> project_;
+    std::vector<std::shared_ptr<Project>> projects_;
+    Project * current_project_ = nullptr;
     wxString device_name_;
     
     PluginScanner plugin_scanner_;
     PluginListExporter plugin_list_exporter_;
+    ResourceHelper resource_helper_;
     
     Impl()
     {
@@ -134,19 +138,11 @@ bool MyApp::OnInit()
     } else {
         pimpl_->plugin_scanner_.ScanAsync();
     }
-    
-    pimpl_->project_ = std::make_shared<Project>();
-    pimpl_->project_->SetSequence(MakeSequence());
-    pimpl_->project_->GetTransporter().SetLoopRange(0, 4 * kSampleRate);
-    pimpl_->project_->GetTransporter().SetLoopEnabled(true);
-    pimpl_->pa_listeners_.Invoke([this](auto *li) {
-        li->OnAfterProjectActivated(pimpl_->project_.get());
-    });
-    
+
     pimpl_->adm_ = std::make_unique<AudioDeviceManager>();
-    pimpl_->adm_->AddCallback(pimpl_->project_.get());
+    auto adm = pimpl_->adm_.get();
     
-    auto audio_device_infos = pimpl_->adm_->Enumerate();
+    auto audio_device_infos = adm->Enumerate();
     for(auto const &info: audio_device_infos) {
         hwm::wdout << L"{} - {}({}ch)"_format(info.name_, to_wstring(info.driver_), info.num_channels_) << std::endl;
     }
@@ -167,7 +163,7 @@ bool MyApp::OnInit()
         else { return &*found; }
     };
 
-    auto output_device = find_entry(DeviceIOType::kOutput, 2, pimpl_->adm_->GetDefaultDriver());
+    auto output_device = find_entry(DeviceIOType::kOutput, 2, adm->GetDefaultDriver());
     if(!output_device) { output_device = find_entry(DeviceIOType::kOutput, 2); }
     
     if(!output_device) {
@@ -177,24 +173,17 @@ bool MyApp::OnInit()
     //! may not found
     auto input_device = find_entry(DeviceIOType::kInput, 2, output_device->driver_);
     
-    bool const opened = pimpl_->adm_->Open(input_device, output_device, kSampleRate, kBlockSize);
-    if(!opened) {
-        throw std::runtime_error("Failed to open the device");
+    auto result = adm->Open(input_device, output_device, kSampleRate, kBlockSize);
+    if(result.is_right() == false) {
+        throw std::runtime_error(to_utf8(L"Failed to open the device: " + result.left().error_msg_));
     }
     
-    pimpl_->adm_->Start();
+    //! start the audio device.
+    adm->GetDevice()->Start();
     
-    if(input_device) {
-        pimpl_->project_->AddAudioInput(input_device->name_, 0, input_device->num_channels_);
-    }
-    
-    if(output_device) {
-        pimpl_->project_->AddAudioOutput(output_device->name_, 0, output_device->num_channels_);
-    }
-        
-    pimpl_->adm_->Stop();
     pimpl_->mdm_ = std::make_unique<MidiDeviceManager>();
-    auto midi_device_infos = pimpl_->mdm_->Enumerate();
+    auto mdm = pimpl_->mdm_.get();
+    auto midi_device_infos = mdm->Enumerate();
     for(auto info: midi_device_infos) {
         hwm::wdout
         << L"[{:<6s}] {}"_format((info.io_type_ == DeviceIOType::kInput ? L"Input": L"Output"),
@@ -202,17 +191,34 @@ bool MyApp::OnInit()
                                  )
         << std::endl;
         
-        auto d = pimpl_->mdm_->Open(info);
+        auto d = mdm->Open(info);
         if(info.io_type_ == DeviceIOType::kInput) {
             pimpl_->midi_ins_.push_back(d);
-            pimpl_->project_->AddMidiInput(d);
         } else {
             pimpl_->midi_outs_.push_back(d);
-            pimpl_->project_->AddMidiOutput(d);
         }
     }
-    pimpl_->adm_->Start();
     
+    auto pj = std::make_shared<Project>();
+    pj->SetSequence(MakeSequence());
+    pj->GetTransporter().SetLoopRange(0, 4 * kSampleRate);
+    pj->GetTransporter().SetLoopEnabled(true);
+    
+    auto dev = adm->GetDevice();
+    if(auto info = dev->GetDeviceInfo(DeviceIOType::kInput)) {
+        pj->AddAudioInput(info->name_, 0, info->num_channels_);
+    }
+    
+    if(auto info = dev->GetDeviceInfo(DeviceIOType::kOutput)) {
+        pj->AddAudioOutput(info->name_, 0, info->num_channels_);
+    }
+        
+    for(auto mi: pimpl_->midi_ins_) { pj->AddMidiInput(mi); }
+    for(auto mo: pimpl_->midi_outs_) { pj->AddMidiOutput(mo); }
+    
+    pimpl_->projects_.push_back(pj);
+    SetCurrentProject(pj.get());
+
     MyFrame *frame = new MyFrame( "Vst3HostDemo", wxPoint(50, 50), wxSize(450, 340) );
     frame->Show( true );
     frame->SetFocus();
@@ -222,24 +228,23 @@ bool MyApp::OnInit()
 
 int MyApp::OnExit()
 {
-    pimpl_->pa_listeners_.Invoke([this](auto *li) {
-        li->OnBeforeProjectDeactivated(pimpl_->project_.get());
-    });
+    SetCurrentProject(nullptr);
+    pimpl_->projects_.clear();
     
     for(auto d: pimpl_->midi_ins_) { pimpl_->mdm_->Close(d); }
     for(auto d: pimpl_->midi_outs_) { pimpl_->mdm_->Close(d); }
     
     pimpl_->adm_->Close();
-    pimpl_->project_.reset();
     pimpl_->factory_list_.Shrink();
     return 0;
 }
 
 void MyApp::BeforeExit()
-{}
+{
+}
 
-void MyApp::AddProjectActivationListener(ProjectActivationListener *li) { pimpl_->pa_listeners_.AddListener(li); }
-void MyApp::RemoveProjectActivationListener(ProjectActivationListener const *li) { pimpl_->pa_listeners_.RemoveListener(li); }
+void MyApp::AddChangeProjectListener(ChangeProjectListener *li) { pimpl_->cp_listeners_.AddListener(li); }
+void MyApp::RemoveChangeProjectListener(ChangeProjectListener const *li) { pimpl_->cp_listeners_.RemoveListener(li); }
 
 std::unique_ptr<Vst3Plugin> MyApp::CreateVst3Plugin(PluginDescription const &desc)
 {
@@ -275,9 +280,57 @@ void MyApp::ForceRescanPlugins()
     pimpl_->plugin_scanner_.ScanAsync();
 }
 
-Project * MyApp::GetProject()
+std::vector<Project *> MyApp::GetProjectList()
 {
-    return pimpl_->project_.get();
+    std::vector<Project *> ret;
+    std::transform(pimpl_->projects_.begin(),
+                   pimpl_->projects_.end(),
+                   std::back_inserter(ret),
+                   [](auto const &x) { return x.get(); });
+    
+    return ret;
+}
+
+template<class Container, class T>
+auto contains(Container const &c, T const &t)
+{
+    return std::find(std::begin(c), std::end(c), t) != std::end(c);
+}
+
+void MyApp::SetCurrentProject(Project *pj)
+{
+    assert(pj == nullptr || contains(GetProjectList(), pj));
+ 
+    auto old_pj = pimpl_->current_project_;
+    if(old_pj) {
+        old_pj->Deactivate();
+    }
+    
+    pimpl_->current_project_ = pj;
+    pimpl_->cp_listeners_.Invoke([old_pj, pj](auto li) {
+        li->OnChangeCurrentProject(old_pj, pj);
+    });
+    
+    if(pj) {
+        pj->Activate();
+    }
+}
+
+Project * MyApp::GetCurrentProject()
+{
+    return pimpl_->current_project_;
+}
+
+void MyApp::ShowSettingDialog()
+{
+    auto dialog = CreateSettingDialog(wxGetActiveWindow());
+    dialog->ShowModal();
+    dialog->Destroy();
+    
+    auto adm = AudioDeviceManager::GetInstance();
+    if(adm->IsOpened()) {
+        adm->GetDevice()->Start();
+    }
 }
 
 namespace {

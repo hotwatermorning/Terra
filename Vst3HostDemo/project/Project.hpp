@@ -19,11 +19,10 @@ NS_HWM_BEGIN
 
 class Project final
 :   public IAudioDeviceCallback
-,   public SingleInstance<Project>
 {
 public:
     static
-    Project * GetActiveProject ();
+    Project * GetCurrentProject ();
     
     struct PlayingNoteInfo
     {
@@ -67,12 +66,13 @@ public:
     double SampleToPPQ(SampleCount sample_pos) const;
     SampleCount PPQToSample(double ppq_pos) const;
     
+    void Activate();
+    void Deactivate();
+    bool IsActive() const;
+    
 private:
     struct Impl;
     std::unique_ptr<Impl> pimpl_;
-    
-//    void OnAfterActivated();
-//    void OnBeforeDeactivated();
     
     void StartProcessing(double sample_rate,
                          SampleCount max_block_size,

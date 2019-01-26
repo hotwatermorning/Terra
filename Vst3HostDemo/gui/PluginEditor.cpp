@@ -412,13 +412,6 @@ public:
     {
         on_destroy_ = on_destroy;
         
-        Bind(wxEVT_CLOSE_WINDOW, [this](auto &ev) {
-            if(contents_) {
-                contents_->CloseEditor();
-            }
-            Destroy();
-        });
-        
         control_ = new PluginEditorControl(this, target_plugin);
         control_->AddListener(this);
         
@@ -444,6 +437,10 @@ public:
     
     bool Destroy() override
     {
+        if(contents_) {
+            contents_->CloseEditor();
+        }
+        
         on_destroy_();
         return wxFrame::Destroy();
     }

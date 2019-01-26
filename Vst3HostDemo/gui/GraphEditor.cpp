@@ -1,50 +1,14 @@
 #include "GraphEditor.hpp"
 
 #include <tuple>
-#include <wx/stdpaths.h>
 
 #include "../App.hpp"
 #include "./PluginEditor.hpp"
 #include "../plugin/PluginScanner.hpp"
+#include "./Util.hpp"
+#include "../resource/ResourceHelper.hpp"
 
 NS_HWM_BEGIN
-
-wxColour HSVToColour(float hue, float saturation, float value, float opaque = 1.0)
-{
-    assert(0 <= hue && hue <= 1.0);
-    assert(0 <= saturation && saturation <= 1.0);
-    assert(0 <= value && value <= 1.0);
-    assert(0 <= opaque && opaque <= 1.0);
-    
-    wxImage::HSVValue hsv { hue, saturation, value };
-    auto rgb = wxImage::HSVtoRGB(hsv);
-    wxColour col;
-    col.Set(rgb.red, rgb.green, rgb.blue, std::min<int>(std::round(opaque * 256), 255));
-    return col;
-}
-
-struct BrushPen
-{
-    BrushPen(wxColour col) : BrushPen(col, col) {}
-    BrushPen(wxColour brush, wxColour pen)
-    : brush_(wxBrush(brush))
-    , pen_(wxPen(pen))
-    {}
-    
-    wxBrush brush_;
-    wxPen pen_;
-    
-    void ApplyTo(wxDC &dc) const {
-        dc.SetBrush(brush_);
-        dc.SetPen(pen_);
-    }
-};
-
-struct BrushPenSet {
-    BrushPen normal_;
-    BrushPen hover_;
-    BrushPen selected_;
-};
 
 BrushPenSet bps_audio_pin_ = {
     { HSVToColour(0.2, 0.6, 0.7), HSVToColour(0.2, 0.6, 0.8) },
@@ -133,7 +97,7 @@ public:
         Layout();
 
         //! wxStaticText eats mouse down events.
-        //! Pass the events to the parent by callking Skip().
+        //! To pass the events to the parent, call ev.Skip().
         st_plugin_name_->Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { ev.Skip(); });
         
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(ev); });
@@ -405,7 +369,7 @@ public:
     {
         wxImage img;
         
-        img.LoadFile(wxStandardPaths::Get().GetResourcesDir() + L"/cursor/scissors.png");
+        img.LoadFile(GetResourcePath(L"/cursor/scissors.png"));
         int const cursor_x = 24;
         int const cursor_y = 24;
 
@@ -593,6 +557,11 @@ public:
         auto node = std::move(*found);
         
         node_components_.erase(found);
+        // リストから取り除く最中にデストラクタが走ると、
+        // その中で親のnode_components_を参照することがあった場合に変なアクセスが発生する可能性がある。。
+        // そのようなバグを避けるために、リストから取り除いたあとでデストラクタを実行する。
+        node.reset();
+        
         graph_->RemoveNode(proc);
         Refresh();
         return true;

@@ -325,7 +325,16 @@ std::unique_ptr<Vst3Plugin> MyApp::CreateVst3Plugin(PluginDescription const &des
     assert(cid);
     
     try {
-        return factory->CreateByID(*cid);
+        auto plugin = factory->CreateByID(*cid);
+        auto activate_all_audio_buses = [](Vst3Plugin *plugin, Steinberg::Vst::BusDirections dir) {
+            auto const num = plugin->GetNumBuses(dir);
+            for(int i = 0; i < num; ++i) { plugin->SetBusActive(dir, i); }
+        };
+        
+        activate_all_audio_buses(plugin.get(), Steinberg::Vst::BusDirections::kInput);
+        activate_all_audio_buses(plugin.get(), Steinberg::Vst::BusDirections::kOutput);
+        
+        return plugin;
     } catch(std::exception &e) {
         hwm::dout << "Failed to create a Vst3Plugin: " << e.what() << std::endl;
         return nullptr;

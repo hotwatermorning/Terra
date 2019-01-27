@@ -50,7 +50,7 @@ size_t Vst3Plugin::GetNumInputs() const
 
 size_t Vst3Plugin::GetNumOutputs() const
 {
-	return pimpl_->GetBusesInfo(Vst::BusDirections::kInput).GetNumActiveChannels();
+	return pimpl_->GetBusesInfo(Vst::BusDirections::kOutput).GetNumActiveChannels();
 }
 
 UInt32  Vst3Plugin::GetNumParams() const

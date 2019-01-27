@@ -58,6 +58,8 @@ using UInt16 = std::uint16_t;
 using UInt32 = std::uint32_t;
 using UInt64 = std::uint64_t;
 
+constexpr wchar_t const *kAppName = L"Terra";
+
 NS_HWM_END
 
 #include "misc/DebuggerOutputStream.hpp"

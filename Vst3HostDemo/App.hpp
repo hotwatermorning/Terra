@@ -26,6 +26,9 @@ public:
     bool OnInit() override;
     int OnExit() override;
     
+    //! do initialization in the dedicated thread
+    void OnInitImpl();
+    
     void BeforeExit();
     
     class ChangeProjectListener : public ListenerBase

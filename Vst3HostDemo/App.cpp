@@ -1,19 +1,24 @@
 #include "App.hpp"
 #include "gui/GUI.hpp"
 
-#include <wx/cmdline.h>
-#include <wx/stdpaths.h>
-
 #include <exception>
 #include <algorithm>
 #include <fstream>
+#include <thread>
+
+#include <wx/cmdline.h>
+#include <wx/stdpaths.h>
+#include <wx/splash.h>
+
 #include "./misc/StrCnv.hpp"
+#include "./gui/Util.hpp"
 #include "./plugin/PluginScanner.hpp"
 #include "./plugin/vst3/Vst3PluginFactory.hpp"
 
 #include "device/AudioDeviceManager.hpp"
 #include "device/MidiDeviceManager.hpp"
 #include "gui/SettingDialog.hpp"
+#include "gui/SplashScreen.hpp"
 #include "resource/ResourceHelper.hpp"
 
 NS_HWM_BEGIN
@@ -94,6 +99,8 @@ struct MyApp::Impl
     PluginScanner plugin_scanner_;
     PluginListExporter plugin_list_exporter_;
     ResourceHelper resource_helper_;
+    SplashScreen *splash_screen_;
+    std::thread initialization_thread_;
     
     Impl()
     {
@@ -119,11 +126,30 @@ bool MyApp::OnInit()
     
     wxInitAllImageHandlers();
     
+    auto image = GetResourceAs<wxImage>(L"Logo.png");
+    assert(image.IsOk());
+    pimpl_->splash_screen_ = new SplashScreen(image);
+    pimpl_->splash_screen_->Show(true);
+    pimpl_->splash_screen_->SetFocus();
+    
+    pimpl_->initialization_thread_ = std::thread([this] { OnInitImpl(); });
+    
+    return true;
+}
+
+void MyApp::OnInitImpl()
+{
+    wxInitAllImageHandlers();
+    
     pimpl_->plugin_scanner_.AddDirectories({
         L"/Library/Audio/Plug-Ins/VST3",
         wxStandardPaths::Get().GetDocumentsDir().ToStdWstring() + L"../Library/Audio/Plug-Ins/VST3",
         L"../../ext/vst3sdk/build_debug/VST3/Debug",
     });
+    
+    auto dummy_wait = [](int milliseconds = 10) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+    };
     
     std::ifstream ifs(GetPluginDescFileName());
     if(ifs) {
@@ -134,10 +160,16 @@ bool MyApp::OnInit()
                   );
         
         pimpl_->plugin_scanner_.Import(dump_data);
+        
+        pimpl_->splash_screen_->AddMessage(L"Import plugin list");
     } else {
         pimpl_->plugin_scanner_.ScanAsync();
+        pimpl_->splash_screen_->AddMessage(L"Scanning plugins...");
     }
 
+    dummy_wait();
+    pimpl_->splash_screen_->AddMessage(L"Initialize audio devices");
+    
     pimpl_->adm_ = std::make_unique<AudioDeviceManager>();
     auto adm = pimpl_->adm_.get();
     
@@ -172,13 +204,22 @@ bool MyApp::OnInit()
     //! may not found
     auto input_device = find_entry(DeviceIOType::kInput, 2, output_device->driver_);
     
+    dummy_wait();
+    pimpl_->splash_screen_->AddMessage(L"Open audio device");
+    
     auto result = adm->Open(input_device, output_device, kSampleRate, kBlockSize);
     if(result.is_right() == false) {
         throw std::runtime_error(to_utf8(L"Failed to open the device: " + result.left().error_msg_));
     }
     
+    dummy_wait();
+    pimpl_->splash_screen_->AddMessage(L"Start audio device");
+    
     //! start the audio device.
     adm->GetDevice()->Start();
+    
+    dummy_wait();
+    pimpl_->splash_screen_->AddMessage(L"Initialize MIDI devices");
     
     pimpl_->mdm_ = std::make_unique<MidiDeviceManager>();
     auto mdm = pimpl_->mdm_.get();
@@ -191,12 +232,22 @@ bool MyApp::OnInit()
         << std::endl;
         
         auto d = mdm->Open(info);
+        
+        dummy_wait();
+        auto msg = L"Open MIDI {} Device: {}"_format((info.io_type_ == DeviceIOType::kInput ? L"IN": L"OUT"),
+                                                     info.name_id_);
+        pimpl_->splash_screen_->AddMessage(msg);
+                                           
+        
         if(info.io_type_ == DeviceIOType::kInput) {
             pimpl_->midi_ins_.push_back(d);
         } else {
             pimpl_->midi_outs_.push_back(d);
         }
     }
+    
+    dummy_wait();
+    pimpl_->splash_screen_->AddMessage(L"Create empty project");
     
     auto pj = std::make_shared<Project>();
     pj->SetSequence(MakeSequence());
@@ -217,16 +268,29 @@ bool MyApp::OnInit()
     
     pimpl_->projects_.push_back(pj);
     SetCurrentProject(pj.get());
-
-    MyFrame *frame = new MyFrame( "Vst3HostDemo", wxPoint(50, 50), wxSize(450, 340) );
-    frame->Show( true );
-    frame->SetFocus();
-    frame->SetMinSize(wxSize(400, 300));
-    return true;
+    
+    CallAfter([this] {
+        pimpl_->splash_screen_->AddMessage(L"Create main window");
+        
+        MyFrame *frame = new MyFrame( kAppName, wxPoint(50, 50), wxSize(450, 340) );
+        frame->Show( true );
+        frame->SetFocus();
+        frame->SetMinSize(wxSize(400, 300));
+    
+        pimpl_->splash_screen_->Close();
+        pimpl_->splash_screen_ = nullptr;
+        if(pimpl_->initialization_thread_.joinable()) {
+            pimpl_->initialization_thread_.join();
+        }
+    });
 }
 
 int MyApp::OnExit()
 {
+    if(pimpl_->initialization_thread_.joinable()) {
+        pimpl_->initialization_thread_.join();
+    }
+    
     SetCurrentProject(nullptr);
     pimpl_->projects_.clear();
     

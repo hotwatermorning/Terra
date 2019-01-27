@@ -587,7 +587,7 @@ void MyFrame::OnExit()
 
 void MyFrame::OnAbout(wxCommandEvent& event)
 {
-    wxMessageBox( "VST3HostDemo",
+    wxMessageBox(kAppName,
                  "created by hotwatermorning@gmail.com", wxOK | wxICON_INFORMATION );
 }
 

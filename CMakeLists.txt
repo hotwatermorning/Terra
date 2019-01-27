@@ -35,7 +35,7 @@ endif()
 # configure project
 ####################################################################
 
-project("Vst3HostDemo")
+project("Terra")
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Werror=return-type")
 
@@ -88,7 +88,7 @@ endif()
 
 # set source directories
 set(SOURCE_DIR_LIST
-  "./Vst3HostDemo"
+  "./Terra"
   "./schema/cpp"
   )
 
@@ -100,7 +100,7 @@ if(IsXcode)
 endif()
 
 # set the root directory of the source file tree in IDE
-set(BASE_DIR "./Vst3HostDemo")
+set(BASE_DIR "./Terra")
 get_filename_component(BASE_DIR "${BASE_DIR}" ABSOLUTE)
 
 foreach(DIR ${SOURCE_DIR_LIST})
@@ -150,11 +150,11 @@ if(IsXcode)
   endforeach()
 endif()
 
-set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PREFIX_HEADER "Vst3HostDemo/prefix.hpp")
+set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PREFIX_HEADER "Terra/prefix.hpp")
 set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PRECOMPILE_PREFIX_HEADER "YES")
 
 include_directories(
-  "./Vst3HostDemo"
+  "./Terra"
   "./ext/vst3sdk"
   "./ext/variant/include"
   "./schema/cpp"

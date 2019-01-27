@@ -78,7 +78,9 @@ public:
     {
         btn_open_editor_ = new wxButton(this, wxID_ANY, "E", wxDefaultPosition, wxSize(20, 20));
         btn_open_editor_->Bind(wxEVT_BUTTON, [this](auto &ev) { OnOpenEditor(); });
-        if(!node->GetProcessor()->HasEditor()) { btn_open_editor_->Hide(); }
+        if(dynamic_cast<Vst3AudioProcessor *>(node_->GetProcessor().get()) == nullptr) {
+            btn_open_editor_->Hide();
+        }
         
         st_plugin_name_ = new wxStaticText(this, wxID_ANY, node->GetProcessor()->GetName(),
                                            wxDefaultPosition, wxSize(1, 20), wxALIGN_CENTRE_HORIZONTAL);

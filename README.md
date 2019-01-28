@@ -1,4 +1,4 @@
-# Terra
+![Terra](./misc/Logo.png)
 
 ## What's this?
 
@@ -43,4 +43,5 @@ Terra uses these libraries.
 ## Contact
 
 hotwatermorning@gmail.com
+
 https://twitter.com/hotwatermorning

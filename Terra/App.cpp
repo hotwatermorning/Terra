@@ -126,7 +126,7 @@ bool MyApp::OnInit()
     
     wxInitAllImageHandlers();
     
-    auto image = GetResourceAs<wxImage>(L"Logo.png");
+    auto image = GetResourceAs<wxImage>(L"SplashScreen.png");
     assert(image.IsOk());
     pimpl_->splash_screen_ = new SplashScreen(image);
     pimpl_->splash_screen_->Show(true);

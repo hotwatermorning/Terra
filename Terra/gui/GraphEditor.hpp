@@ -5,6 +5,20 @@
 
 NS_HWM_BEGIN
 
-std::unique_ptr<wxPanel> CreateGraphEditorComponent(wxWindow *parent, GraphProcessor &graph);
+class GraphEditor
+:   public wxPanel
+{
+protected:
+    GraphEditor(wxWindow *parent);
+    
+public:
+    virtual
+    ~GraphEditor();
+    
+    virtual
+    void RearrangeNodes() = 0;
+};
+
+std::unique_ptr<GraphEditor> CreateGraphEditorComponent(wxWindow *parent, GraphProcessor &graph);
 
 NS_HWM_END

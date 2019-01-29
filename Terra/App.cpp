@@ -26,6 +26,9 @@ NS_HWM_BEGIN
 double const kSampleRate = 44100;
 SampleCount const kBlockSize = 256;
 
+wxSize const kMinimumWindowSize = { 450, 300 };
+wxSize const kDefaultWindowSize = { 640, 500 };
+
 std::string GetPluginDescFileName() {
     return "plugin_list.bin";
 }
@@ -272,10 +275,11 @@ void MyApp::OnInitImpl()
     CallAfter([this] {
         pimpl_->splash_screen_->AddMessage(L"Create main window");
         
-        MyFrame *frame = new MyFrame( kAppName, wxPoint(50, 50), wxSize(450, 340) );
-        frame->Show( true );
+        MyFrame *frame = new MyFrame(kAppName, wxDefaultPosition, kDefaultWindowSize);
+        frame->Show(true);
         frame->SetFocus();
-        frame->SetMinSize(wxSize(400, 300));
+        frame->CentreOnScreen();
+        frame->SetMinSize(kMinimumWindowSize);
     
         pimpl_->splash_screen_->Close();
         pimpl_->splash_screen_ = nullptr;

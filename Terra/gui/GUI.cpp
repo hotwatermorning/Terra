@@ -461,7 +461,7 @@ class MyPanel
 ,   public PluginScanner::Listener
 {
 public:
-    MyPanel(wxWindow *parent)
+    MyPanel(wxWindow *parent, wxSize size)
     : wxPanel(parent)
     {
         this->SetBackgroundColour(wxColour(0x09, 0x21, 0x33));
@@ -479,7 +479,10 @@ public:
         vbox->Add(graph_panel_, wxSizerFlags(1).Expand());
         vbox->Add(keyboard_, wxSizerFlags(0).Expand());
         
-        SetSizerAndFit(vbox);
+        SetSizer(vbox);
+        
+        SetSize(size);
+        graph_panel_->RearrangeNodes();
         
         Bind(wxEVT_KEY_DOWN, [this](auto &ev) { keyboard_->HandleWindowEvent(ev); });
         Bind(wxEVT_KEY_UP, [this](auto &ev) { keyboard_->HandleWindowEvent(ev); });
@@ -516,7 +519,7 @@ private:
     
     wxPanel         *keyboard_;
     wxPanel         *header_panel_ = nullptr;
-    wxPanel         *graph_panel_ = nullptr;
+    GraphEditor     *graph_panel_ = nullptr;
 };
 
 enum
@@ -528,7 +531,7 @@ enum
 };
 
 MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
-: wxFrame(NULL, wxID_ANY, title, pos, size)
+: wxFrame(nullptr, wxID_ANY, title, pos, size)
 {
     wxMenu *menuFile = new wxMenu;
     menuFile->Append(ID_RescanPlugin, "&Rescan Plugins", "Rescan Plugins");
@@ -565,8 +568,7 @@ MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
     Bind(wxEVT_TIMER, [this](auto &ev) { OnTimer(); });
     timer_.Start(1000);
     
-    my_panel_ = new MyPanel(this);
-    my_panel_->SetSize(GetClientSize());
+    my_panel_ = new MyPanel(this, GetClientSize());
 }
 
 MyFrame::~MyFrame()

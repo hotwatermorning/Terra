@@ -29,6 +29,8 @@ wxPen const kScissorLine = wxPen(HSVToColour(0.5, 0.0, 0.7), 2, wxPENSTYLE_SHORT
 BrushPen const background = BrushPen(HSVToColour(0.0, 0.0, 0.9));
 BrushPen const background_having_focus = BrushPen(HSVToColour(0.0, 0.0, 0.9), HSVToColour(0.7, 1.0, 0.9));
 
+wxSize const kDefaultNodeSize = { 200, 60 };
+
 class NodeComponent
 :   public wxPanel
 {
@@ -72,7 +74,7 @@ public:
     
 public:
     NodeComponent(wxWindow *parent, GraphProcessor::Node *node, Callback *callback)
-    :   wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(200, 60))
+    :   wxPanel(parent, wxID_ANY, wxDefaultPosition, kDefaultNodeSize)
     ,   node_(node)
     ,   callback_(callback)
     {
@@ -360,14 +362,21 @@ bool Intersect(wxPoint a1, wxPoint a2, wxPoint b1, wxPoint b2)
     return !is_same_sign(a, b) && !is_same_sign(c, d);
 }
 
-class GraphEditor
-:   public wxPanel
+GraphEditor::GraphEditor(wxWindow *parent)
+:   wxPanel(parent)
+{}
+
+GraphEditor::~GraphEditor()
+{}
+
+class GraphEditorImpl
+:   public GraphEditor
 ,   public NodeComponent::Callback
 {
 public:
     wxCursor scissors_;
-    GraphEditor(wxWindow *parent)
-    :   wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize)
+    GraphEditorImpl(wxWindow *parent)
+    :   GraphEditor(parent)
     {
         wxImage img;
         
@@ -391,6 +400,9 @@ public:
         Bind(wxEVT_KILL_FOCUS, [this](auto &ev) { OnKillFocus(); });
         Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](auto &ev) { OnReleaseMouse(); });
     }
+    
+    ~GraphEditorImpl()
+    {}
     
     void OnLeftDown(wxMouseEvent const &ev)
     {
@@ -684,6 +696,59 @@ public:
         SetCursor(wxNullCursor);
     }
     
+    //! rearrange nodes to avoid overlaps of them.
+    void RearrangeNodes() override
+    {
+        auto node_grid = kDefaultNodeSize;
+        node_grid += wxSize(5, 5);
+        
+        auto const rect = GetClientRect();
+        int const num_cols = rect.GetWidth() / node_grid.GetWidth();
+        int const num_rows = rect.GetHeight() / node_grid.GetHeight();
+        
+        auto get_next_top_grid = [&, c = 0, r = 0]() mutable {
+            auto pt = wxPoint(c * node_grid.GetWidth(), r * node_grid.GetHeight());
+            if(c == num_cols - 1 && r == num_rows - 1) {
+                // fulfilled. do nothing.
+            } else {
+                c = (c + 1) % num_cols;
+                if(c == 0) { r = (r + 1) % num_rows; }
+            }
+            return pt;
+        };
+        
+        auto get_next_bottom_grid = [&, c = num_cols - 1, r = num_rows - 1]() mutable {
+            auto pt = wxPoint((num_cols - c - 1) * node_grid.GetWidth(), r * node_grid.GetHeight());
+            if(c == 0 && r == 0) {
+                // fulfilled. do nothing.
+            } else {
+                if(c == 0) {
+                    r -= 1;
+                    c = num_cols - 1;
+                } else {
+                    c -= 1;
+                }
+            }
+            return pt;
+        };
+        
+        auto rearrange_node = [this](auto pred, auto grid_function) {
+            for(auto &node: node_components_) {
+                if(pred(node->node_->GetProcessor().get())) { node->Move(grid_function()); }
+            }
+        };
+        
+        using GP = GraphProcessor;
+        rearrange_node([](Processor *proc) { return dynamic_cast<GP::AudioInput *>(proc); },
+                       get_next_top_grid);
+        rearrange_node([](Processor *proc) { return dynamic_cast<GP::MidiInput *>(proc); },
+                       get_next_top_grid);
+        rearrange_node([](Processor *proc) { return dynamic_cast<GP::AudioOutput *>(proc); },
+                       get_next_bottom_grid);
+        rearrange_node([](Processor *proc) { return dynamic_cast<GP::MidiOutput *>(proc); },
+                       get_next_bottom_grid);        
+    }
+    
 private:
     using NodeComponentPtr = std::unique_ptr<NodeComponent>;
     std::vector<NodeComponentPtr> node_components_;
@@ -767,9 +832,9 @@ private:
     }
 };
 
-std::unique_ptr<wxPanel> CreateGraphEditorComponent(wxWindow *parent, GraphProcessor &graph)
+std::unique_ptr<GraphEditor> CreateGraphEditorComponent(wxWindow *parent, GraphProcessor &graph)
 {
-    auto p = std::make_unique<GraphEditor>(parent);
+    auto p = std::make_unique<GraphEditorImpl>(parent);
     p->SetGraph(graph);
     
     return p;

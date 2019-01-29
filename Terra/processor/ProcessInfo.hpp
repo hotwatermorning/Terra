@@ -30,19 +30,52 @@ struct ProcessInfo
         
         DataType data_;
     };
-    
-    template<class T>
-    struct MidiBufferInfo
+
+    struct EventBuffer
     {
-        ArrayRef<T> buffer_;
-        UInt32 num_used_ = 0;
+    protected:
+        EventBuffer() {}
+        
+    public:
+        virtual ~EventBuffer() {}
+        
+        virtual
+        UInt32 GetCount() const = 0;
+        
+        virtual
+        void AddEvent(MidiMessage const &msg) = 0;
+        
+        virtual
+        MidiMessage const & GetEvent(UInt32 index) const = 0;
+        
+        virtual
+        ArrayRef<MidiMessage const> GetRef() const = 0;
     };
     
-    TransportInfo const *               time_info_ = nullptr;
-    BufferRef<float const>              input_audio_buffer_;
-    BufferRef<float>                    output_audio_buffer_;
-    MidiBufferInfo<MidiMessage const>   input_midi_buffer_;
-    MidiBufferInfo<MidiMessage>         output_midi_buffer_;    
+    struct EventBufferList
+    {
+    protected:
+        EventBufferList() {}
+        
+    public:
+        virtual
+        ~EventBufferList() {}
+        
+        virtual
+        UInt32 GetNumBuffers() const = 0;
+        
+        virtual
+        EventBuffer * GetBuffer(UInt32 index) = 0;
+        
+        virtual
+        EventBuffer const * GetBuffer(UInt32 index) const = 0;
+    };
+    
+    TransportInfo const *       time_info_ = nullptr;
+    BufferRef<float const>      input_audio_buffer_;
+    BufferRef<float>            output_audio_buffer_;
+    EventBufferList const *     input_event_buffers_ = nullptr;
+    EventBufferList *           output_event_buffers_ = nullptr;
 };
 
 NS_HWM_END

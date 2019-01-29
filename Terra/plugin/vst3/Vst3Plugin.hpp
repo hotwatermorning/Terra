@@ -96,9 +96,9 @@ public:
     using ProgramListID = Steinberg::Vst::ProgramListID;
     using UnitID = Steinberg::Vst::UnitID;
     using SpeakerArrangement = Steinberg::Vst::SpeakerArrangement;
-    using MediaType = Steinberg::Vst::MediaType;
-    using BusDirection = Steinberg::Vst::BusDirection;
-    using BusType = Steinberg::Vst::BusType;
+    using MediaTypes = Steinberg::Vst::MediaTypes;
+    using BusDirections = Steinberg::Vst::BusDirections;
+    using BusTypes = Steinberg::Vst::BusTypes;
     
     struct ParameterInfo
     {
@@ -151,19 +151,33 @@ public:
     
     using UnitInfoList = IdentifiedValueList<UnitInfo>;
     
-    //! channel_count_, speaker_, is_active_の状態は、バスの状態によって変化することに注意。
+    //! @note the value of channel_count_, speaker_, and is_active_ may be changed according to the bus state.
     struct BusInfo
     {
-        MediaType media_type_;          ///< Media type - has to be a value of \ref MediaTypes
-        BusDirection direction_;        ///< input or output \ref BusDirections
-        Int32 channel_count_;           ///< number of channels (if used then need to be recheck after \ref
-        /// IAudioProcessor::setBusArrangements is called).
-        /// For a bus of type MediaTypes::kEvent the channelCount corresponds
-        /// to the number of supported MIDI channels by this bus
-        String name_;                   ///< name of the bus
-        BusType bus_type_;              ///< main or aux - has to be a value of \ref BusTypes
+        //!< Media type - has to be a value of @ref Steinberg::Vst::MediaTypes
+        Steinberg::Vst::MediaType media_type_;
+        
+        //!< input or output @ref Steinberg::Vst::BusDirections
+        Steinberg::Vst::BusDirection direction_;
+        
+        //! number of channels
+        //! For a bus of type MediaTypes::kEvent the channelCount corresponds
+        //! to the number of supported MIDI channels by this bus
+        Int32 channel_count_;
+        
+        //! name of the bus
+        String name_;
+        
+        //! main or aux - has to be a value of @ref Steinerg::Vst::BusTypes
+        Steinberg::Vst::BusType bus_type_;
+        
         bool is_default_active_ = false;
+        
+        //! speaker arrangement of the bus.
+        //! unused for event buses.
         SpeakerArrangement speaker_ = Steinberg::Vst::SpeakerArr::kEmpty;
+        
+        //! activation status
         bool is_active_ = false;
     };
 
@@ -189,8 +203,8 @@ public:
     UnitInfo const & GetUnitInfoByIndex(UInt32 index) const;
     UnitInfo const & GetUnitInfoByID(UnitID id) const;
     
-    UInt32  GetNumBuses(BusDirection dir) const;
-    BusInfo const & GetBusInfoByIndex(BusDirection dir, UInt32 index) const;
+    UInt32  GetNumBuses(MediaTypes media, BusDirections dir) const;
+    BusInfo const & GetBusInfoByIndex(MediaTypes media, BusDirections dir, UInt32 index) const;
     
     ParamValue GetParameterValueByIndex(UInt32 index) const;
     ParamValue GetParameterValueByID(ParamID id) const;
@@ -201,10 +215,11 @@ public:
     String ValueToStringByID(ParamID id, ParamValue value);
     ParamValue StringToValueByID(ParamID id, String string);
     
-    bool IsBusActive(BusDirection dir, UInt32 index) const;
-    void SetBusActive(BusDirection dir, UInt32 index, bool state = true);
-    SpeakerArrangement GetSpeakerArrangementForBus(BusDirection dir, UInt32 index) const;
-    bool SetSpeakerArrangement(BusDirection dir, UInt32 index, SpeakerArrangement arr);
+    bool IsBusActive(MediaTypes media, BusDirections dir, UInt32 index) const;
+    void SetBusActive(MediaTypes media, BusDirections dir, UInt32 index, bool state = true);
+    UInt32 GetNumActiveBuses(MediaTypes media, BusDirections dir) const;
+    SpeakerArrangement GetSpeakerArrangementForBus(BusDirections dir, UInt32 index) const;
+    bool SetSpeakerArrangement(BusDirections dir, UInt32 index, SpeakerArrangement arr);
     
 	void	Resume();
 	void	Suspend();

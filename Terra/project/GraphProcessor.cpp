@@ -117,19 +117,18 @@ public:
     }
     
     void OnStartProcessing(double sample_rate, SampleCount block_size) override
-    {
-        
-    }
+    {}
     
     void Process(ProcessInfo &pi) override
     {
         callback_(this, pi);
         
-        auto &dest = pi.output_midi_buffer_;
-
-        assert(ref_.size() <= dest.buffer_.size());
-        std::copy_n(ref_.data(), ref_.size(), dest.buffer_.begin());
-        dest.num_used_ = ref_.size();
+        auto &dest = pi.output_event_buffers_;
+        auto dest_buf = dest->GetBuffer(0);
+        
+        for(int i = 0; i < ref_.size(); ++i) {
+            dest_buf->AddEvent(ref_[i]);
+        }
     }
     
     void OnStopProcessing() override
@@ -168,10 +167,10 @@ public:
     
     void Process(ProcessInfo &pi) override
     {
-        ref_ = BufferType {
-            pi.output_midi_buffer_.buffer_.begin(),
-            pi.output_midi_buffer_.buffer_.begin() + pi.output_midi_buffer_.num_used_
-        };
+        auto &src = pi.input_event_buffers_;
+        auto src_buf = src->GetBuffer(0);
+        
+        ref_ = src_buf->GetRef();
         callback_(this, pi);
     }
     
@@ -320,17 +319,31 @@ public:
         remove(output_audio_connections_, conn);
         remove(input_midi_connections_, conn);
         remove(output_midi_connections_, conn);
+        
+        if(conn->downstream_ == this &&
+           dynamic_cast<GraphProcessor::MidiConnection const *>(conn.get()))
+        {
+            assert(conn->downstream_channel_index_ < input_event_buffers_.GetNumBuffers());
+            input_event_buffers_.GetBuffer(conn->downstream_channel_index_)->PopNoteStack();
+        }
     }
     
     void OnStartProcessing(double sample_rate, SampleCount block_size)
     {
-        auto const num_inputs = processor_->GetAudioChannelCount(BusDirection::kInputSide);
-        auto const num_outputs = processor_->GetAudioChannelCount(BusDirection::kOutputSide);
+        // @todo バスの動的な変更をサポートするには、接続情報に持たせているチャンネルインデックスの仕組みを変更し、
+        // バスやチャンネルのIDを接続情報に持たせる必要がありそう。
         
-        input_audio_buffer_.resize(num_inputs, block_size);
-        output_audio_buffer_.resize(num_outputs, block_size);
-        input_midi_buffer_.reserve(block_size);
-        output_midi_buffer_.reserve(block_size);
+        auto const num_audio_inputs = processor_->GetAudioChannelCount(BusDirection::kInputSide);
+        auto const num_audio_outputs = processor_->GetAudioChannelCount(BusDirection::kOutputSide);
+        
+        input_audio_buffer_.resize(num_audio_inputs, block_size);
+        output_audio_buffer_.resize(num_audio_outputs, block_size);
+        
+        auto const num_event_inputs = processor_->GetMidiChannelCount(BusDirection::kInputSide);
+        auto const num_event_outputs = processor_->GetMidiChannelCount(BusDirection::kOutputSide);
+        
+        input_event_buffers_.SetNumBuffers(num_event_inputs);
+        output_event_buffers_.SetNumBuffers(num_event_outputs);
         
         processor_->OnStartProcessing(sample_rate, block_size);
     }
@@ -339,6 +352,11 @@ public:
     {
         if(processed_) { return; }
         else { processed_ = true; }
+        
+        input_event_buffers_.ApplyCachedNoteOffs();
+        
+        output_event_buffers_.Clear();
+        input_event_buffers_.Sort();
         
         ProcessInfo pi;
         pi.time_info_ = &ti;
@@ -357,13 +375,12 @@ public:
             (UInt32)ti.GetSmpDuration()
         };
         
-        pi.input_midi_buffer_ = { input_midi_buffer_, (UInt32)input_midi_buffer_.size() };
-        output_midi_buffer_.resize(output_midi_buffer_.capacity());
-        pi.output_midi_buffer_ = { output_midi_buffer_, 0 };
+        pi.input_event_buffers_ = &input_event_buffers_;
+        pi.output_event_buffers_ = &output_event_buffers_;
         
         processor_->Process(pi);
         
-        input_midi_buffer_.clear();
+        input_event_buffers_.Clear();
     }
     
     void OnStopProcessing()
@@ -371,8 +388,8 @@ public:
         processor_->OnStopProcessing();
         input_audio_buffer_ = Buffer<float>();
         output_audio_buffer_ = Buffer<float>();
-        input_midi_buffer_ = MidiMessageList();
-        output_midi_buffer_ = MidiMessageList();
+        input_event_buffers_ = EventBufferList();
+        output_event_buffers_ = EventBufferList();
     }
     
     void Clear()
@@ -381,8 +398,8 @@ public:
         
         input_audio_buffer_.fill(0);
         output_audio_buffer_.fill(0);
-        input_midi_buffer_.clear();
-        output_midi_buffer_.clear();
+        input_event_buffers_.Clear();
+        output_event_buffers_.Clear();
         processed_ = false;
     }
     
@@ -402,18 +419,162 @@ public:
         }
     }
     
-    void AddMidi(ArrayRef<ProcessInfo::MidiMessage> const &src)
+    void AddMidi(ArrayRef<ProcessInfo::MidiMessage const> src, UInt32 dest_bus_index)
     {
-        auto &dest = input_midi_buffer_;
-        std::copy(src.begin(), src.end(), std::back_inserter(dest));
+        auto &dest = input_event_buffers_;
+        dest.GetBuffer(dest_bus_index)->AddEvents(src);
     }
     
     std::vector<RingBuffer> channel_delays_;
     Buffer<float> input_audio_buffer_;
     Buffer<float> output_audio_buffer_;
-    using MidiMessageList = std::vector<ProcessInfo::MidiMessage>;
-    MidiMessageList input_midi_buffer_;
-    MidiMessageList output_midi_buffer_;
+    
+    struct EventBuffer : public ProcessInfo::EventBuffer
+    {
+        EventBuffer(UInt32 num_initial_size = 2048)
+        {
+            events_.reserve(num_initial_size);
+            note_stack_.fill(0);
+            note_off_cache_.reserve(128);
+        }
+        
+        void AddEvent(ProcessInfo::MidiMessage const &msg) override
+        {
+            if(auto p = msg.As<MidiDataType::NoteOn>()) {
+                GetNoteStack(p->pitch_, msg.channel_) += 1;
+            } else if(auto p = msg.As<MidiDataType::NoteOff>()) {
+                auto &ref = GetNoteStack(p->pitch_, msg.channel_);
+                ref -= std::min(ref, 1u);
+            }
+            
+            events_.push_back(msg);
+        }
+        
+        ProcessInfo::MidiMessage const & GetEvent(UInt32 index) const override
+        {
+            assert(index < events_.size());
+            return events_[index];
+        }
+        
+        UInt32 GetCount() const override
+        {
+            return events_.size();
+        }
+        
+        ArrayRef<ProcessInfo::MidiMessage const> GetRef() const override
+        {
+            return events_;
+        }
+        
+        void AddEvents(ArrayRef<ProcessInfo::MidiMessage const> ref)
+        {
+            for(auto m: ref) {
+                AddEvent(m);
+            }
+        }
+        
+        void Clear()
+        {
+            events_.clear();
+        }
+        
+        void Sort()
+        {
+            std::stable_sort(events_.begin(), events_.end(),
+                             [](auto const &x, auto const &y) {
+                                 return x.offset_ < y.offset_;
+                             });
+        }
+        
+        void ApplyCachedNoteOffs()
+        {
+            if(note_off_cache_.empty() == false) {
+                events_.insert(events_.begin(), note_off_cache_.begin(), note_off_cache_.end());
+                note_off_cache_.clear();
+            }
+        }
+        
+        void PopNoteStack()
+        {
+            for(UInt8 pitch = 0; pitch < 128; ++pitch) {
+                for(UInt8 ch = 0; ch < 16; ++ch) {
+                    auto &stack = GetNoteStack(pitch, ch);
+                    
+                    while(stack != 0) {
+                        ProcessInfo::MidiMessage msg;
+                        msg.offset_ = 0;
+                        msg.channel_ = ch;
+                        msg.ppq_pos_ = 0;
+                        msg.data_ = MidiDataType::NoteOff { (UInt8)pitch, (UInt8)64 };
+                        note_off_cache_.push_back(msg);
+                        --stack;
+                    }
+                }
+            }
+        }
+        
+        UInt32 & GetNoteStack(UInt32 pitch, UInt32 channel) {
+            assert(pitch < 128);
+            assert(channel < 16);
+            return note_stack_[channel * 128 + pitch];
+        }
+        
+        UInt32 const & GetNoteStack(UInt32 pitch, UInt32 channel) const {
+            assert(pitch < 128);
+            assert(channel < 16);
+            return note_stack_[channel * 128 + pitch];
+        }
+        
+        std::vector<ProcessInfo::MidiMessage> events_;
+        std::array<UInt32, 128 * 16> note_stack_;
+        std::vector<ProcessInfo::MidiMessage> note_off_cache_;
+    };
+    
+    struct EventBufferList : ProcessInfo::EventBufferList
+    {
+        std::vector<EventBuffer> buffers_;
+        
+        UInt32 GetNumBuffers() const override {
+            return buffers_.size();
+        }
+        
+        void SetNumBuffers(UInt32 num)
+        {
+            buffers_.resize(num);
+        }
+
+        EventBuffer * GetBuffer(UInt32 index) override
+        {
+            assert(index < buffers_.size());
+            return &buffers_[index];
+        }
+        
+        EventBuffer const * GetBuffer(UInt32 index) const override
+        {
+            assert(index < buffers_.size());
+            return &buffers_[index];
+        }
+        
+        void Clear() {
+            for(auto &b: buffers_) { b.Clear(); }
+        }
+        
+        void Sort() {
+            for(auto &b: buffers_) { b.Sort(); }
+        }
+        
+        void ApplyCachedNoteOffs() {
+            for(auto &b: buffers_) { b.ApplyCachedNoteOffs(); }
+        }
+        
+        ArrayRef<ProcessInfo::MidiMessage const> GetRef(UInt32 channel_index) const
+        {
+            return GetBuffer(channel_index)->GetRef();
+        }
+    };
+    
+    EventBufferList input_event_buffers_;
+    EventBufferList output_event_buffers_;
     bool processed_ = false;
 };
 
@@ -694,7 +855,8 @@ void GraphProcessor::Process(TransportInfo const &ti)
             };
             down->AddAudio(ref, ac->downstream_channel_index_);
         } else if(auto mc = dynamic_cast<MidiConnection const *>(conn.get())) {
-            down->AddMidi(up->output_midi_buffer_);
+            down->AddMidi(up->output_event_buffers_.GetRef(mc->upstream_channel_index_),
+                          mc->downstream_channel_index_);
         } else {
             assert(false);
         }

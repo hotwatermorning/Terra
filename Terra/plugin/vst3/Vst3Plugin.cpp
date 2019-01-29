@@ -45,12 +45,12 @@ String Vst3Plugin::GetEffectName() const
 
 size_t Vst3Plugin::GetNumInputs() const
 {
-    return pimpl_->GetBusesInfo(Vst::BusDirections::kInput).GetNumActiveChannels();
+    return pimpl_->GetAudioBusesInfo(Vst::BusDirections::kInput).GetNumActiveChannels();
 }
 
 size_t Vst3Plugin::GetNumOutputs() const
 {
-	return pimpl_->GetBusesInfo(Vst::BusDirections::kOutput).GetNumActiveChannels();
+	return pimpl_->GetAudioBusesInfo(Vst::BusDirections::kOutput).GetNumActiveChannels();
 }
 
 UInt32  Vst3Plugin::GetNumParams() const
@@ -82,14 +82,22 @@ Vst3Plugin::UnitInfo const & Vst3Plugin::GetUnitInfoByID(UnitID id) const
     return pimpl_->GetUnitInfoList().GetItemByID(id);
 }
 
-UInt32  Vst3Plugin::GetNumBuses(BusDirection dir) const
+UInt32  Vst3Plugin::GetNumBuses(MediaTypes media, BusDirections dir) const
 {
-    return pimpl_->GetBusesInfo(dir).GetNumBuses();
+    if(media == MediaTypes::kAudio) {
+        return pimpl_->GetAudioBusesInfo(dir).GetNumBuses();
+    } else {
+        return pimpl_->GetMidiBusesInfo(dir).GetNumBuses();
+    }
 }
 
-Vst3Plugin::BusInfo const & Vst3Plugin::GetBusInfoByIndex(BusDirection dir, UInt32 index) const
+Vst3Plugin::BusInfo const & Vst3Plugin::GetBusInfoByIndex(MediaTypes media, BusDirections dir, UInt32 index) const
 {
-    return pimpl_->GetBusesInfo(dir).GetBusInfo(index);
+    if(media == MediaTypes::kAudio) {
+        return pimpl_->GetAudioBusesInfo(dir).GetBusInfo(index);
+    } else {
+        return pimpl_->GetMidiBusesInfo(dir).GetBusInfo(index);
+    }
 }
 
 Vst3Plugin::ParamValue Vst3Plugin::GetParameterValueByIndex(UInt32 index) const
@@ -122,24 +130,34 @@ Vst::ParamValue Vst3Plugin::StringToValueByID(ParamID id, String string)
     return pimpl_->StringToValueByID(id, string);
 }
 
-bool Vst3Plugin::IsBusActive(BusDirection dir, UInt32 index) const
+bool Vst3Plugin::IsBusActive(MediaTypes media, BusDirections dir, UInt32 index) const
 {
-    return pimpl_->GetBusesInfo(dir).GetBusInfo(index).is_active_;
+    return GetBusInfoByIndex(media, dir, index).is_active_;
 }
 
-void Vst3Plugin::SetBusActive(BusDirection dir, UInt32 index, bool state)
+void Vst3Plugin::SetBusActive(MediaTypes media, BusDirections dir, UInt32 index, bool state)
 {
-    pimpl_->GetBusesInfo(dir).SetActive(index, state);
+    if(media == MediaTypes::kAudio) {
+        pimpl_->GetAudioBusesInfo(dir).SetActive(index, state);
+    } else {
+        pimpl_->GetMidiBusesInfo(dir).SetActive(index, state);
+    }
 }
 
-Vst3Plugin::SpeakerArrangement Vst3Plugin::GetSpeakerArrangementForBus(BusDirection dir, UInt32 index) const
+UInt32 Vst3Plugin::GetNumActiveBuses(MediaTypes media, BusDirections dir) const
 {
-    return pimpl_->GetBusesInfo(dir).GetBusInfo(index).speaker_;
+    assert(media == MediaTypes::kEvent);
+    return pimpl_->GetMidiBusesInfo(dir).GetNumActiveBuses();
 }
 
-bool Vst3Plugin::SetSpeakerArrangement(BusDirection dir, UInt32 index, SpeakerArrangement arr)
+Vst3Plugin::SpeakerArrangement Vst3Plugin::GetSpeakerArrangementForBus(BusDirections dir, UInt32 index) const
 {
-    return pimpl_->GetBusesInfo(dir).SetSpeakerArrangement(index, arr);
+    return pimpl_->GetAudioBusesInfo(dir).GetBusInfo(index).speaker_;
+}
+
+bool Vst3Plugin::SetSpeakerArrangement(BusDirections dir, UInt32 index, SpeakerArrangement arr)
+{
+    return pimpl_->GetAudioBusesInfo(dir).SetSpeakerArrangement(index, arr);
 }
 
 void Vst3Plugin::Resume()

@@ -331,13 +331,21 @@ std::unique_ptr<Vst3Plugin> MyApp::CreateVst3Plugin(PluginDescription const &des
     
     try {
         auto plugin = factory->CreateByID(*cid);
-        auto activate_all_audio_buses = [](Vst3Plugin *plugin, Steinberg::Vst::BusDirections dir) {
-            auto const num = plugin->GetNumBuses(dir);
-            for(int i = 0; i < num; ++i) { plugin->SetBusActive(dir, i); }
+        auto activate_all_buses = [](Vst3Plugin *plugin,
+                                           Steinberg::Vst::MediaTypes media,
+                                           Steinberg::Vst::BusDirections dir)
+        {
+            auto const num = plugin->GetNumBuses(media, dir);
+            for(int i = 0; i < num; ++i) { plugin->SetBusActive(media, dir, i); }
         };
         
-        activate_all_audio_buses(plugin.get(), Steinberg::Vst::BusDirections::kInput);
-        activate_all_audio_buses(plugin.get(), Steinberg::Vst::BusDirections::kOutput);
+        using MT = Steinberg::Vst::MediaTypes;
+        using BD = Steinberg::Vst::BusDirections;
+        
+        activate_all_buses(plugin.get(), MT::kAudio, BD::kInput);
+        activate_all_buses(plugin.get(), MT::kAudio, BD::kOutput);
+        activate_all_buses(plugin.get(), MT::kEvent, BD::kInput);
+        activate_all_buses(plugin.get(), MT::kEvent, BD::kOutput);
         
         return plugin;
     } catch(std::exception &e) {

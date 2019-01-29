@@ -57,9 +57,36 @@ public:
     using ParameterInfoList = IdentifiedValueList<ParameterInfo>;
     using UnitInfoList = IdentifiedValueList<UnitInfo>;
     
+    struct MidiBusesInfo
+    {
+        void Initialize(Impl *owner, Vst::BusDirections dir);
+        
+        size_t GetNumBuses() const;
+        
+        BusInfo const & GetBusInfo(UInt32 bus_index) const;
+        
+        bool IsActive(size_t bus_index) const;
+        void SetActive(size_t bus_index, bool state = true);
+        
+        UInt32 GetNumActiveBuses() const;
+        UInt32 GetBusIndexFromActiveBusIndex(UInt32 active_bus_index) const;
+        UInt32 GetActiveBusIndexFromBusIndex(UInt32 bus_index) const;
+        
+        Vst::AudioBusBuffers * GetBusBuffers();
+        
+    private:
+        Impl *owner_ = nullptr;
+        std::vector<BusInfo> bus_infos_;
+        Vst::BusDirection dir_;
+        std::unordered_map<UInt32, UInt32> bus_index_to_active_bus_index_;
+        std::unordered_map<UInt32, UInt32> active_bus_index_to_bus_index_;
+        
+        void SetupActiveBusTable();
+    };
+    
     struct AudioBusesInfo
     {
-        void Initialize(Impl *owner, Vst::BusDirection dir);
+        void Initialize(Impl *owner, Vst::BusDirections dir);
         
         size_t GetNumBuses() const;
         
@@ -88,7 +115,7 @@ public:
     private:
         Impl *owner_ = nullptr;
         std::vector<BusInfo> bus_infos_;
-        Vst::BusDirection dir_;
+        Vst::BusDirections dir_; // determine direction even if the bus_infos_ is empty.
         
         //! bus_infos_のis_active_状態によらず、定義されているすべてのバスと同じ数だけ用意される。
         std::vector<Vst::AudioBusBuffers> bus_buffers_;
@@ -125,8 +152,10 @@ public:
     UnitInfoList & GetUnitInfoList();
     UnitInfoList const & GetUnitInfoList() const;
     
-    AudioBusesInfo & GetBusesInfo(BusDirection dir);
-    AudioBusesInfo const & GetBusesInfo(BusDirection dir) const;
+    AudioBusesInfo & GetAudioBusesInfo(BusDirections dir);
+    AudioBusesInfo const & GetAudioBusesInfo(BusDirections dir) const;
+    MidiBusesInfo & GetMidiBusesInfo(BusDirections dir);
+    MidiBusesInfo const & GetMidiBusesInfo(BusDirections dir) const;
     
     UInt32 GetNumParameters() const;
     Vst::ParamValue GetParameterValueByIndex(UInt32 index) const;
@@ -173,6 +202,12 @@ public:
 private:
     //! PushBackParameterChangeとの呼び出しはスレッドセーフ
     void PopFrontParameterChanges(Vst::ParameterChanges &dest);
+    
+    void InputEvents(ProcessInfo::EventBufferList const *buffers,
+                     Vst::ProcessContext const &process_context);
+    
+    void OutputEvents(ProcessInfo::EventBufferList *buffers,
+                      Vst::ProcessContext const &process_context);
 
 private:
 	void LoadPlugin(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context);
@@ -213,8 +248,10 @@ private:
     
     void UpdateBusBuffers();
     
-    AudioBusesInfo input_buses_info_;
-    AudioBusesInfo output_buses_info_;
+    AudioBusesInfo input_audio_buses_info_;
+    AudioBusesInfo output_audio_buses_info_;
+    MidiBusesInfo input_midi_buses_info_;
+    MidiBusesInfo output_midi_buses_info_;
     
     // Vst3Plugin側にバッファを持たせないで、外側にあるバッファを使い回すほうが、コピーの手間が減っていいが、
     // ちょっと設計がややこしくなるので、いまはここにバッファを持たせるようにしておく。

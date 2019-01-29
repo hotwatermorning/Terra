@@ -94,10 +94,19 @@ public:
         else                                { return plugin_->GetNumOutputs(); }
     }
     
+    static
+    Vst3Plugin::BusDirections ToVst3BusDirection(BusDirection dir)
+    {
+        return
+        dir == BusDirection::kInputSide
+        ? Vst3Plugin::BusDirections::kInput
+        : Vst3Plugin::BusDirections::kOutput;
+    }
+    
     UInt32 GetMidiChannelCount(BusDirection dir) const override
     {
-        if(dir == BusDirection::kInputSide) { return 1; }
-        else                                { return 0; }
+        auto const media = Vst3Plugin::MediaTypes::kEvent;
+        return plugin_->GetNumActiveBuses(media, ToVst3BusDirection(dir));
     }
     
     bool HasEditor() const override { return plugin_->HasEditor(); }

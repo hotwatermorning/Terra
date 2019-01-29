@@ -277,6 +277,7 @@ void MyApp::OnInitImpl()
         
         MyFrame *frame = new MyFrame(kAppName, wxDefaultPosition, kDefaultWindowSize);
         frame->Show(true);
+        pimpl_->splash_screen_->Raise();
         frame->SetFocus();
         frame->CentreOnScreen();
         frame->SetMinSize(kMinimumWindowSize);

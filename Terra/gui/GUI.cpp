@@ -344,6 +344,8 @@ public:
         vbox->AddStretchSpacer(1);
         SetSizer(vbox);
         
+        Layout();
+        
         MyApp::GetInstance()->AddChangeProjectListener(this);
         
         auto pj = Project::GetCurrentProject();

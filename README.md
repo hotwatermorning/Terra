@@ -18,10 +18,10 @@ The yet another audio plugin hosting application. (alpha version)
 
 ## How to build
 
-```
+```sh
 cd ./gradle
-./gradlew build_all -Pconfig=<Debug or Release>
-open build_debug/Terra
+./gradlew build_all -Pconfig=Debug # or Release
+open ../build_debug/Debug/Terra.app
 ```
 
 Currently Terra can be build on macOS 10.13.4 & Xcode 9.3.1.

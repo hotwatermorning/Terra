@@ -510,11 +510,11 @@ private:
     class ComponentData : public wxClientData
     {
     public:
-        ComponentData(PluginDescription const &desc)
+        ComponentData(schema::PluginDescription const &desc)
         :   desc_(desc)
         {}
         
-        PluginDescription desc_;
+        schema::PluginDescription desc_;
     };
     
     wxPanel         *keyboard_;

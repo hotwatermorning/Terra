@@ -1,11 +1,11 @@
 syntax = "proto3";
 
-package hwm;
+package hwm.schema;
 
 message PluginDescription {
   enum PluginType {
     VST3 = 0;
-  }
+  };
 
   message Vst3Info {
     message ClassInfo2 {

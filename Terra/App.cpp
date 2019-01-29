@@ -314,7 +314,7 @@ void MyApp::BeforeExit()
 void MyApp::AddChangeProjectListener(ChangeProjectListener *li) { pimpl_->cp_listeners_.AddListener(li); }
 void MyApp::RemoveChangeProjectListener(ChangeProjectListener const *li) { pimpl_->cp_listeners_.RemoveListener(li); }
 
-std::unique_ptr<Vst3Plugin> MyApp::CreateVst3Plugin(PluginDescription const &desc)
+std::unique_ptr<Vst3Plugin> MyApp::CreateVst3Plugin(schema::PluginDescription const &desc)
 {
     hwm::dout << "Load VST3 Module: " << desc.vst3info().filepath() << std::endl;
     

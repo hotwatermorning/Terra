@@ -43,7 +43,7 @@ public:
     void AddChangeProjectListener(ChangeProjectListener *li);
     void RemoveChangeProjectListener(ChangeProjectListener const *li);
     
-    std::unique_ptr<Vst3Plugin> CreateVst3Plugin(PluginDescription const &desc);
+    std::unique_ptr<Vst3Plugin> CreateVst3Plugin(schema::PluginDescription const &desc);
 
     void RescanPlugins();
     void ForceRescanPlugins();

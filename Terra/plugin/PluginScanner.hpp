@@ -20,7 +20,7 @@ struct PluginScanner
     void SetDirectories(std::vector<String> const &dirs);
     void ClearDirectories();
     
-    std::vector<PluginDescription> GetPluginDescriptions() const;
+    std::vector<schema::PluginDescription> GetPluginDescriptions() const;
     void ClearPluginDescriptions();
 
     std::string Export();
@@ -57,9 +57,9 @@ private:
     std::unique_ptr<Impl> pimpl_;
 };
 
-bool HasPluginCategory(PluginDescription const &desc, std::string category_name);
-bool IsEffectPlugin(PluginDescription const &desc);
-bool IsInstrumentPlugin(PluginDescription const &desc);
+bool HasPluginCategory(schema::PluginDescription const &desc, std::string category_name);
+bool IsEffectPlugin(schema::PluginDescription const &desc);
+bool IsInstrumentPlugin(schema::PluginDescription const &desc);
 
 std::optional<ClassInfo::CID> to_cid(std::string str);
 

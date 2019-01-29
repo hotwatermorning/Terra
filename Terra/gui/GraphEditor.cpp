@@ -549,7 +549,7 @@ public:
         PopupMenu(&menu, ev.GetPosition());
     }
     
-    void AddNode(PluginDescription const &desc, wxPoint pt)
+    void AddNode(schema::PluginDescription const &desc, wxPoint pt)
     {
         auto app = MyApp::GetInstance();
         auto proc = std::make_shared<Vst3AudioProcessor>(app->CreateVst3Plugin(desc));

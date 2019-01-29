@@ -23,9 +23,9 @@ std::optional<ClassInfo::CID> to_cid(std::string str)
 
 template<class Container>
 bool Contains(Container &c, ClassInfo::CID const &cid) {
-    return std::any_of(c.begin(), c.end(), [&cid](PluginDescription const &desc) {
+    return std::any_of(c.begin(), c.end(), [&cid](schema::PluginDescription const &desc) {
         return
-        desc.type() == PluginDescription_PluginType_VST3
+        desc.type() == schema::PluginDescription_PluginType_VST3
         && desc.has_vst3info()
         && *to_cid(desc.vst3info().cid()) == cid;
     });
@@ -40,7 +40,7 @@ struct PluginScanner::Impl
     
     std::vector<String> path_to_scan_;
     LockFactory lf_;
-    std::vector<PluginDescription> pds_;
+    std::vector<schema::PluginDescription> pds_;
     std::thread th_;
     std::atomic<bool> scanning_;
     ListenerService<PluginScanner::Listener> listeners_;
@@ -86,9 +86,9 @@ public:
             
             if(Contains(pds, info.cid())) { continue; }
             
-            PluginDescription desc;
+            schema::PluginDescription desc;
             desc.set_name(to_utf8(info.name()));
-            desc.set_type(PluginDescription_PluginType_VST3);
+            desc.set_type(schema::PluginDescription_PluginType_VST3);
             auto vi = desc.mutable_vst3info();
             vi->set_filepath(dirname.ToUTF8());
             std::string const cid(info.cid().begin(), info.cid().end());
@@ -97,7 +97,7 @@ public:
             vi->set_cardinality(info.cardinality());
             
             if(info.has_classinfo2()) {
-                auto ci2 = std::make_unique<PluginDescription_Vst3Info_ClassInfo2>();
+                auto ci2 = std::make_unique<schema::PluginDescription_Vst3Info_ClassInfo2>();
                 ci2->set_subcategories(to_utf8(info.classinfo2().sub_categories()));
                 ci2->set_vendor(to_utf8(info.classinfo2().vendor()));
                 ci2->set_version(to_utf8(info.classinfo2().version()));
@@ -151,7 +151,7 @@ void PluginScanner::ClearDirectories()
     pimpl_->path_to_scan_.clear();
 }
 
-std::vector<PluginDescription> PluginScanner::GetPluginDescriptions() const
+std::vector<schema::PluginDescription> PluginScanner::GetPluginDescriptions() const
 {
     auto lock = pimpl_->lf_.make_lock();
     return pimpl_->pds_;
@@ -165,7 +165,7 @@ void PluginScanner::ClearPluginDescriptions()
 
 std::string PluginScanner::Export()
 {
-    PluginDescriptionList list;
+    schema::PluginDescriptionList list;
     
     auto pds = GetPluginDescriptions();
     
@@ -179,12 +179,12 @@ std::string PluginScanner::Export()
 
 void PluginScanner::Import(std::string const &str)
 {
-    PluginDescriptionList pd_list;
+    schema::PluginDescriptionList pd_list;
     pd_list.ParseFromString(str);
 
-    std::vector<PluginDescription> new_list;
+    std::vector<schema::PluginDescription> new_list;
     for(auto &x: pd_list.list()) {
-        PluginDescription desc;
+        schema::PluginDescription desc;
         desc.CopyFrom(x);
         new_list.push_back(desc);
     }
@@ -194,7 +194,7 @@ void PluginScanner::Import(std::string const &str)
     auto &pds = pimpl_->pds_;
     
     for(auto &x: pd_list.list()) {
-        if(x.type() == PluginDescription_PluginType_VST3) {
+        if(x.type() == schema::PluginDescription_PluginType_VST3) {
             if(x.has_vst3info() == false) { continue; }
             auto maybe_cid = to_cid(x.vst3info().cid());
             if(!maybe_cid || Contains(pds, *maybe_cid)) { continue; }
@@ -255,7 +255,7 @@ void PluginScanner::Wait()
     }
 }
 
-bool HasPluginCategory(PluginDescription const &desc, std::string category_name)
+bool HasPluginCategory(schema::PluginDescription const &desc, std::string category_name)
 {
     if(desc.vst3info().has_classinfo2()) {
         return desc.vst3info().classinfo2().subcategories().find(category_name) != std::string::npos;
@@ -264,12 +264,12 @@ bool HasPluginCategory(PluginDescription const &desc, std::string category_name)
     }
 }
 
-bool IsEffectPlugin(PluginDescription const &desc)
+bool IsEffectPlugin(schema::PluginDescription const &desc)
 {
     return HasPluginCategory(desc, "Fx");
 }
 
-bool IsInstrumentPlugin(PluginDescription const &desc)
+bool IsInstrumentPlugin(schema::PluginDescription const &desc)
 {
     return HasPluginCategory(desc, "Inst");
 }

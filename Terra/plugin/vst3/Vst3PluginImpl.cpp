@@ -770,7 +770,7 @@ std::optional<Vst::Event> const ToVstEvent(ProcessInfo::MidiMessage const &msg)
     }
 }
 
-void Vst3Plugin::Impl::InputEvents(ProcessInfo::EventBufferList const *buffers,
+void Vst3Plugin::Impl::InputEvents(ProcessInfo::IEventBufferList const *buffers,
                  Vst::ProcessContext const &process_context)
 {
     auto const num_active_buses = input_midi_buses_info_.GetNumActiveBuses();
@@ -811,7 +811,7 @@ void Vst3Plugin::Impl::InputEvents(ProcessInfo::EventBufferList const *buffers,
     }
 }
 
-void Vst3Plugin::Impl::OutputEvents(ProcessInfo::EventBufferList *buffers,
+void Vst3Plugin::Impl::OutputEvents(ProcessInfo::IEventBufferList *buffers,
                                     Vst::ProcessContext const &process_context)
 {
     auto const num_buffers = buffers->GetNumBuffers();

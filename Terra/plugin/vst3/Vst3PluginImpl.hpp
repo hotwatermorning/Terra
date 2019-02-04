@@ -203,10 +203,10 @@ private:
     //! PushBackParameterChangeとの呼び出しはスレッドセーフ
     void PopFrontParameterChanges(Vst::ParameterChanges &dest);
     
-    void InputEvents(ProcessInfo::EventBufferList const *buffers,
+    void InputEvents(ProcessInfo::IEventBufferList const *buffers,
                      Vst::ProcessContext const &process_context);
     
-    void OutputEvents(ProcessInfo::EventBufferList *buffers,
+    void OutputEvents(ProcessInfo::IEventBufferList *buffers,
                       Vst::ProcessContext const &process_context);
 
 private:

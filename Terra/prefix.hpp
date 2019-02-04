@@ -45,8 +45,10 @@ namespace std {
 NS_HWM_BEGIN
 
 using String = std::wstring;
+
 using SampleCount = std::int64_t;
 using AudioSample = float;
+using Tick = std::int64_t;
 
 using Int8 = std::int8_t;
 using Int16 = std::int16_t;

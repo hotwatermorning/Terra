@@ -839,11 +839,12 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
     auto &ti = *pi.time_info_;
 	Vst::ProcessContext process_context = {};
 	process_context.sampleRate = sampling_rate_;
-	process_context.projectTimeSamples = ti.smp_begin_pos_;
-    process_context.projectTimeMusic = ti.ppq_begin_pos_;
+	process_context.projectTimeSamples = ti.play_.begin_.sample_;
+    process_context.projectTimeMusic = ti.play_.begin_.tick_ / ti.tpqn_;
 	process_context.tempo = ti.tempo_;
-	process_context.timeSigDenominator = ti.time_sig_denom_;
-	process_context.timeSigNumerator = ti.time_sig_numer_;
+	process_context.timeSigDenominator = ti.meter_.denom_;
+	process_context.timeSigNumerator = ti.meter_.numer_;
+    SampleCount sample_length = ti.play_.duration_.sample_;
 
     using Flags = Vst::ProcessContext::StatesAndFlags;
     
@@ -880,7 +881,7 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
     };
     
     copy_buffer(pi.input_audio_buffer_, input_buffer_,
-                pi.time_info_->GetSmpDuration()
+                sample_length
                 );
 
 	PopFrontParameterChanges(input_params_);
@@ -889,7 +890,7 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
 	process_data.processContext = &process_context;
 	process_data.processMode = Vst::ProcessModes::kRealtime;
 	process_data.symbolicSampleSize = Vst::SymbolicSampleSizes::kSample32;
-    process_data.numSamples = ti.GetSmpDuration();
+    process_data.numSamples = sample_length;
     process_data.numInputs = input_audio_buses_info_.GetNumBuses();
 	process_data.numOutputs = output_audio_buses_info_.GetNumBuses();
     process_data.inputs = input_audio_buses_info_.GetBusBuffers();
@@ -910,7 +911,7 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
     }
     
     copy_buffer(output_buffer_, pi.output_audio_buffer_,
-                pi.time_info_->GetSmpDuration()
+                sample_length
                 );
 
 	for(int i = 0; i < output_params_.getParameterCount(); ++i) {

@@ -38,7 +38,7 @@ public:
         for(int ch = 0; ch < channels; ++ch) {
             auto ch_src = ref_.get_channel_data(ch);
             auto ch_dest = dest.get_channel_data(ch);
-            std::copy_n(ch_src, pi.time_info_->GetSmpDuration(), ch_dest);
+            std::copy_n(ch_src, pi.time_info_->play_.duration_.sample_, ch_dest);
         }
     }
     
@@ -365,14 +365,14 @@ public:
             0,
             input_audio_buffer_.channels(),
             0,
-            (UInt32)ti.GetSmpDuration()
+            (UInt32)ti.play_.duration_.sample_
         };
         pi.output_audio_buffer_ = BufferRef<float> {
             output_audio_buffer_,
             0,
             output_audio_buffer_.channels(),
             0,
-            (UInt32)ti.GetSmpDuration()
+            (UInt32)ti.play_.duration_.sample_
         };
         
         pi.input_event_buffers_ = &input_event_buffers_;
@@ -851,7 +851,7 @@ void GraphProcessor::Process(TransportInfo const &ti)
                 ac->upstream_channel_index_,
                 ac->num_channels_,
                 0,
-                (UInt32)ti.GetSmpDuration()
+                (UInt32)ti.play_.duration_.sample_
             };
             down->AddAudio(ref, ac->downstream_channel_index_);
         } else if(auto mc = dynamic_cast<MidiConnection const *>(conn.get())) {

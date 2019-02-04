@@ -137,6 +137,10 @@ private:
 
 struct Project::Impl
 {
+    Impl(Project *pj)
+    :   tp_(pj)
+    {}
+    
     LockFactory lf_;
     Transporter tp_;
     bool is_active_ = false;
@@ -162,7 +166,7 @@ struct Project::Impl
 };
 
 Project::Project()
-:   pimpl_(std::make_unique<Impl>())
+:   pimpl_(std::make_unique<Impl>(this))
 {
     pimpl_->playing_sequence_notes_.Clear();
     pimpl_->requested_sample_notes_.Clear();
@@ -437,6 +441,14 @@ void Project::StartProcessing(double sample_rate,
     pimpl_->num_device_inputs_ = num_input_channels;
     pimpl_->num_device_outputs_ = num_output_channels;
     pimpl_->graph_.StartProcessing(sample_rate, max_block_size);
+    
+    auto const info = pimpl_->tp_.GetCurrentState();
+    SampleCount const sample = Round<SampleCount>(TickToSample(info.play_.begin_.tick_));
+    pimpl_->tp_.MoveTo(sample);
+    
+    SampleCount const loop_begin_sample = Round<SampleCount>(TickToSample(info.loop_.begin_.tick_));
+    SampleCount const loop_end_sample = Round<SampleCount>(TickToSample(info.loop_.end_.tick_));
+    pimpl_->tp_.SetLoopRange(loop_begin_sample, loop_end_sample);
 }
 
 template<class F>
@@ -474,8 +486,8 @@ void Project::Process(SampleCount block_size, float const * const * input, float
     SampleCount num_processed = 0;
     
     auto cb = MakeTraversalCallback([&, this](TransportInfo const &ti) {
-        auto const frame_begin = ti.smp_begin_pos_;
-        auto const frame_end = ti.smp_end_pos_;
+        auto const frame_begin = ti.play_.begin_.sample_;
+        auto const frame_end = ti.play_.end_.sample_;
         
         for(auto &entry: pimpl_->midi_input_table_) {
             entry.second.clear();
@@ -483,7 +495,7 @@ void Project::Process(SampleCount block_size, float const * const * input, float
         
         if(auto mdm = MidiDeviceManager::GetInstance()) {
             auto const timestamp = mdm->GetMessages(pimpl_->device_midi_input_buffer_);
-            auto frame_length = ti.GetSmpDuration() / pimpl_->sample_rate_;
+            auto frame_length = ti.play_.duration_.sec_;
             auto frame_begin_time = timestamp - frame_length;
             for(auto dm: pimpl_->device_midi_input_buffer_) {
                 auto const pos = std::max<double>(0, dm.time_stamp_ - frame_begin_time);
@@ -502,9 +514,9 @@ void Project::Process(SampleCount block_size, float const * const * input, float
                                   MidiDevice *device)
         {
             ProcessInfo::MidiMessage mm;
-            mm.offset_ = sample_pos - ti.smp_begin_pos_;
+            mm.offset_ = sample_pos - ti.play_.begin_.sample_;
             mm.channel_ = channel;
-            mm.ppq_pos_ = SampleToPPQ(sample_pos);
+            mm.ppq_pos_ = SampleToTick(sample_pos) / GetTpqn();
             if(is_note_on) {
                 mm.data_ = MidiDataType::NoteOn { pitch, velocity };
             } else {
@@ -517,9 +529,10 @@ void Project::Process(SampleCount block_size, float const * const * input, float
         
         bool const need_stop_all_sequence_notes
         = (ti.playing_ == false)
-        || (ti.playing_ && ti.smp_begin_pos_ != pimpl_->smp_last_pos_);
+        || (ti.playing_ && ti.play_.begin_.sample_ != pimpl_->smp_last_pos_)
+        ;
         
-        pimpl_->smp_last_pos_ = ti.smp_end_pos_;
+        pimpl_->smp_last_pos_ = ti.play_.end_.sample_;
 
         if(need_stop_all_sequence_notes) {
             int x = 0;
@@ -529,7 +542,7 @@ void Project::Process(SampleCount block_size, float const * const * input, float
                 auto note = x.load();
                 if(note) {
                     assert(note.IsNoteOn());
-                    add_note(ti.smp_begin_pos_, ch, pi, 0, false, &kSequencerMidiInput);
+                    add_note(ti.play_.begin_.sample_, ch, pi, 0, false, &kSequencerMidiInput);
                     x.store(InternalPlayingNoteInfo());
                 }
             });
@@ -554,10 +567,10 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             bool const playing = (playing_note && playing_note.IsNoteOn());
             if(!note) { return; }
             if(note.IsNoteOn() && !playing) {
-                add_note(ti.smp_begin_pos_, ch, pi, note.velocity_, true, &kSoftwareKeyboardMidiInput);
+                add_note(ti.play_.begin_.sample_, ch, pi, note.velocity_, true, &kSoftwareKeyboardMidiInput);
                 pimpl_->playing_sample_notes_.SetNoteOn(ch, pi, note.velocity_);
             } else if(note.IsNoteOff()) {
-                add_note(ti.smp_begin_pos_, ch, pi, note.velocity_, false, &kSoftwareKeyboardMidiInput);
+                add_note(ti.play_.begin_.sample_, ch, pi, note.velocity_, false, &kSoftwareKeyboardMidiInput);
                 pimpl_->playing_sample_notes_.ClearNote(ch, pi);
             }
         });
@@ -568,7 +581,7 @@ void Project::Process(SampleCount block_size, float const * const * input, float
                 0,
                 (UInt32)pimpl_->num_device_inputs_,
                 (UInt32)num_processed,
-                (UInt32)ti.GetSmpDuration()
+                (UInt32)ti.play_.duration_.sample_
             };
         } else {
             pimpl_->input_ = BufferRef<float const>{};
@@ -579,12 +592,12 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             0,
             (UInt32)pimpl_->num_device_outputs_,
             (UInt32)num_processed,
-            (UInt32)ti.GetSmpDuration(),
+            (UInt32)ti.play_.duration_.sample_,
         };
         
         pimpl_->graph_.Process(ti);
 
-        num_processed += ti.GetSmpDuration();
+        num_processed += ti.play_.duration_.sample_;
     });
     
     Transporter::Traverser tv;
@@ -611,7 +624,7 @@ void Project::OnSetAudio(GraphProcessor::AudioInput *input, ProcessInfo const &p
     = std::min<int>(num_src_channels, num_desired_channels + channel_index)
     - channel_index;
     
-    assert(pi.time_info_->GetSmpDuration() == pimpl_->input_.samples());
+    assert(pi.time_info_->play_.duration_.sample_ == pimpl_->input_.samples());
     BufferRef<float const> ref {
         pimpl_->input_.data(),
         channel_index,
@@ -628,8 +641,9 @@ void Project::OnGetAudio(GraphProcessor::AudioOutput *output, ProcessInfo const 
     auto src = output->GetData();
     auto dest = pimpl_->output_;
     
-    assert(pi.time_info_->GetSmpDuration() == src.samples());
-    assert(pi.time_info_->GetSmpDuration() == dest.samples());
+    SampleCount const sample_length = pi.time_info_->play_.duration_.sample_;
+    assert(sample_length == src.samples());
+    assert(sample_length == dest.samples());
     
     auto const num_desired_channels = output->GetAudioChannelCount(BusDirection::kInputSide);
     auto const num_dest_channels = pimpl_->output_.channels();
@@ -645,7 +659,7 @@ void Project::OnGetAudio(GraphProcessor::AudioOutput *output, ProcessInfo const 
     for(int ch = 0; ch < num_available_channels; ++ch) {
         auto ch_src = src.data()[ch + src.channel_from()] + src.sample_from();
         auto ch_dest = dest.data()[ch + dest.channel_from()] + channel_index + dest.sample_from();
-        for(int smp = 0; smp < src.samples(); ++smp) {
+        for(int smp = 0; smp < sample_length; ++smp) {
             ch_dest[smp] += ch_src[smp];
         }
     }

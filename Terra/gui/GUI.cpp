@@ -336,7 +336,7 @@ public:
         auto font = wxFont(wxFontInfo(font_size).Family(wxFONTFAMILY_MODERN).FaceName("Geneva"));
         text_->SetFont(font);
         text_->SetForegroundColour(wxColour(0xCB, 0xCB, 0xCB));
-        text_->SetLabel("0000:00:000");
+        UpdateTime(MBT(0, 0, 0));
         
         auto vbox = new wxBoxSizer(wxVERTICAL);
         vbox->AddStretchSpacer(1);
@@ -385,30 +385,28 @@ private:
             new_pj->GetTransporter().AddListener(this);
         }
     }
+    
+    void UpdateTime(MBT mbt)
+    {
+        text_->SetLabel("{:03d}:{:02d}:{:03d}"_format(mbt.measure_ + 1,
+                                                      mbt.beat_ + 1,
+                                                      mbt.tick_));
+        Layout();
+    }
         
     void OnChanged(TransportInfo const &old_state,
                    TransportInfo const &new_state) override
     {
         auto to_tuple = [](TransportInfo const &info) {
-            return std::tie(info.ppq_begin_pos_, info.time_sig_numer_, info.time_sig_denom_);
+            return std::tie(info.play_.begin_, info.meter_);
         };
         if(to_tuple(old_state) == to_tuple(new_state)) {
             return;
         }
         
-        auto const kTpqn = 480;
-        auto const tick = (Int64)(new_state.ppq_begin_pos_ * kTpqn);
-        auto const beat_length = (kTpqn * 4) / new_state.time_sig_denom_;
-        auto const measure_length = beat_length * new_state.time_sig_numer_;
-        auto measure_pos = tick / measure_length;
-        auto beat_pos = (tick % measure_length) / beat_length;
-        auto tick_pos = tick % beat_length;
-        
-        text_->SetLabel("{:04d}:{:02d}:{:03d}"_format(measure_pos + 1,
-                                                      beat_pos + 1,
-                                                      tick_pos)
-                        );
-        Layout();
+        auto pj = Project::GetCurrentProject();
+        auto mbt = pj->TickToMBT(new_state.play_.begin_.tick_);
+        UpdateTime(mbt);
     }
     
     void OnTimer()

@@ -2,10 +2,6 @@
 
 NS_HWM_BEGIN
 
-double GetPPQPos(TransportInfo const &info);
-double GetTempoAt(double ppq_pos);
-std::pair<UInt8, UInt8> GetTimeSignatureAt(double ppq_pos);
-
 Transporter::Traverser::Traverser()
 {}
 
@@ -14,6 +10,8 @@ void Transporter::Traverser::Traverse(Transporter *tp, SampleCount length, ITrav
     SampleCount remain = length;
     
     for( ; remain > 0 ; ) {
+        // 現在のTransportInfoのend位置を更新してフレーム処理。
+        // そのあと、begin位置を更新して、次のフレームへ。
         TransportInfo ti;
         {
             auto lock = tp->lf_.make_lock();
@@ -24,49 +22,44 @@ void Transporter::Traverser::Traverse(Transporter *tp, SampleCount length, ITrav
         bool need_jump_to_begin = false;
         
         if(ti.IsLooping() && ti.playing_) {
-            if(ti.smp_begin_pos_ < ti.loop_begin_) {
-                ti.smp_end_pos_ = std::min(ti.smp_begin_pos_ + remain, ti.loop_begin_);
-            } else if(ti.smp_begin_pos_ < ti.loop_end_) {
-                ti.smp_end_pos_ = std::min(ti.smp_begin_pos_ + remain, ti.loop_end_);
-                if(ti.smp_end_pos_ == ti.loop_end_) {
+            if(ti.play_.begin_.sample_ < ti.loop_.begin_.sample_) {
+                ti.play_.end_.sample_ = std::min(ti.play_.begin_.sample_ + remain, ti.loop_.begin_.sample_);
+            } else if(ti.play_.begin_.sample_ < ti.loop_.end_.sample_) {
+                ti.play_.end_.sample_ = std::min(ti.play_.begin_.sample_ + remain, ti.loop_.end_.sample_);
+                if(ti.play_.end_.sample_ == ti.loop_.end_.sample_) {
                     need_jump_to_begin = true;
                 }
             } else {
-                ti.smp_end_pos_ = ti.smp_begin_pos_ + remain;
+                ti.play_.end_.sample_ = ti.play_.begin_.sample_ + remain;
             }
         } else {
-            ti.smp_end_pos_ = ti.smp_begin_pos_ + remain;
+            ti.play_.end_.sample_ = ti.play_.begin_.sample_ + remain;
         }
         
-        ti.ppq_end_pos_ = GetPPQPos(ti);
-        ti.tempo_ = GetTempoAt(ti.ppq_begin_pos_);
-        auto time_sig = GetTimeSignatureAt(ti.ppq_begin_pos_);
-        ti.time_sig_numer_ = time_sig.first;
-        ti.time_sig_denom_ = time_sig.second;
+        auto mt = tp->GetMusicalTimeService();
+        
+        ti.sample_rate_ = mt->GetSampleRate();
+        ti.tpqn_ = mt->GetTpqn();
+        ti.play_ = TimeRange(ti.play_.begin_, tp->SampleToTimePoint(ti.play_.end_.sample_));
+        ti.tempo_ = mt->GetTempoAt(ti.play_.begin_.tick_);
+        ti.meter_ = mt->GetMeterAt(ti.play_.begin_.tick_);
         
         cb->Process(ti);
         
+        remain -= ti.play_.duration_.sample_;
+        
         auto lock = tp->lf_.make_lock();
         auto &current = tp->transport_info_;
-        if(current.smp_begin_pos_ == orig.smp_begin_pos_ &&
-           current.ppq_begin_pos_ == orig.ppq_begin_pos_)
-        {
+        if(current.play_.begin_ == orig.play_.begin_) {
             if(need_jump_to_begin) {
-                current.smp_begin_pos_ = current.smp_end_pos_ = ti.loop_begin_;
-                current.ppq_begin_pos_ = current.ppq_begin_pos_ = GetPPQPos(current);
+                current.play_ = TimeRange(ti.loop_.begin_, ti.loop_.begin_);
             } else if(current.playing_) {
-                current.smp_begin_pos_ = current.smp_end_pos_ = ti.smp_end_pos_;
-                current.ppq_begin_pos_ = current.ppq_end_pos_ = ti.ppq_end_pos_;
+                current.play_ = TimeRange(ti.play_.end_, ti.play_.end_);
             } else {
-                current.smp_begin_pos_ = ti.smp_begin_pos_;
-                current.smp_end_pos_ = ti.smp_end_pos_;
-                current.ppq_begin_pos_ = ti.ppq_begin_pos_;
-                current.ppq_end_pos_ = ti.ppq_end_pos_;
+                current.play_ = ti.play_;
             }
         } // 再生位置が変わったときは、currentの状態をそのまま次回の再生に使用する
         lock.unlock();
-        
-        remain -= (ti.smp_end_pos_ - ti.smp_begin_pos_);
     }
 }
 

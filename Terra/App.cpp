@@ -33,16 +33,10 @@ std::string GetPluginDescFileName() {
     return "plugin_list.bin";
 }
 
-std::shared_ptr<Sequence> MakeSequence() {
-    static auto const tick_to_sample = [](int tick) -> SampleCount {
-        return (SampleCount)std::round(tick / 480.0 * 0.5 * kSampleRate);
-    };
-    
+Sequence MakeSequence() {
     auto create_note = [](int tick_pos, int tick_length, UInt8 pitch, UInt8 velocity = 64, UInt8 off_velocity = 0) {
-        auto sample_pos = tick_to_sample(tick_pos);
-        auto sample_end_pos = tick_to_sample(tick_pos + tick_length);
         UInt8 channel = 0;
-        return Sequence::Note { sample_pos, sample_end_pos - sample_pos, channel, pitch, velocity, off_velocity };
+        return Sequence::Note { tick_pos, tick_length, channel, pitch, velocity, off_velocity };
     };
     
     std::vector<Sequence::Note> notes {
@@ -74,7 +68,7 @@ std::shared_ptr<Sequence> MakeSequence() {
     assert(std::is_sorted(notes.begin(), notes.end(), [](auto const &lhs, auto const &rhs) {
         return lhs.pos_ < rhs.pos_;
     }));
-    return std::make_shared<Sequence>(notes);
+    return Sequence(notes);
 }
 
 struct MyApp::Impl
@@ -253,7 +247,8 @@ void MyApp::OnInitImpl()
     pimpl_->splash_screen_->AddMessage(L"Create empty project");
     
     auto pj = std::make_shared<Project>();
-    pj->SetSequence(MakeSequence());
+    auto &seq = pj->GetSequence();
+    seq = MakeSequence({48, 50, 52, 55, 60});
     pj->GetTransporter().SetLoopRange(0, 4 * kSampleRate);
     pj->GetTransporter().SetLoopEnabled(true);
     

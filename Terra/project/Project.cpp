@@ -135,6 +135,56 @@ private:
     container list_;
 };
 
+template<class T>
+struct Borrowable
+{
+    struct Releaser
+    {
+        Releaser(Borrowable *owner)
+        :   owner_(owner)
+        {}
+        
+        template<class U>
+        void operator()(U *p) {
+            auto lock = owner_->lf_.make_lock();
+            if(owner_->data_ == nullptr) {
+                owner_->data_.reset(p);
+            } else {
+                assert(owner_->released_ == nullptr);
+                owner_->released_.reset(p);
+            }
+        }
+        
+    private:
+        Borrowable *owner_;
+    };
+    
+    //! from non-realtime thread
+    void Set(std::unique_ptr<T> x)
+    {
+        auto lock = lf_.make_lock();
+        auto tmp_released = std::move(released_);
+        auto tmp_data = std::move(data_);
+        data_ = std::move(x);
+        lock.unlock();
+    }
+    
+    std::unique_ptr<T, Releaser> Borrow()
+    {
+        auto lock = lf_.make_lock();
+        if(data_) {
+            return std::unique_ptr<T, Releaser>(data_.release(), Releaser(this));
+        } else {
+            return std::unique_ptr<T, Releaser>(released_.release(), Releaser(this));
+        }
+    }
+    
+private:
+    LockFactory lf_;
+    std::unique_ptr<T> data_;
+    std::unique_ptr<T> released_;
+};
+
 struct Project::Impl
 {
     Impl(Project *pj)
@@ -144,12 +194,12 @@ struct Project::Impl
     LockFactory lf_;
     Transporter tp_;
     bool is_active_ = false;
-    double sample_rate_ = 0;
+    double sample_rate_ = 44100;
     SampleCount block_size_ = 0;
     BypassFlag bypass_;
     int num_device_inputs_ = 0;
     int num_device_outputs_ = 0;
-    std::shared_ptr<Sequence> sequence_;
+    Sequence sequence_;
     PlayingNoteList playing_sequence_notes_;
     PlayingNoteList requested_sample_notes_;
     PlayingNoteList playing_sample_notes_;
@@ -160,6 +210,13 @@ struct Project::Impl
     BufferRef<float const> input_;
     //! output to device
     BufferRef<float> output_;
+    
+    using CachedSequence = std::vector<ProcessInfo::MidiMessage>;
+    
+    CachedSequence *last_cached_sequence_ = nullptr;
+    using cached_iter_t = CachedSequence::const_iterator;
+    cached_iter_t cached_iter_;
+    Borrowable<CachedSequence> cached_sequence_;
     
     std::vector<DeviceMidiMessage> device_midi_input_buffer_;
     std::map<MidiDevice const *, std::vector<ProcessInfo::MidiMessage>> midi_input_table_;
@@ -225,20 +282,15 @@ void Project::AddMidiOutput(MidiDevice *device)
 //                                 });
 }
 
-std::shared_ptr<Sequence> Project::GetSequence() const
+Sequence & Project::GetSequence() const
 {
-    auto lock = pimpl_->lf_.make_lock();
     return pimpl_->sequence_;
 }
 
-void Project::SetSequence(std::shared_ptr<Sequence> seq)
+void Project::CacheSequence()
 {
-    //! フレーム処理中は実行しない。
-    //! (seqがフレーム処理の中だけで参照されて、リアルタイムスレッド上でdeleteされてしまうのを防ぐため)
-    auto bypass = MakeScopedBypassRequest(pimpl_->bypass_, true);
-    
-    auto lock = pimpl_->lf_.make_lock();
-    pimpl_->sequence_ = seq;
+    auto cache = pimpl_->sequence_.Cache(this);
+    pimpl_->cached_sequence_.Set(std::make_unique<decltype(cache)>(std::move(cache)));
 }
 
 Transporter & Project::GetTransporter()
@@ -449,6 +501,8 @@ void Project::StartProcessing(double sample_rate,
     SampleCount const loop_begin_sample = Round<SampleCount>(TickToSample(info.loop_.begin_.tick_));
     SampleCount const loop_end_sample = Round<SampleCount>(TickToSample(info.loop_.end_.tick_));
     pimpl_->tp_.SetLoopRange(loop_begin_sample, loop_end_sample);
+    
+    CacheSequence();
 }
 
 template<class F>
@@ -485,10 +539,7 @@ void Project::Process(SampleCount block_size, float const * const * input, float
     
     SampleCount num_processed = 0;
     
-    auto cb = MakeTraversalCallback([&, this](TransportInfo const &ti) {
-        auto const frame_begin = ti.play_.begin_.sample_;
-        auto const frame_end = ti.play_.end_.sample_;
-        
+    auto cb = MakeTraversalCallback([&, this](TransportInfo const &ti) {        
         for(auto &entry: pimpl_->midi_input_table_) {
             entry.second.clear();
         }
@@ -507,8 +558,6 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             }
         }
         
-        auto in_this_frame = [&](auto pos) { return frame_begin <= pos && pos < frame_end; };
-        
         auto add_note = [&, this](SampleCount sample_pos,
                                   UInt8 channel, UInt8 pitch, UInt8 velocity, bool is_note_on,
                                   MidiDevice *device)
@@ -525,13 +574,16 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             pimpl_->midi_input_table_[device].push_back(mm);
         };
         
-        std::shared_ptr<Sequence> seq = GetSequence();
+        auto cache = pimpl_->cached_sequence_.Borrow();
+        assert(cache != nullptr);
         
         bool const need_stop_all_sequence_notes
         = (ti.playing_ == false)
         || (ti.playing_ && ti.play_.begin_.sample_ != pimpl_->smp_last_pos_)
+        || (cache.get() != pimpl_->last_cached_sequence_)
         ;
         
+        pimpl_->last_cached_sequence_ = cache.get();
         pimpl_->smp_last_pos_ = ti.play_.end_.sample_;
 
         if(need_stop_all_sequence_notes) {
@@ -546,19 +598,27 @@ void Project::Process(SampleCount block_size, float const * const * input, float
                     x.store(InternalPlayingNoteInfo());
                 }
             });
+            
+            pimpl_->cached_iter_ = std::lower_bound(cache->begin(), cache->end(),
+                                                    ti.play_.begin_.sample_,
+                                                    [](auto const &left, auto const right) {
+                                                        return left.offset_ < right;
+                                                    });
         }
         
         if(ti.playing_) {
-            std::for_each(seq->notes_.begin(), seq->notes_.end(), [&](Sequence::Note const &note) {
-                if(in_this_frame(note.pos_)) {
-                    add_note(note.pos_, note.channel_, note.pitch_, note.velocity_, true, &kSequencerMidiInput);
-                    pimpl_->playing_sequence_notes_.SetNoteOn(note.channel_, note.pitch_, note.velocity_);
+            for(auto &it = pimpl_->cached_iter_; it != cache->end(); ++it) {
+                auto const &ev = *it;
+                if(ev.offset_ >= ti.play_.end_.sample_) { break; }
+                
+                if(auto p = ev.As<MidiDataType::NoteOn>()) {
+                    add_note(ev.offset_, ev.channel_, p->pitch_, p->velocity_, true, &kSequencerMidiInput);
+                    pimpl_->playing_sequence_notes_.SetNoteOn(ev.channel_, p->pitch_, p->velocity_);
+                } else if(auto p = ev.As<MidiDataType::NoteOff>()) {
+                    add_note(ev.offset_, ev.channel_, p->pitch_, p->off_velocity_, false, &kSequencerMidiInput);
+                    pimpl_->playing_sequence_notes_.ClearNote(ev.channel_, p->pitch_);
                 }
-                if(in_this_frame(note.GetEndPos()-1)) {
-                    add_note(note.GetEndPos(), note.channel_, note.pitch_, note.off_velocity_, false, &kSequencerMidiInput);
-                    pimpl_->playing_sequence_notes_.ClearNote(note.channel_, note.pitch_);
-                }
-            });
+            }
         }
         
         pimpl_->requested_sample_notes_.Traverse([&](auto ch, auto pi, auto &x) {

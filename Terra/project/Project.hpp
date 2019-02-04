@@ -45,8 +45,8 @@ public:
     void AddMidiInput(MidiDevice *device);
     void AddMidiOutput(MidiDevice *device);
     
-    std::shared_ptr<Sequence> GetSequence() const;
-    void SetSequence(std::shared_ptr<Sequence> seq);
+    Sequence & GetSequence() const;
+    void CacheSequence();
     
     Transporter & GetTransporter();
     Transporter const & GetTransporter() const;

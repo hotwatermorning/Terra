@@ -4,6 +4,7 @@
 #include "../device/AudioDeviceManager.hpp"
 #include "./GraphProcessor.hpp"
 #include "../App.hpp"
+#include "../misc/Round.hpp"
 #include <map>
 
 NS_HWM_BEGIN
@@ -41,7 +42,7 @@ struct InternalPlayingNoteInfo
     
     bool initialized_ = false;
     bool is_note_on_ = false;
-    UInt8 velocity_ = 0; // may be an note off velocity.
+    UInt8 velocity_ = 0; // may be a note off velocity.
     
     bool IsNoteOn() const {
         assert(initialized());
@@ -271,24 +272,6 @@ void Project::SendSampleNoteOff(UInt8 channel, UInt8 pitch, UInt8 off_velocity)
     pimpl_->requested_sample_notes_.SetNoteOff(channel, pitch, off_velocity);
 }
 
-double Project::SampleToPPQ(SampleCount sample_pos) const
-{
-    // tempo automations is not supported yet.
-    auto lock = pimpl_->lf_.make_lock();
-    auto info = pimpl_->tp_.GetCurrentState();
-    
-    return (sample_pos / info.sample_rate_) * (info.tempo_ / 60.0);
-}
-
-SampleCount Project::PPQToSample(double ppq_pos) const
-{
-    // tempo automations is not supported yet.
-    auto lock = pimpl_->lf_.make_lock();
-    auto info = pimpl_->tp_.GetCurrentState();
-    
-    return (SampleCount)std::round(ppq_pos * (60.0 / info.tempo_) * info.sample_rate_);
-}
-
 struct ScopedAudioDeviceStopper
 {
     ScopedAudioDeviceStopper(AudioDevice *dev)
@@ -347,6 +330,101 @@ void Project::Deactivate()
 bool Project::IsActive() const
 {
     return pimpl_->is_active_;
+}
+
+double Project::GetSampleRate() const
+{
+    return pimpl_->sample_rate_;
+}
+
+Tick Project::GetTpqn() const
+{
+    return 480;
+}
+
+double Project::TickToSec(double tick) const
+{
+    return SampleToSec(TickToSample(tick));
+}
+
+double Project::SecToTick(double sec) const
+{
+    return SampleToTick(SecToSample(sec));
+}
+
+double Project::TickToSample(double tick) const
+{
+    // tempo automation is not supported yet.
+    auto lock = pimpl_->lf_.make_lock();
+    
+    auto ppq_pos = tick / GetTpqn();
+    return Round<SampleCount>(ppq_pos * 60.0 / GetTempoAt(0) * GetSampleRate());
+}
+
+double Project::SampleToTick(double sample) const
+{
+    // tempo automation is not supported yet.
+    auto lock = pimpl_->lf_.make_lock();
+    
+    double const ppq_pos = (sample / GetSampleRate()) * (GetTempoAt(0) / 60.0);
+    return ppq_pos * GetTpqn();
+}
+
+double Project::SecToSample(double sec) const
+{
+    return sec * pimpl_->sample_rate_;
+}
+
+double Project::SampleToSec(double sample) const
+{
+    assert(pimpl_->sample_rate_ > 0);
+    return sample / pimpl_->sample_rate_;
+}
+
+double Project::TickToPPQ(double tick) const
+{
+    return tick / GetTpqn();
+}
+
+double Project::PPQToTick(double ppq) const
+{
+    return ppq * GetTpqn();
+}
+
+MBT Project::TickToMBT(Tick tick) const
+{
+    auto tpqn = GetTpqn();
+    auto meter = GetMeterAt(tick);
+    auto const beat_length = meter.GetBeatLength(tpqn);
+    auto const measure_length = meter.GetMeasureLength(tpqn);
+    auto const measure_pos = tick / measure_length;
+    auto const beat_pos = (tick % measure_length) / beat_length;
+    auto const tick_pos = tick % beat_length;
+    
+    return MBT(measure_pos, beat_pos, tick_pos);
+}
+
+Tick Project::MBTToTick(MBT mbt) const
+{
+    // meter event sequence is not supported yet.
+    
+    auto const meter = GetMeterAt(0);
+    auto const tpqn = GetTpqn();
+
+    return
+    mbt.measure_ * meter.GetMeasureLength(tpqn)
+    + mbt.beat_ * meter.GetBeatLength(tpqn)
+    + mbt.tick_;
+}
+
+double Project::GetTempoAt(double tick) const
+{
+    return 120.0;
+}
+
+Meter Project::GetMeterAt(double tick) const
+{
+    return Meter(4, 4);
 }
 
 void Project::StartProcessing(double sample_rate,

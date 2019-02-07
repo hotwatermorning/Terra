@@ -21,7 +21,13 @@ std::string to_utf8(std::wstring const &str)
 
 std::u16string to_utf16(std::wstring const &str)
 {
-    return reinterpret_cast<char16_t const *>(wxString(str.c_str()).mb_str(wxMBConvUTF16{}).data());
+    auto ws = wxString(str.c_str());
+    auto buf = ws.mb_str(wxMBConvUTF16{});
+    auto const it = reinterpret_cast<char16_t const *>(buf.data());
+    auto const end = it + buf.length() / 2;
+    
+    std::u16string u16(it, end);
+    return u16;
 }
 
 NS_HWM_END

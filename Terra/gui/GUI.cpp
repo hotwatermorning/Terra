@@ -520,6 +520,29 @@ private:
     GraphEditor     *graph_panel_ = nullptr;
 };
 
+class MyPanel;
+
+class MyFrame
+:   public wxFrame
+,   SingleInstance<MyFrame>
+{
+public:
+    MyFrame();
+    ~MyFrame();
+private:
+    bool Destroy() override;
+    void OnExit();
+    void OnAbout(wxCommandEvent& event);
+    void OnPlay(wxCommandEvent& event);
+    void OnEnableInputs(wxCommandEvent& event);
+    void OnTimer();
+    
+private:
+    std::string msg_;
+    wxTimer timer_;
+    MyPanel *my_panel_;
+};
+
 enum
 {
     ID_Play = 1,
@@ -528,8 +551,8 @@ enum
     ID_Setting
 };
 
-MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
-: wxFrame(nullptr, wxID_ANY, title, pos, size)
+MyFrame::MyFrame()
+: wxFrame(nullptr, wxID_ANY, "Untitled", wxDefaultPosition, wxDefaultSize)
 {
     wxMenu *menuFile = new wxMenu;
     menuFile->Append(ID_RescanPlugin, "&Rescan Plugins", "Rescan Plugins");
@@ -601,6 +624,11 @@ void MyFrame::OnPlay(wxCommandEvent &ev)
 
 void MyFrame::OnTimer()
 {
+}
+
+wxFrame * CreateMainFrame()
+{
+    return new MyFrame();
 }
 
 NS_HWM_END

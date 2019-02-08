@@ -270,12 +270,15 @@ void MyApp::OnInitImpl()
     CallAfter([this] {
         pimpl_->splash_screen_->AddMessage(L"Create main window");
         
-        MyFrame *frame = new MyFrame(kAppName, wxDefaultPosition, kDefaultWindowSize);
+        wxFrame *frame = CreateMainFrame();
         frame->Show(true);
         pimpl_->splash_screen_->Raise();
         frame->SetFocus();
-        frame->CentreOnScreen();
+        frame->SetSize(kDefaultWindowSize);
         frame->SetMinSize(kMinimumWindowSize);
+        frame->CentreOnScreen();
+        frame->Layout();
+        
     
         pimpl_->splash_screen_->Close();
         pimpl_->splash_screen_ = nullptr;

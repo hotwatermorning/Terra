@@ -39,34 +39,62 @@ public:
     
     class AudioInput : public Processor {
     public:
-        virtual void SetData(BufferRef<float const> buf) = 0;
+        //! The callback must be set before `OnStartProcessing()`
+        virtual
+        void SetCallback(std::function<void(AudioInput *, ProcessInfo const &)> callback) = 0;
+        
+        virtual
+        void SetData(BufferRef<float const> buf) = 0;
+
+        //! represend a start channel index belongs to this processor.
+        virtual
+        UInt32 GetChannelIndex() const = 0;
     };
     
     class AudioOutput : public Processor {
     public:
-        virtual BufferRef<float const> GetData() const = 0;
+        //! The callback must be set before `OnStartProcessing()`
+        virtual
+        void SetCallback(std::function<void(AudioOutput *, ProcessInfo const &)> callback) = 0;
+        
+        virtual
+        BufferRef<float const> GetData() const = 0;
+        
+        //! represend a start channel index belongs to this processor.
+        virtual
+        UInt32 GetChannelIndex() const = 0;
     };
     
     class MidiInput : public Processor {
     public:
+        //! The callback must be set before `OnStartProcessing()`
+        virtual
+        void SetCallback(std::function<void(MidiInput *, ProcessInfo const &)> callback) = 0;
+        
         using BufferType = ArrayRef<ProcessInfo::MidiMessage const>;
-        virtual void SetData(BufferType buf) = 0;
+        
+        virtual
+        void SetData(BufferType buf) = 0;
     };
     
     class MidiOutput : public Processor {
     public:
+        //! The callback must be set before `OnStartProcessing()`
+        virtual
+        void SetCallback(std::function<void(MidiOutput *, ProcessInfo const &)> callback) = 0;
+        
         using BufferType = ArrayRef<ProcessInfo::MidiMessage const>;
-        virtual BufferType GetData() const = 0;
+        
+        virtual
+        BufferType GetData() const = 0;
     };
     
 public:
     //! @param
-    AudioInput *    AddAudioInput(String name, UInt32 num_channels,
-                                  std::function<void(AudioInput *, ProcessInfo const &)> callback);
-    AudioOutput *   AddAudioOutput(String name, UInt32 num_channels,
-                                   std::function<void(AudioOutput *, ProcessInfo const &)> callback);
-    MidiInput *    AddMidiInput(String name, std::function<void(MidiInput *, ProcessInfo const &)> callback);
-    MidiOutput *   AddMidiOutput(String name, std::function<void(MidiOutput *, ProcessInfo const &)> callback);
+    AudioInput *    AddAudioInput(String name, UInt32 channel_index, UInt32 num_channels);
+    AudioOutput *   AddAudioOutput(String name, UInt32 channel_index, UInt32 num_channels);
+    MidiInput *    AddMidiInput(String name);
+    MidiOutput *   AddMidiOutput(String name);
     
     void RemoveAudioInput(AudioInput const *);
     void RemoveAudioOutput(AudioOutput const *);

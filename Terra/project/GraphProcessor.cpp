@@ -6,12 +6,18 @@ NS_HWM_BEGIN
 class AudioInputImpl : public GraphProcessor::AudioInput
 {
 public:
-    AudioInputImpl(String name, UInt32 num_channels,
-                   std::function<void(AudioInput *, ProcessInfo const &)> callback)
+    AudioInputImpl(String name, UInt32 channel_index, UInt32 num_channels)
     :   name_(name)
     ,   num_channels_(num_channels)
-    ,   callback_(callback)
+    ,   channel_index_(channel_index)
     {
+    }
+
+    //! The callback must be set before `OnStartProcessing()`
+    void SetCallback(std::function<void(AudioInput *, ProcessInfo const &)> callback) override
+    {
+        assert(callback != nullptr);
+        callback_ = callback;
     }
     
     void SetData(BufferRef<float const> buf) override
@@ -26,12 +32,16 @@ public:
         return (dir == BusDirection::kOutputSide) ? num_channels_ : 0;
     }
     
+    UInt32 GetChannelIndex() const override { return channel_index_; }
+    
     void OnStartProcessing(double sample_rate, SampleCount block_size) override
     {
     }
     
     void Process(ProcessInfo &pi) override
     {
+        assert(callback_);
+        
         callback_(this, pi);
         auto dest = pi.output_audio_buffer_;
         
@@ -49,6 +59,7 @@ public:
 private:
     String name_;
     UInt32 num_channels_;
+    UInt32 channel_index_;
     std::function<void(AudioInput *, ProcessInfo const &)> callback_;
     BufferRef<float const> ref_;
 };
@@ -56,12 +67,18 @@ private:
 class AudioOutputImpl : public GraphProcessor::AudioOutput
 {
 public:
-    AudioOutputImpl(String name, UInt32 num_channels,
-                    std::function<void(AudioOutput *, ProcessInfo const &)> callback)
+    AudioOutputImpl(String name, UInt32 channel_index, UInt32 num_channels)
     :   name_(name)
     ,   num_channels_(num_channels)
-    ,   callback_(callback)
+    ,   channel_index_(channel_index)
     {
+    }
+    
+    //! This must be called before `OnStartProcessing()`
+    void SetCallback(std::function<void(AudioOutput *, ProcessInfo const &)> callback) override
+    {
+        assert(callback != nullptr);
+        callback_ = callback;
     }
     
     BufferRef<float const> GetData() const override
@@ -76,11 +93,14 @@ public:
         return (dir == BusDirection::kInputSide) ? num_channels_ : 0;
     }
     
+    UInt32 GetChannelIndex() const override { return channel_index_; }
+    
     void OnStartProcessing(double sample_rate, SampleCount block_size) override
     {}
     
     void Process(ProcessInfo &pi) override
     {
+        assert(callback_);
         ref_ = pi.input_audio_buffer_;
         callback_(this, pi);
     }
@@ -91,6 +111,7 @@ public:
 private:
     String name_;
     UInt32 num_channels_;
+    UInt32 channel_index_;
     std::function<void(AudioOutput *, ProcessInfo const &)> callback_;
     BufferRef<float const> ref_;
 };
@@ -98,11 +119,16 @@ private:
 class MidiInputImpl : public GraphProcessor::MidiInput
 {
 public:
-    MidiInputImpl(String name,
-                  std::function<void(MidiInput *, ProcessInfo const &)> callback)
+    MidiInputImpl(String name)
     :   name_(name)
-    ,   callback_(callback)
     {
+    }
+    
+    //! This must be called before `OnStartProcessing()`
+    void SetCallback(std::function<void(MidiInput *, ProcessInfo const &)> callback) override
+    {
+        assert(callback != nullptr);
+        callback_ = callback;
     }
     
     void SetData(BufferType buf) override
@@ -122,6 +148,8 @@ public:
     
     void Process(ProcessInfo &pi) override
     {
+        assert(callback_);
+        
         callback_(this, pi);
         
         auto &dest = pi.output_event_buffers_;
@@ -144,11 +172,16 @@ private:
 class MidiOutputImpl : public GraphProcessor::MidiOutput
 {
 public:
-    MidiOutputImpl(String name,
-                    std::function<void(MidiOutput *, ProcessInfo const &)> callback)
+    MidiOutputImpl(String name)
     :   name_(name)
-    ,   callback_(callback)
     {
+    }
+    
+    //! This must be called before `OnStartProcessing()`
+    void SetCallback(std::function<void(MidiOutput *, ProcessInfo const &)> callback) override
+    {
+        assert(callback != nullptr);
+        callback_ = callback;
     }
     
     BufferType GetData() const override
@@ -168,6 +201,8 @@ public:
     
     void Process(ProcessInfo &pi) override
     {
+        assert(callback_);
+        
         auto &src = pi.input_event_buffers_;
         auto src_buf = src->GetBuffer(0);
         
@@ -549,40 +584,36 @@ GraphProcessor::~GraphProcessor()
 {}
 
 GraphProcessor::AudioInput *
-GraphProcessor::AddAudioInput(String name, UInt32 num_channels,
-                              std::function<void(AudioInput *, ProcessInfo const &)> callback)
+GraphProcessor::AddAudioInput(String name, UInt32 channel_index, UInt32 num_channels)
 {
-    auto p = std::make_shared<AudioInputImpl>(name, num_channels, callback);
+    auto p = std::make_shared<AudioInputImpl>(name, channel_index, num_channels);
     AddNode(p);
     pimpl_->AddIONode(p.get());
     return p.get();
 }
 
 GraphProcessor::AudioOutput *
-GraphProcessor::AddAudioOutput(String name, UInt32 num_channels,
-                               std::function<void(AudioOutput *, ProcessInfo const &)> callback)
+GraphProcessor::AddAudioOutput(String name, UInt32 channel_index, UInt32 num_channels)
 {
-    auto p = std::make_shared<AudioOutputImpl>(name, num_channels, callback);
+    auto p = std::make_shared<AudioOutputImpl>(name, channel_index, num_channels);
     AddNode(p);
     pimpl_->AddIONode(p.get());
     return p.get();
 }
 
 GraphProcessor::MidiInput *
-GraphProcessor::AddMidiInput(String name,
-                             std::function<void(MidiInput *, ProcessInfo const &)> callback)
+GraphProcessor::AddMidiInput(String name)
 {
-    auto p = std::make_shared<MidiInputImpl>(name, callback);
+    auto p = std::make_shared<MidiInputImpl>(name);
     AddNode(p);
     pimpl_->AddIONode(p.get());
     return p.get();
 }
 
 GraphProcessor::MidiOutput *
-GraphProcessor::AddMidiOutput(String name,
-                              std::function<void(MidiOutput *, ProcessInfo const &)> callback)
+GraphProcessor::AddMidiOutput(String name)
 {
-    auto p = std::make_shared<MidiOutputImpl>(name, callback);
+    auto p = std::make_shared<MidiOutputImpl>(name);
     AddNode(p);
     pimpl_->AddIONode(p.get());
     return p.get();

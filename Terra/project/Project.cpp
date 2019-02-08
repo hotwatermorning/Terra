@@ -244,42 +244,45 @@ Project * Project::GetCurrentProject()
 
 void Project::AddAudioInput(String name, UInt32 channel_index, UInt32 num_channels)
 {
-    pimpl_->graph_.AddAudioInput(name, num_channels,
-                                 [channel_index, this](GraphProcessor::AudioInput *in,
-                                                       ProcessInfo const &pi)
-                                 {
-                                     OnSetAudio(in, pi, channel_index);
-                                 });
+    pimpl_->graph_
+    ->AddAudioInput(name, channel_index, num_channels)
+    ->SetCallback([this](GraphProcessor::AudioInput *in, ProcessInfo const &pi)
+                  {
+                      OnSetAudio(in, pi, in->GetChannelIndex());
+                  });
 }
 
 void Project::AddAudioOutput(String name, UInt32 channel_index, UInt32 num_channels)
 {
-    pimpl_->graph_.AddAudioOutput(name, num_channels,
-                                  [channel_index, this](GraphProcessor::AudioOutput *out,
-                                                        ProcessInfo const &pi) {
-                                     OnGetAudio(out, pi, channel_index);
-                                 });
+    pimpl_->graph_
+    ->AddAudioOutput(name, channel_index, num_channels)
+    ->SetCallback([this](GraphProcessor::AudioOutput *out, ProcessInfo const &pi)
+                  {
+                      OnGetAudio(out, pi, out->GetChannelIndex());
+                  });
 }
 
 void Project::AddMidiInput(MidiDevice *device)
 {
     pimpl_->midi_input_table_[device].reserve(2048);
-    pimpl_->graph_.AddMidiInput(device->GetDeviceInfo().name_id_,
-                                [device, this](GraphProcessor::MidiInput *in,
-                                               ProcessInfo const &pi)
-                                {
-                                    OnSetMidi(in, pi, device);
-                                });
+    pimpl_->graph_
+    ->AddMidiInput(device->GetDeviceInfo().name_id_)
+    ->SetCallback([device, this](GraphProcessor::MidiInput *in, ProcessInfo const &pi)
+                  {
+                      OnSetMidi(in, pi, device);
+                  });
 }
 
 void Project::AddMidiOutput(MidiDevice *device)
 {
-//    pimpl_->graph_.AddMidiOutput(name,
-//                                 [device, this](GraphProcessor::MidiOutput *out,
-//                                                ProcessInfo const &pi)
-//                                 {
-//                                     OnGetMidi(out, pi, device);
-//                                 });
+//    pimpl_->graph_
+//    ->AddMidiOutput(device->GetDeviceInfo().name_id_)
+//    ->SetCallback([device, this](GraphProcessor::MidiOutput *in, ProcessInfo const &pi)
+//                  {
+//                      OnGetMidi(in, pi, device);
+//                  });
+}
+
 }
 
 Sequence & Project::GetSequence() const

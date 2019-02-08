@@ -166,4 +166,10 @@ TimePoint Transporter::SampleToTimePoint(SampleCount sample) const
     return tp;
 }
 
+TimePoint Transporter::GetLastMovedPos() const
+{
+    auto lock = lf_.make_lock();
+    return last_moved_pos_;
+}
+
 NS_HWM_END

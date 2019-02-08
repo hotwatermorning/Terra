@@ -70,6 +70,8 @@ public:
     
     //! Generate a TimePoint for the specified sample position.
     TimePoint SampleToTimePoint(SampleCount sample) const;
+    
+    TimePoint GetLastMovedPos() const;
 
 private:
     IMusicalTimeService const *mt_;

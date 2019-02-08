@@ -25,8 +25,7 @@ template<class Container>
 bool Contains(Container &c, ClassInfo::CID const &cid) {
     return std::any_of(c.begin(), c.end(), [&cid](schema::PluginDescription const &desc) {
         return
-        desc.type() == schema::PluginDescription_PluginType_VST3
-        && desc.has_vst3info()
+        desc.has_vst3info()
         && *to_cid(desc.vst3info().cid()) == cid;
     });
 }
@@ -88,7 +87,6 @@ public:
             
             schema::PluginDescription desc;
             desc.set_name(to_utf8(info.name()));
-            desc.set_type(schema::PluginDescription_PluginType_VST3);
             auto vi = desc.mutable_vst3info();
             vi->set_filepath(dirname.ToUTF8());
             std::string const cid(info.cid().begin(), info.cid().end());
@@ -97,12 +95,11 @@ public:
             vi->set_cardinality(info.cardinality());
             
             if(info.has_classinfo2()) {
-                auto ci2 = std::make_unique<schema::PluginDescription_Vst3Info_ClassInfo2>();
+                auto ci2 = vi->mutable_classinfo2();
                 ci2->set_subcategories(to_utf8(info.classinfo2().sub_categories()));
                 ci2->set_vendor(to_utf8(info.classinfo2().vendor()));
                 ci2->set_version(to_utf8(info.classinfo2().version()));
                 ci2->set_sdk_version(to_utf8(info.classinfo2().sdk_version()));
-                vi->set_allocated_classinfo2(ci2.release());
             }
             
             pds.push_back(desc);
@@ -194,12 +191,10 @@ void PluginScanner::Import(std::string const &str)
     auto &pds = pimpl_->pds_;
     
     for(auto &x: pd_list.list()) {
-        if(x.type() == schema::PluginDescription_PluginType_VST3) {
-            if(x.has_vst3info() == false) { continue; }
-            auto maybe_cid = to_cid(x.vst3info().cid());
-            if(!maybe_cid || Contains(pds, *maybe_cid)) { continue; }
-            pds.push_back(x);
-        }
+        if(x.has_vst3info() == false) { continue; }
+        auto maybe_cid = to_cid(x.vst3info().cid());
+        if(!maybe_cid || Contains(pds, *maybe_cid)) { continue; }
+        pds.push_back(x);
     }
 }
 

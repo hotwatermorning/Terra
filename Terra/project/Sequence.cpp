@@ -16,7 +16,7 @@ Sequence::Cache(IMusicalTimeService const *mt)
         
         ProcessInfo::MidiMessage msg;
         
-        msg.channel_ = ev.channel_;
+        msg.channel_ = channel_;
         msg.offset_ = smp_begin;
         msg.ppq_pos_ = mt->TickToPPQ(ev.pos_);
         msg.data_ = NoteOn { ev.pitch_, ev.velocity_ };

@@ -11,7 +11,6 @@ struct Sequence
     struct Note {
         Tick pos_ = 0;
         Tick length_ = 0;
-        UInt8 channel_ = 0;
         UInt8 pitch_ = 0;
         UInt8 velocity_ = 0;
         UInt8 off_velocity_ = 0;
@@ -19,13 +18,11 @@ struct Sequence
         Note() = default;
         Note(Tick pos,
              Tick length,
-             UInt8 channel,
              UInt8 pitch,
              UInt8 velocity,
              UInt8 off_velocity = 0)
         :   pos_(pos)
         ,   length_(length)
-        ,   channel_(channel)
         ,   pitch_(pitch)
         ,   velocity_(velocity)
         ,   off_velocity_(off_velocity)
@@ -42,6 +39,7 @@ struct Sequence
     {}
     
     std::vector<Note> notes_;
+    UInt8 channel_ = 0;
     
     std::vector<ProcessInfo::MidiMessage> Cache(IMusicalTimeService const *conv);
 };

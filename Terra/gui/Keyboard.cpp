@@ -22,6 +22,8 @@ public:
     Keyboard(wxWindow *parent)
     :   wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(0, kWhiteKeyHeight))
     {
+        playing_notes_.fill(false);
+        
         img_white_          = LoadImage(L"pianokey_white.png");
         img_white_pushed_   = LoadImage(L"pianokey_white_pushed.png");
         img_white_pushed_contiguous_   = LoadImage(L"pianokey_white_pushed_contiguous.png");

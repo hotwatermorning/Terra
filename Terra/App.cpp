@@ -383,6 +383,10 @@ void MyApp::SetCurrentProject(Project *pj)
     assert(pj == nullptr || contains(GetProjectList(), pj));
  
     auto old_pj = pimpl_->current_project_;
+    if(old_pj == nullptr && pj == nullptr) {
+        return;
+    }
+    
     if(old_pj) {
         old_pj->Deactivate();
     }

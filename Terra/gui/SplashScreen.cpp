@@ -97,7 +97,7 @@ public:
         messages_.push_back(msg);
         
         lock.unlock();
-        Refresh();
+        CallAfter([this] { Refresh(); });
     }
     
 private:

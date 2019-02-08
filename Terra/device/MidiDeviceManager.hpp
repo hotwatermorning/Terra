@@ -63,6 +63,9 @@ public:
     bool IsOpened(MidiDeviceInfo const &info) const;
     void Close(MidiDevice const *device);
     
+    //! return the device if opened.
+    MidiDevice * GetDevice(MidiDeviceInfo const &info);
+    
     //! この瞬間までに取得できたMIDIメッセージを返す。
     //! システムメッセージには未対応。
     //! 現在のタイムスタンプを返す。

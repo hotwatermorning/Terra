@@ -435,6 +435,23 @@ void MidiDeviceManager::Close(MidiDevice const *device)
     }
 }
 
+MidiDevice * MidiDeviceManager::GetDevice(MidiDeviceInfo const &info)
+{
+    if(info.io_type_ == DeviceIOType::kInput) {
+        auto lock = pimpl_->lf_in_.make_lock();
+        for(auto const &dev: pimpl_->ins_) {
+            if(dev->GetDeviceInfo() == info) { return dev.get(); }
+        }
+    } else {
+        auto lock = pimpl_->lf_out_.make_lock();
+        for(auto const &dev: pimpl_->outs_) {
+            if(dev->GetDeviceInfo() == info) { return dev.get(); }
+        }
+    }
+    
+    return nullptr;
+}
+
 //! この瞬間までに取得できたMIDIメッセージを返す。
 //! システムメッセージには未対応。
 double MidiDeviceManager::GetMessages(std::vector<DeviceMidiMessage> &msg)

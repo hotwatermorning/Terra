@@ -62,9 +62,10 @@ Vst3Plugin::ParameterInfo const & Vst3Plugin::GetParameterInfoByIndex(UInt32 ind
 {
     return pimpl_->GetParameterInfoList().GetItemByIndex(index);
 }
-Vst3Plugin::ParameterInfo const & Vst3Plugin::GetParameterInfoByID(ParamID id) const
+std::optional<Vst3Plugin::ParameterInfo>
+    Vst3Plugin::FindParameterInfoByID(ParamID id) const
 {
-    return pimpl_->GetParameterInfoList().GetItemByID(id);
+    return pimpl_->GetParameterInfoList().FindItemByID(id);
 }
 
 UInt32  Vst3Plugin::GetNumUnitInfo() const

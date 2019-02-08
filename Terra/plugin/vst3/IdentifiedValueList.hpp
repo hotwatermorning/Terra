@@ -29,6 +29,16 @@ public:
         return list_[GetIndexByID(id)];
     }
     
+    std::optional<T> FindItemByID(id_type id) const
+    {
+        auto const index = GetIndexByID(id);
+        if(index == -1) {
+            return std::nullopt;
+        } else {
+            return GetItemByIndex(index);
+        }
+    }
+    
     T const & GetItemByIndex(size_type index) const
     {
         assert(index < list_.size());

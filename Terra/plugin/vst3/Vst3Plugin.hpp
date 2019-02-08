@@ -197,7 +197,7 @@ public:
     
     UInt32  GetNumParams() const;
     ParameterInfo const & GetParameterInfoByIndex(UInt32 index) const;
-    ParameterInfo const & GetParameterInfoByID(ParamID id) const;
+    std::optional<Vst3Plugin::ParameterInfo> FindParameterInfoByID(ParamID id) const;
     
     UInt32  GetNumUnitInfo() const;
     UnitInfo const & GetUnitInfoByIndex(UInt32 index) const;

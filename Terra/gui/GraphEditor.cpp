@@ -565,7 +565,15 @@ public:
     void AddNode(schema::PluginDescription const &desc, wxPoint pt)
     {
         auto app = MyApp::GetInstance();
-        auto proc = std::make_shared<Vst3AudioProcessor>(app->CreateVst3Plugin(desc));
+        std::unique_ptr<Vst3Plugin> plugin;
+        try {
+            plugin = app->CreateVst3Plugin(desc);
+        } catch(std::exception &e) {
+            wxMessageBox("Failed to load {}: {}"_format(desc.name(), e.what()));
+            return;
+        }
+        
+        auto proc = std::make_shared<Vst3AudioProcessor>(desc, std::move(plugin));
         auto node = graph_->AddNode(proc);
         
         auto nc = std::make_unique<NodeComponent>(this, node.get(), this);

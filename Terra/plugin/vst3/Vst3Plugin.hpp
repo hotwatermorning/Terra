@@ -261,13 +261,6 @@ public:
 	void	EnqueueParameterChange(Steinberg::Vst::ParamID id, Steinberg::Vst::ParamValue value);
 
 	void	RestartComponent(Steinberg::int32 flag);
-    
-    template<class T>
-    struct ProcessBufferInfo
-    {
-        BufferRef<T> buffer_;
-        SampleCount sample_offset_ = 0;
-    };
 
 	void Process(ProcessInfo &pi);
     

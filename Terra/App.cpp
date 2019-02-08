@@ -96,7 +96,7 @@ struct MyApp::Impl
     PluginScanner plugin_scanner_;
     PluginListExporter plugin_list_exporter_;
     ResourceHelper resource_helper_;
-    SplashScreen *splash_screen_;
+    SplashScreen *splash_screen_ = nullptr;
     std::thread initialization_thread_;
     
     Impl()
@@ -129,24 +129,11 @@ bool MyApp::OnInit()
     pimpl_->splash_screen_->Show(true);
     pimpl_->splash_screen_->SetFocus();
     
-    pimpl_->initialization_thread_ = std::thread([this] { OnInitImpl(); });
-    
-    return true;
-}
-
-void MyApp::OnInitImpl()
-{
-    wxInitAllImageHandlers();
-    
     pimpl_->plugin_scanner_.AddDirectories({
         L"/Library/Audio/Plug-Ins/VST3",
         wxStandardPaths::Get().GetDocumentsDir().ToStdWstring() + L"../Library/Audio/Plug-Ins/VST3",
         L"../../ext/vst3sdk/build_debug/VST3/Debug",
     });
-    
-    auto dummy_wait = [](int milliseconds = 10) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
-    };
     
     std::ifstream ifs(GetPluginDescFileName());
     if(ifs) {
@@ -163,7 +150,18 @@ void MyApp::OnInitImpl()
         pimpl_->plugin_scanner_.ScanAsync();
         pimpl_->splash_screen_->AddMessage(L"Scanning plugins...");
     }
+    
+    pimpl_->initialization_thread_ = std::thread([this] { OnInitImpl(); });
+    
+    return true;
+}
 
+void MyApp::OnInitImpl()
+{
+    auto dummy_wait = [](int milliseconds = 10) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+    };
+    
     dummy_wait();
     pimpl_->splash_screen_->AddMessage(L"Initialize audio devices");
     

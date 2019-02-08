@@ -372,6 +372,7 @@ GraphEditor::~GraphEditor()
 class GraphEditorImpl
 :   public GraphEditor
 ,   public NodeComponent::Callback
+,   public MyApp::ChangeProjectListener
 {
 public:
     wxCursor scissors_;
@@ -399,10 +400,22 @@ public:
         Bind(wxEVT_KEY_UP, [this](auto &ev) { OnKeyUp(ev); });
         Bind(wxEVT_KILL_FOCUS, [this](auto &ev) { OnKillFocus(); });
         Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](auto &ev) { OnReleaseMouse(); });
+        MyApp::GetInstance()->AddChangeProjectListener(this);
     }
     
     ~GraphEditorImpl()
-    {}
+    {
+        MyApp::GetInstance()->RemoveChangeProjectListener(this);
+    }
+    
+    void OnChangeCurrentProject(Project *old_pj, Project *new_pj) override
+    {
+        RemoveGraph();
+        
+        if(new_pj) {
+            SetGraph(new_pj->GetGraph());
+        }
+    }
     
     void OnLeftDown(wxMouseEvent const &ev)
     {
@@ -593,12 +606,22 @@ public:
             auto nc = std::make_unique<NodeComponent>(this, node.get(), this);
             node_components_.push_back(std::move(nc));
         }
+        
+        Refresh();
     }
     
     void RemoveGraph()
     {
+        for(auto &node: node_components_) {
+            RemoveChild(node.get());
+            node->Destroy();
+            node.release();
+        }
+        
         node_components_.clear();
         graph_ = nullptr;
+        
+        Refresh();
     }
     
     void OnRequestToUnload(NodeComponent *nc) override

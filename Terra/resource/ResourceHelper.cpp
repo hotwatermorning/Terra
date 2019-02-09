@@ -1,6 +1,7 @@
 #include "ResourceHelper.hpp"
 
 #include <wx/stdpaths.h>
+#include <wx/filename.h>
 
 NS_HWM_BEGIN
 
@@ -9,6 +10,23 @@ ResourceHelper::ResourceHelper()
 
 ResourceHelper::~ResourceHelper()
 {}
+
+String ResourceHelper::GetTerraDir() const
+{
+    auto &sp = wxStandardPaths::Get();
+    auto path = wxFileName(sp.GetDocumentsDir(), "");
+    path.AppendDir("diatonic.jp");
+    path.AppendDir("Terra");
+    return path.GetFullPath();
+}
+
+String ResourceHelper::GetConfigFilePath() const
+{
+    auto path = wxFileName(GetTerraDir(), "");
+    path.AppendDir("Config");
+    path.AppendDir("terra.conf");
+    return path.GetFullPath();
+}
 
 //! Get resource file path specified by the path hierarchy.
 String ResourceHelper::GetResourcePath(String path) const

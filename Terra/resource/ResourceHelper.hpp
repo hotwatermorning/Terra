@@ -12,19 +12,19 @@ public:
     ~ResourceHelper();
     
     //! Get resource file path specified by the path hierarchy.
-    String GetResourcePath(String path);
+    String GetResourcePath(String path) const;
     
     //! Get resource file path specified by the path hierarchy.
-    String GetResourcePath(std::vector<String> path_hierarchy);
+    String GetResourcePath(std::vector<String> path_hierarchy) const;
     
     template<class T>
-    T GetResourceAs(String path)
+    T GetResourceAs(String path) const
     {
         return T(GetResourcePath(path));
     }
     
     template<class T>
-    T GetResourceAs(std::vector<String> path_hierarchy)
+    T GetResourceAs(std::vector<String> path_hierarchy) const
     {
         return T(GetResourcePath(path_hierarchy));
     }

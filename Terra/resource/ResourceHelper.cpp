@@ -11,7 +11,7 @@ ResourceHelper::~ResourceHelper()
 {}
 
 //! Get resource file path specified by the path hierarchy.
-String ResourceHelper::GetResourcePath(String path)
+String ResourceHelper::GetResourcePath(String path) const
 {
     assert(path.size() > 0);
     
@@ -23,7 +23,7 @@ String ResourceHelper::GetResourcePath(String path)
 }
 
 //! Get resource file path specified by the path hierarchy.
-String ResourceHelper::GetResourcePath(std::vector<String> path_hierarchy)
+String ResourceHelper::GetResourcePath(std::vector<String> path_hierarchy) const
 {
     assert(path_hierarchy.empty() == false &&
            std::all_of(path_hierarchy.begin(),

@@ -834,6 +834,8 @@ void Vst3Plugin::Impl::OutputEvents(ProcessInfo::IEventBufferList *buffers,
 
 void Vst3Plugin::Impl::Process(ProcessInfo pi)
 {
+    assert(status_ == Status::kProcessing);
+    
     assert(pi.time_info_);
     auto &ti = *pi.time_info_;
 	Vst::ProcessContext process_context = {};

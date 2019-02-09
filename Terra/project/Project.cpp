@@ -5,6 +5,7 @@
 #include "./GraphProcessor.hpp"
 #include "../App.hpp"
 #include "../misc/MathUtil.hpp"
+#include "../misc/StrCnv.hpp"
 #include <map>
 
 NS_HWM_BEGIN
@@ -191,20 +192,24 @@ struct Project::Impl
     :   tp_(pj)
     {}
     
+    String file_name_;
+    wxFileName dir_;
+    std::unique_ptr<schema::Project> last_schema_;
+
     LockFactory lf_;
     Transporter tp_;
     bool is_active_ = false;
     double sample_rate_ = 44100;
-    SampleCount block_size_ = 0;
+    SampleCount block_size_ = 256;
     BypassFlag bypass_;
     int num_device_inputs_ = 0;
     int num_device_outputs_ = 0;
-    Sequence sequence_;
+    std::unique_ptr<Sequence> sequence_;
     PlayingNoteList playing_sequence_notes_;
     PlayingNoteList requested_sample_notes_;
     PlayingNoteList playing_sample_notes_;
     SampleCount smp_last_pos_ = 0;
-    GraphProcessor graph_;
+    std::unique_ptr<GraphProcessor> graph_;
     
     //! input from device
     BufferRef<float const> input_;
@@ -225,16 +230,49 @@ struct Project::Impl
 Project::Project()
 :   pimpl_(std::make_unique<Impl>(this))
 {
+    pimpl_->sequence_ = std::make_unique<Sequence>();
+    pimpl_->graph_ = std::make_unique<GraphProcessor>();
+    
     pimpl_->playing_sequence_notes_.Clear();
     pimpl_->requested_sample_notes_.Clear();
     pimpl_->playing_sample_notes_.Clear();
     pimpl_->device_midi_input_buffer_.reserve(2048);
-    AddMidiInput(&kSoftwareKeyboardMidiInput);
-    AddMidiInput(&kSequencerMidiInput);
 }
 
 Project::~Project()
 {}
+
+String const & Project::GetFileName() const
+{
+    return pimpl_->file_name_;
+}
+
+void Project::SetFileName(String const &name)
+{
+    pimpl_->file_name_ = name;
+}
+
+wxFileName const & Project::GetProjectDirectory() const
+{
+    return pimpl_->dir_;
+}
+
+void Project::SetProjectDirectory(wxFileName const &dir_path)
+{
+    assert(dir_path.HasName() == false);
+    pimpl_->dir_ = dir_path;
+}
+
+wxFileName Project::GetFullPath() const
+{
+    if(GetFileName().empty() || GetProjectDirectory().GetFullPath().empty()) {
+        return wxFileName();
+    } else {
+        auto path = GetProjectDirectory();
+        path.SetFullName(GetFileName());
+        return path;
+    }
+}
 
 Project * Project::GetCurrentProject()
 {
@@ -283,16 +321,20 @@ void Project::AddMidiOutput(MidiDevice *device)
 //                  });
 }
 
+void Project::AddDefaultMidiInputs()
+{
+    AddMidiInput(&kSoftwareKeyboardMidiInput);
+    AddMidiInput(&kSequencerMidiInput);
 }
 
 Sequence & Project::GetSequence() const
 {
-    return pimpl_->sequence_;
+    return *pimpl_->sequence_;
 }
 
 void Project::CacheSequence()
 {
-    auto cache = pimpl_->sequence_.Cache(this);
+    auto cache = pimpl_->sequence_->Cache(this);
     pimpl_->cached_sequence_.Set(std::make_unique<decltype(cache)>(std::move(cache)));
 }
 
@@ -308,7 +350,7 @@ Transporter const & Project::GetTransporter() const
 
 GraphProcessor & Project::GetGraph()
 {
-    return pimpl_->graph_;
+    return *pimpl_->graph_;
 }
 
 std::vector<Project::PlayingNoteInfo> Project::GetPlayingSequenceNotes() const
@@ -486,6 +528,211 @@ Meter Project::GetMeterAt(double tick) const
     return Meter(4, 4);
 }
 
+std::unique_ptr<schema::Project> Project::ToSchema() const
+{
+    auto p = std::make_unique<schema::Project>();
+    
+    p->set_name(to_utf8(GetFileName()));
+    p->set_block_size(pimpl_->block_size_);
+    p->set_sample_rate(pimpl_->sample_rate_);
+    
+    auto mps = p->mutable_musical_parameters();
+    
+    auto tempo = mps->add_tempo_events();
+    tempo->set_pos(0);
+    tempo->set_value(120.0);
+    
+    auto meter = mps->add_meter_events();
+    meter->set_pos(0);
+    meter->set_numer(4);
+    meter->set_denom(4);
+
+    auto tp_info = pimpl_->tp_.GetCurrentState();
+    auto tp = p->mutable_transport();
+    if(tp_info.playing_) {
+        tp->set_pos(pimpl_->tp_.GetLastMovedPos().sample_);
+    } else {
+        tp->set_pos(tp_info.play_.begin_.sample_);
+    }
+    tp->set_loop_begin(tp_info.loop_.begin_.sample_);
+    tp->set_loop_end(tp_info.loop_.end_.sample_);
+    tp->set_loop_enabled(tp_info.loop_enabled_);
+    
+    auto graph = pimpl_->graph_->ToSchema();
+    p->set_allocated_graph(graph.release());
+    
+    auto seq = pimpl_->sequence_->ToSchema();
+    p->set_allocated_sequence(seq.release());
+    
+    return p;
+}
+
+std::unique_ptr<Project> Project::FromSchema(schema::Project const &schema)
+{
+    auto p = std::make_unique<Project>();
+    
+    p->pimpl_->sample_rate_ = std::max<double>(schema.sample_rate(), 22050.0);
+    p->pimpl_->block_size_ = std::max<UInt32>(schema.block_size(), 16);
+    
+    if(schema.has_musical_parameters()) {
+        auto &mp = schema.musical_parameters();
+        // not supported yet.
+    }
+    
+    if(schema.has_transport()) {
+        auto &tp = schema.transport();
+        p->pimpl_->tp_.MoveTo(tp.pos());
+        p->pimpl_->tp_.SetLoopRange(tp.loop_begin(), tp.loop_end());
+        p->pimpl_->tp_.SetLoopEnabled(tp.loop_enabled());
+    }
+    
+    if(schema.has_sequence()) {
+        auto new_sequence = Sequence::FromSchema(schema.sequence());
+        assert(new_sequence);
+        p->pimpl_->sequence_ = std::move(new_sequence);
+    }
+    
+    auto mdm = MidiDeviceManager::GetInstance();
+    
+    std::vector<MidiDevice *> opened_midi_devices;
+    for(auto const &info: mdm->Enumerate()) {
+        auto device = mdm->GetDevice(info);
+        if(device) { opened_midi_devices.push_back(device); }
+    }
+    opened_midi_devices.push_back(&kSequencerMidiInput);
+    opened_midi_devices.push_back(&kSoftwareKeyboardMidiInput);
+    
+    auto remove_element = [&](auto &container, auto const &elem) {
+        container.erase(std::find(std::begin(container),
+                                  std::end(container),
+                                  elem),
+                        std::end(container));
+    };
+    
+    if(schema.has_graph()) {
+        p->pimpl_->graph_ = GraphProcessor::FromSchema(schema.graph());
+        auto &new_graph = p->pimpl_->graph_;
+        assert(new_graph);
+        
+        for(int i = 0; i < new_graph->GetNumAudioInputs(); ++i) {
+            auto proc = new_graph->GetAudioInput(i);
+            proc->SetCallback([pj = p.get()](GraphProcessor::AudioInput *proc, ProcessInfo const &pi)
+                              {
+                                  pj->OnSetAudio(proc, pi, proc->GetChannelIndex());
+                              });
+        }
+        
+        for(int i = 0; i < new_graph->GetNumAudioOutputs(); ++i) {
+            auto proc = new_graph->GetAudioOutput(i);
+            proc->SetCallback([pj = p.get()](GraphProcessor::AudioOutput *proc, ProcessInfo const &pi)
+                              {
+                                  pj->OnGetAudio(proc, pi, proc->GetChannelIndex());
+                              });
+        }
+        
+        std::vector<GraphProcessor::MidiInput *> midi_ins_to_remove;
+        std::vector<GraphProcessor::MidiOutput *> midi_outs_to_remove;
+
+        for(int i = 0; i < new_graph->GetNumMidiInputs(); ++i) {
+            auto proc = new_graph->GetMidiInput(i);
+            auto node = new_graph->GetNodeOf(proc);
+            if(node->GetMidiConnections(BusDirection::kOutputSide).empty()) {
+                midi_ins_to_remove.push_back(proc);
+                continue;
+            }
+            
+            MidiDeviceInfo info;
+            info.io_type_ = DeviceIOType::kInput;
+            info.name_id_ = proc->GetName();
+            auto device = mdm->GetDevice(info);
+            if(device == nullptr) {
+                if(info == kSoftwareKeyboardMidiInput.GetDeviceInfo()) {
+                    device = &kSoftwareKeyboardMidiInput;
+                } else if(info == kSequencerMidiInput.GetDeviceInfo()) {
+                    device = &kSequencerMidiInput;
+                }
+            }
+            
+            if(device == nullptr) {
+                // TODO: add disconnection flag.
+                continue;
+            }
+            
+            remove_element(opened_midi_devices, device);
+            
+            p->pimpl_->midi_input_table_[device].reserve(2048);
+            proc->SetCallback([pj = p.get(), device](GraphProcessor::MidiInput *proc, ProcessInfo const &pi)
+                              {
+                                  pj->OnSetMidi(proc, pi, device);
+                              });
+        }
+        
+        for(int i = 0; i < new_graph->GetNumMidiOutputs(); ++i) {
+            auto proc = new_graph->GetMidiOutput(i);
+            auto node = new_graph->GetNodeOf(proc);
+            if(node->GetMidiConnections(BusDirection::kInputSide).empty()) {
+                midi_outs_to_remove.push_back(proc);
+                continue;
+            }
+            
+            MidiDeviceInfo info;
+            info.io_type_ = DeviceIOType::kOutput;
+            info.name_id_ = proc->GetName();
+            auto device = mdm->GetDevice(info);
+            if(device == nullptr) {
+                // TODO: add disconnection flag.
+                continue;
+            }
+            
+            remove_element(opened_midi_devices, device);
+            
+            proc->SetCallback([pj = p.get(), device](GraphProcessor::MidiOutput *proc, ProcessInfo const &pi)
+                              {
+                                  pj->OnGetMidi(proc, pi, device);
+                              });
+        }
+        
+        for(auto proc: midi_ins_to_remove) {
+            new_graph->RemoveNode(proc);
+        }
+        for(auto proc: midi_outs_to_remove) {
+            new_graph->RemoveNode(proc);
+        }
+    }
+    for(auto device: opened_midi_devices) {
+        auto const &info = device->GetDeviceInfo();
+        if(info.io_type_ == DeviceIOType::kInput) {
+            p->pimpl_->midi_input_table_[device].reserve(2048);
+            p->pimpl_->graph_
+            ->AddMidiInput(info.name_id_)
+            ->SetCallback([pj = p.get(), device](GraphProcessor::MidiInput *proc, ProcessInfo const &pi)
+                              {
+                                  pj->OnSetMidi(proc, pi, device);
+                              });
+        } else {
+            // @note midi output devices are not supported yet.
+//            p->pimpl_->graph_
+//            ->AddMidiOutput(info.name_id_)
+//            ->SetCallback([pj = p.get(), device](GraphProcessor::MidiOutput *proc, ProcessInfo const &pi)
+//                          {
+//                              pj->OnGetMidi(proc, pi, device);
+//                          });
+        }
+    }
+        
+    return p;
+}
+
+schema::Project * Project::GetLastSchema() const
+{
+    return pimpl_->last_schema_.get();
+}
+
+void Project::UpdateLastSchema(std::unique_ptr<schema::Project> schema)
+{
+    pimpl_->last_schema_ = std::move(schema);
+}
+
 void Project::StartProcessing(double sample_rate,
                               SampleCount max_block_size,
                               int num_input_channels,
@@ -495,7 +742,7 @@ void Project::StartProcessing(double sample_rate,
     pimpl_->block_size_ = max_block_size;
     pimpl_->num_device_inputs_ = num_input_channels;
     pimpl_->num_device_outputs_ = num_output_channels;
-    pimpl_->graph_.StartProcessing(sample_rate, max_block_size);
+    pimpl_->graph_->StartProcessing(sample_rate, max_block_size);
     
     auto const info = pimpl_->tp_.GetCurrentState();
     SampleCount const sample = Round<SampleCount>(TickToSample(info.play_.begin_.tick_));
@@ -552,11 +799,11 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             auto frame_length = ti.play_.duration_.sec_;
             auto frame_begin_time = timestamp - frame_length;
             for(auto dm: pimpl_->device_midi_input_buffer_) {
+                assert(pimpl_->midi_input_table_.count(dm.device_) == 1);
+                
                 auto const pos = std::max<double>(0, dm.time_stamp_ - frame_begin_time);
                 ProcessInfo::MidiMessage pm((SampleCount)std::round(pos * pimpl_->sample_rate_),
-                                            dm.channel_,
-                                            0,
-                                            dm.data_);
+                                            dm.channel_, 0, dm.data_);
                 pimpl_->midi_input_table_[dm.device_].push_back(pm);
             }
         }
@@ -574,6 +821,8 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             } else {
                 mm.data_ = MidiDataType::NoteOff { pitch, velocity };
             }
+            
+            assert(pimpl_->midi_input_table_.count(device) == 1);
             pimpl_->midi_input_table_[device].push_back(mm);
         };
         
@@ -638,7 +887,7 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             }
         });
         
-        if(pimpl_->graph_.GetNumAudioInputs() > 0) {
+        if(pimpl_->graph_->GetNumAudioInputs() > 0) {
             pimpl_->input_ = BufferRef<float const> {
                 input,
                 0,
@@ -658,7 +907,7 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             (UInt32)ti.play_.duration_.sample_,
         };
         
-        pimpl_->graph_.Process(ti);
+        pimpl_->graph_->Process(ti);
 
         num_processed += ti.play_.duration_.sample_;
     });
@@ -669,7 +918,7 @@ void Project::Process(SampleCount block_size, float const * const * input, float
 
 void Project::StopProcessing()
 {
-    pimpl_->graph_.StopProcessing();
+    pimpl_->graph_->StopProcessing();
 }
 
 void Project::OnSetAudio(GraphProcessor::AudioInput *input, ProcessInfo const &pi, UInt32 channel_index)

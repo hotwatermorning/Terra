@@ -55,12 +55,21 @@ public:
     void SetCurrentProject(Project *pj);
     Project * GetCurrentProject();
     
+    void OnFileNew();
+    void OnFileOpen();
+    //! @return true if saved or no need to save. false if canceled.
+    bool OnFileSave(bool force_save_as, bool need_to_confirm_for_closing);
+    
     //! modal
     void ShowSettingDialog();
     
 private:
     struct Impl;
     std::unique_ptr<Impl> pimpl_;
+    
+    std::unique_ptr<Project> CreateInitialProject();
+    //! multiple project is not supported yet.
+    void ReplaceProject(std::unique_ptr<Project> pj);
     
     void OnInitCmdLine(wxCmdLineParser& parser) override;
     bool OnCmdLineParsed(wxCmdLineParser& parser) override;

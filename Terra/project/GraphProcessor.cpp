@@ -1,5 +1,6 @@
 #include "./GraphProcessor.hpp"
 #include "../processor/EventBuffer.hpp"
+#include "../misc/StrCnv.hpp"
 
 NS_HWM_BEGIN
 
@@ -56,6 +57,28 @@ public:
     void OnStopProcessing() override
     {}
     
+    std::unique_ptr<schema::Processor> ToSchemaImpl() const override
+    {
+        auto schema = std::make_unique<schema::Processor>();
+        auto data = schema->mutable_audio_input_data();
+        data->set_name(to_utf8(name_));
+        data->set_num_channels(num_channels_);
+        data->set_channel_index(channel_index_);
+        
+        return schema;
+    }
+    
+    static
+    std::unique_ptr<AudioInput> FromSchemaImpl(schema::Processor const &schema)
+    {
+        assert(schema.has_audio_input_data());
+        
+        auto const &data = schema.audio_input_data();
+        return std::make_unique<AudioInputImpl>(to_wstr(data.name()),
+                                                data.channel_index(),
+                                                data.num_channels());
+    }
+    
 private:
     String name_;
     UInt32 num_channels_;
@@ -107,6 +130,28 @@ public:
     
     void OnStopProcessing() override
     {}
+    
+    std::unique_ptr<schema::Processor> ToSchemaImpl() const override
+    {
+        auto schema = std::make_unique<schema::Processor>();
+        auto data = schema->mutable_audio_output_data();
+        data->set_name(to_utf8(name_));
+        data->set_num_channels(num_channels_);
+        data->set_channel_index(channel_index_);
+        
+        return schema;
+    }
+    
+    static
+    std::unique_ptr<AudioOutput> FromSchemaImpl(schema::Processor const &schema)
+    {
+        assert(schema.has_audio_output_data());
+        
+        auto const &data = schema.audio_output_data();
+        return std::make_unique<AudioOutputImpl>(to_wstr(data.name()),
+                                                 data.channel_index(),
+                                                 data.num_channels());
+    }
     
 private:
     String name_;
@@ -163,6 +208,25 @@ public:
     void OnStopProcessing() override
     {}
     
+    std::unique_ptr<schema::Processor> ToSchemaImpl() const override
+    {
+        auto schema = std::make_unique<schema::Processor>();
+        auto data = schema->mutable_midi_input_data();
+        data->set_name(to_utf8(name_));
+        
+        return schema;
+    }
+    
+    static
+    std::unique_ptr<MidiInput> FromSchemaImpl(schema::Processor const &schema)
+    {
+        
+        assert(schema.has_midi_input_data());
+        
+        auto const &data = schema.midi_input_data();
+        return std::make_unique<MidiInputImpl>(to_wstr(data.name()));
+    }
+    
 private:
     String name_;
     std::function<void(MidiInput *, ProcessInfo const &)> callback_;
@@ -212,6 +276,24 @@ public:
     
     void OnStopProcessing() override
     {}
+    
+    std::unique_ptr<schema::Processor> ToSchemaImpl() const override
+    {
+        auto schema = std::make_unique<schema::Processor>();
+        auto data = schema->mutable_midi_output_data();
+        data->set_name(to_utf8(name_));
+        
+        return schema;
+    }
+    
+    static
+    std::unique_ptr<MidiOutput> FromSchemaImpl(schema::Processor const &schema)
+    {
+        assert(schema.has_midi_output_data());
+        
+        auto const &data = schema.midi_output_data();
+        return std::make_unique<MidiOutputImpl>(to_wstr(data.name()));
+    }
     
 private:
     String name_;
@@ -991,6 +1073,129 @@ bool GraphProcessor::Disconnect(ConnectionPtr conn)
     
     RemoveConnection(conn);
     return true;
+}
+
+Int64 ToId(GraphProcessor::Node *p)
+{
+    return (Int64)p;
+}
+
+Int64 ToId(GraphProcessor::Node const *p)
+{
+    return (Int64)p;
+}
+
+template<class T>
+Int64 ToId(T const &p)
+{
+    return ToId(p.get());
+}
+
+std::unique_ptr<schema::NodeGraph> GraphProcessor::ToSchema() const
+{
+    auto p = std::make_unique<schema::NodeGraph>();
+    
+    for(auto const &node: pimpl_->nodes_) {
+        auto new_node = p->add_nodes();
+        new_node->set_id(ToId(node));
+        
+        auto new_proc = node->GetProcessor()->ToSchema();
+        new_node->set_allocated_processor(new_proc.release());
+        
+        for(auto const &ac: node->GetAudioConnections(BusDirection::kOutputSide)) {
+            auto conn = p->add_connections();
+            conn->set_type(schema::NodeGraph_Connection_Type_kAudio);
+            conn->set_upstream_id(ToId(node));
+            conn->set_downstream_id(ToId(ac->downstream_));
+            conn->set_upstream_channel_index(ac->upstream_channel_index_);
+            conn->set_downstream_channel_index(ac->downstream_channel_index_);
+        }
+        
+        for(auto const &ac: node->GetMidiConnections(BusDirection::kOutputSide)) {
+            auto conn = p->add_connections();
+            conn->set_type(schema::NodeGraph_Connection_Type_kEvent);
+            conn->set_upstream_id(ToId(node));
+            conn->set_downstream_id(ToId(ac->downstream_));
+            conn->set_upstream_channel_index(ac->upstream_channel_index_);
+            conn->set_downstream_channel_index(ac->downstream_channel_index_);
+        }
+    }
+    
+    return p;
+}
+
+std::unique_ptr<GraphProcessor> GraphProcessor::FromSchema(schema::NodeGraph const &schema)
+{
+    auto p = std::make_unique<GraphProcessor>();
+    
+    std::map<Int64, Node *> node_table;
+    
+    for(auto const &node: schema.nodes()) {
+        if(node.has_processor() == false) { continue; }
+
+        auto &np = node.processor();
+        std::unique_ptr<Processor> proc;
+        
+        auto add_io_node = [&p](auto const &schema, auto factory) {
+            auto proc = factory(schema);
+            auto pproc = proc.get();
+            auto node = p->AddNode(std::move(proc));
+            p->pimpl_->AddIONode(pproc);
+            return node;
+        };
+        
+        NodePtr new_node;
+        if(np.has_audio_input_data()) {
+            new_node = add_io_node(np, AudioInputImpl::FromSchemaImpl);
+        } else if(np.has_audio_output_data()) {
+            new_node = add_io_node(np, AudioOutputImpl::FromSchemaImpl);
+        } else if(np.has_midi_input_data()) {
+            new_node = add_io_node(np, MidiInputImpl::FromSchemaImpl);
+        } else if(np.has_midi_output_data()) {
+            new_node = add_io_node(np, MidiOutputImpl::FromSchemaImpl);
+        } else {
+            proc = Processor::FromSchema(node.processor());
+            new_node = p->AddNode(std::move(proc));
+        }
+        
+        node_table[node.id()] = new_node.get();
+    }
+    
+    for(auto const &conn: schema.connections()) {
+        auto up_node = node_table[conn.upstream_id()];
+        auto down_node = node_table[conn.downstream_id()];
+        
+        if(!up_node || !down_node) { continue; }
+        
+        auto up_proc = up_node->GetProcessor().get();
+        auto down_proc = down_node->GetProcessor().get();
+        
+        if(conn.type() == schema::NodeGraph_Connection_Type_kAudio) {
+            auto up_ch = conn.upstream_channel_index();
+            auto down_ch = conn.downstream_channel_index();
+            
+            if(up_ch >= up_proc->GetAudioChannelCount(BusDirection::kOutputSide) ||
+               down_ch >= down_proc->GetAudioChannelCount(BusDirection::kInputSide))
+            {
+                continue;
+            }
+            
+            p->ConnectAudio(up_node, down_node, up_ch, down_ch);
+        } else if(conn.type() == schema::NodeGraph_Connection_Type_kEvent) {
+            auto up_ch = conn.upstream_channel_index();
+            auto down_ch = conn.downstream_channel_index();
+            
+            if(up_ch >= up_proc->GetMidiChannelCount(BusDirection::kOutputSide) ||
+               down_ch >= down_proc->GetMidiChannelCount(BusDirection::kInputSide))
+            {
+                continue;
+            }
+            
+            p->ConnectMidi(up_node, down_node, up_ch, down_ch);
+        }
+    }
+    
+    return p;
 }
 
 NS_HWM_END

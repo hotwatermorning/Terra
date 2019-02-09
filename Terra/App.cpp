@@ -9,6 +9,7 @@
 #include <wx/cmdline.h>
 #include <wx/stdpaths.h>
 #include <wx/splash.h>
+#include <google/protobuf/util/message_differencer.h>
 
 #include "./misc/StrCnv.hpp"
 #include "./gui/Util.hpp"
@@ -33,37 +34,16 @@ std::string GetPluginDescFileName() {
     return "plugin_list.bin";
 }
 
-Sequence MakeSequence() {
+Sequence MakeSequence(std::vector<Int8> pitches) {
     auto create_note = [](int tick_pos, int tick_length, UInt8 pitch, UInt8 velocity = 64, UInt8 off_velocity = 0) {
-        UInt8 channel = 0;
-        return Sequence::Note { tick_pos, tick_length, channel, pitch, velocity, off_velocity };
+        return Sequence::Note { tick_pos, tick_length, pitch, velocity, off_velocity };
     };
     
-    std::vector<Sequence::Note> notes {
-        // C
-        create_note(0, 1920, 48),
-        create_note(0, 1920, 55),
-        create_note(0, 1920, 62),
-        create_note(0, 1920, 64),
-        create_note(0, 1920, 67),
-        create_note(0, 1920, 72),
-        
-        // Bb/C
-        create_note(1920, 1920, 48),
-        create_note(1920, 1920, 58),
-        create_note(1920, 1920, 65),
-        create_note(1920, 1920, 69),
-        create_note(1920, 1920, 70),
-        create_note(1920, 1920, 74),
-        
-//        create_note(480, 480, 50),
-//        create_note(960, 480, 52),
-//        create_note(1440, 480, 53),
-//        create_note(1920, 480, 55),
-//        create_note(2400, 480, 57),
-//        create_note(2880, 480, 59),
-//        create_note(3360, 480, 60),
-    };
+    std::vector<Sequence::Note> notes;
+    
+    for(int i = 0; i < 64; ++i) {
+        notes.push_back(create_note(i * 60, 60, pitches[i % pitches.size()]));
+    }
     
     assert(std::is_sorted(notes.begin(), notes.end(), [](auto const &lhs, auto const &rhs) {
         return lhs.pos_ < rhs.pos_;
@@ -97,6 +77,7 @@ struct MyApp::Impl
     PluginListExporter plugin_list_exporter_;
     ResourceHelper resource_helper_;
     SplashScreen *splash_screen_ = nullptr;
+    wxFrame *main_frame_ = nullptr;
     std::thread initialization_thread_;
     
     Impl()
@@ -244,26 +225,7 @@ void MyApp::OnInitImpl()
     dummy_wait();
     pimpl_->splash_screen_->AddMessage(L"Create empty project");
     
-    auto pj = std::make_shared<Project>();
-    auto &seq = pj->GetSequence();
-    seq = MakeSequence({48, 50, 52, 55, 60});
-    pj->GetTransporter().SetLoopRange(0, 4 * kSampleRate);
-    pj->GetTransporter().SetLoopEnabled(true);
-    
-    auto dev = adm->GetDevice();
-    if(auto info = dev->GetDeviceInfo(DeviceIOType::kInput)) {
-        pj->AddAudioInput(info->name_, 0, info->num_channels_);
-    }
-    
-    if(auto info = dev->GetDeviceInfo(DeviceIOType::kOutput)) {
-        pj->AddAudioOutput(info->name_, 0, info->num_channels_);
-    }
-        
-    for(auto mi: pimpl_->midi_ins_) { pj->AddMidiInput(mi); }
-    for(auto mo: pimpl_->midi_outs_) { pj->AddMidiOutput(mo); }
-    
-    pimpl_->projects_.push_back(pj);
-    SetCurrentProject(pj.get());
+    OnFileNew();
     
     CallAfter([this] {
         pimpl_->splash_screen_->AddMessage(L"Create main window");
@@ -277,6 +239,7 @@ void MyApp::OnInitImpl()
         frame->CentreOnScreen();
         frame->Layout();
         
+        pimpl_->main_frame_ = frame;
     
         pimpl_->splash_screen_->Close();
         pimpl_->splash_screen_ = nullptr;
@@ -404,6 +367,198 @@ void MyApp::SetCurrentProject(Project *pj)
 Project * MyApp::GetCurrentProject()
 {
     return pimpl_->current_project_;
+}
+
+std::unique_ptr<Project> MyApp::CreateInitialProject()
+{
+    auto pj = std::make_unique<Project>();
+    auto &seq = pj->GetSequence();
+    seq = MakeSequence({48, 50, 52, 55, 60});
+    pj->GetTransporter().SetLoopRange(0, 4 * kSampleRate);
+    pj->GetTransporter().SetLoopEnabled(true);
+    
+    auto adm = AudioDeviceManager::GetInstance();
+    auto dev = adm->GetDevice();
+    assert(dev);
+    
+    if(auto info = dev->GetDeviceInfo(DeviceIOType::kInput)) {
+        pj->AddAudioInput(info->name_, 0, info->num_channels_);
+    }
+    
+    if(auto info = dev->GetDeviceInfo(DeviceIOType::kOutput)) {
+        pj->AddAudioOutput(info->name_, 0, info->num_channels_);
+    }
+    
+    pj->AddDefaultMidiInputs();
+    
+    for(auto mi: pimpl_->midi_ins_) { pj->AddMidiInput(mi); }
+    for(auto mo: pimpl_->midi_outs_) { pj->AddMidiOutput(mo); }
+    
+    return pj;
+}
+
+void MyApp::ReplaceProject(std::unique_ptr<Project> pj)
+{
+    SetCurrentProject(nullptr);
+    pimpl_->projects_.clear();
+    
+    auto p = pj.get();
+    pimpl_->projects_.push_back(std::move(pj));
+    
+    SetCurrentProject(p);
+    auto &graph = p->GetGraph();
+    for(auto &node: graph.GetNodes()) {
+        if(auto vst3 = dynamic_cast<Vst3AudioProcessor *>(node->GetProcessor().get())) {
+            auto result = vst3->Load();
+            if(!result) {
+                wxMessageBox(L"Failed to reload {}"_format(vst3->GetName()));
+            }
+        }
+    }
+    
+    auto schema = p->ToSchema();
+    p->UpdateLastSchema(std::move(schema));
+    
+    auto windows_title = p->GetFileName();
+    if(windows_title.empty()) {
+        windows_title = L"Untitled";
+    }
+    
+    //! todo: refactor here with callback mechanism.
+    if(pimpl_->main_frame_) {
+        pimpl_->main_frame_->SetTitle(windows_title);
+    }
+}
+
+void MyApp::OnFileNew()
+{
+    bool const saved = OnFileSave(false, true);
+    if(!saved) { return; }
+    
+    ReplaceProject(CreateInitialProject());
+}
+
+void MyApp::OnFileOpen()
+{
+    bool const saved = OnFileSave(false, true);
+    if(!saved) { return; }
+    
+    wxFileDialog dlg(nullptr, "Open Project", "", "",
+                     "Project File (*.trproj)|*.trproj",
+                     wxFD_OPEN|wxFD_FILE_MUST_EXIST);
+    if(dlg.ShowModal() == wxID_CANCEL) {
+        return;
+    }
+    
+    auto file = dlg.GetPath();
+    std::ifstream is(file.ToStdString().c_str());
+    
+    schema::Project schema;
+
+    bool successful = schema.ParseFromIstream(&is);
+    if(!successful) {
+        wxMessageBox(L"Failed to load file [{}]"_format(file.ToStdWstring()));
+        return;
+    }
+    
+    auto new_pj = Project::FromSchema(schema);
+    assert(new_pj);
+    
+    new_pj->SetFileName(wxFileName(file).GetFullName());
+    new_pj->SetProjectDirectory(wxFileName(wxFileName(file).GetPath(), ""));
+
+    ReplaceProject(std::move(new_pj));
+}
+
+wxFileName SelectFileToSave(Project const *pj)
+{
+    auto dir = pj->GetProjectDirectory();
+    if(dir.GetFullPath().empty()) {
+        auto path = wxFileName(GetTerraDir(), "");
+        if(path.DirExists() == false) {
+            path.Mkdir(wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+        }
+        //! todo: get default project location from config.
+        path.AppendDir("Projects");
+        if(path.DirExists() == false && path.Mkdir() == false) {
+            wxMessageBox(L"Failed to create the project directory [{}]."_format(
+                                                                                path.GetFullPath().ToStdWstring()
+                                                                                ));
+            return wxFileName();
+        }
+        dir = path.GetFullPath();
+    }
+    
+    wxFileDialog dlg(nullptr, "Save Project", dir.GetFullPath(), "",
+                     "Project File (*trproj)|*.trproj",
+                     wxFD_SAVE|wxFD_OVERWRITE_PROMPT);
+    if(dlg.ShowModal() == wxID_CANCEL) {
+        return wxFileName();
+    }
+    
+    return wxFileName(dlg.GetPath());
+}
+
+bool MyApp::OnFileSave(bool force_save_as, bool need_to_confirm_for_closing)
+{
+    auto pj = Project::GetCurrentProject();
+    if(!pj) { return true; }
+    
+    auto schema = pj->ToSchema();
+    assert(schema);
+    
+    if(auto last_schema = pj->GetLastSchema()) {
+        using MD = google::protobuf::util::MessageDifferencer;
+        MD diff;
+        std::string buf;
+        diff.set_report_matches(true);
+        diff.set_report_moves(true);
+        diff.set_message_field_comparison(MD::MessageFieldComparison::EQUIVALENT);
+        diff.set_scope(MD::Scope::FULL);
+        diff.set_float_comparison(MD::FloatComparison::APPROXIMATE);
+        diff.set_repeated_field_comparison(MD::RepeatedFieldComparison::AS_SET);
+        diff.ReportDifferencesToString(&buf);
+        if(diff.Compare(*schema, *last_schema)) {
+            return true;
+        } else {
+            std::cout << "Diff: " << buf << std::endl;
+        }
+    }
+    
+    if(need_to_confirm_for_closing) {
+        wxMessageDialog dlg(nullptr,
+                            "Do you want to save this project before to close?",
+                            "Save",
+                            wxYES_NO|wxCANCEL|wxCENTER);
+        dlg.SetYesNoCancelLabels("Save", "Discard", "Cancel");
+        auto const result = dlg.ShowModal();
+        if(result == wxID_NO) {
+            return true; // treat as saved.
+        } else if(result == wxID_CANCEL){
+            return false; // canceled
+        }
+    }
+    
+    auto path = pj->GetFullPath();
+    if( (path.IsOk() == false) || force_save_as) {
+        path = SelectFileToSave(pj);
+    }
+    
+    if(path.IsOk() == false) {
+        return false;
+    }
+
+    pj->SetFileName(path.GetFullName());
+    pj->SetProjectDirectory(wxFileName(path.GetPath(), ""));
+    schema->set_name(path.GetFullName());
+    
+    std::ofstream os(path.GetFullPath().ToStdString());
+    schema->SerializeToOstream(&os);
+    
+    pj->UpdateLastSchema(std::move(schema));
+    
+    
+    return true;
 }
 
 void MyApp::ShowSettingDialog()

@@ -1,0 +1,138 @@
+syntax = "proto3";
+
+import "plugin_desc.proto";
+
+package hwm.schema;
+
+message Processor {
+  message Vst3 {
+    message Bus {
+      int32 num_channels = 1;
+      int32 bus_type = 2; // main/aux
+      string name = 3;
+      // combination of Steinberg::Vst::SpeakerArr.
+      // not used for event buses.
+      int32 speaker = 4;
+    }
+
+    message Param {
+      int32 id = 1;
+      double value = 2;
+    }
+
+    PluginDescription desc = 1;
+
+    // active buses only
+    repeated Bus audio_input_buses = 2;
+    repeated Bus audio_output_buses = 3;
+    repeated Bus event_input_buses = 4;
+    repeated Bus event_output_buses = 5;
+
+    // if bank_data is valid, params is ignored.
+    bytes bank_data = 7;
+    repeated Param params = 6;
+  }
+
+  message AudioInput {
+    string name = 1;
+    int32 num_channels = 2;
+    int32 channel_index = 3;
+  }
+
+  message AudioOutput {
+    string name = 1;
+    int32 num_channels = 2;
+    int32 channel_index = 3;
+  }
+
+  message MidiInput {
+    string name = 1;
+    bool is_virtual_device = 2;
+  }
+
+  message MidiOutput {
+    string name = 1;
+    bool is_virtual_device = 2;
+  }
+
+  // only one of these data should be initalized.
+  Vst3 vst3_data = 1;
+  AudioInput audio_input_data = 2;
+  AudioOutput audio_output_data = 3;
+  MidiInput midi_input_data = 4;
+  MidiOutput midi_output_data = 5;
+}
+
+message Node {
+  int64 id = 1;
+  Processor processor = 2;
+}
+
+message NodeGraph
+{
+  message Connection {
+    enum Type {
+      kAudio = 0;
+      kEvent = 1;
+    }
+
+    Type type = 1;
+    int64 upstream_id = 2;
+    int64 downstream_id = 3;
+    int32 upstream_channel_index = 4;
+    int32 downstream_channel_index = 5;
+  }
+
+  repeated Node nodes = 1;
+  repeated Connection connections = 2;
+}
+
+message Sequence
+{
+  message Note {
+    int64 pos = 1;          // tick
+    int64 length = 2;       // tick
+    int32 pitch = 3;        // 0 .. 127
+    int32 velocity = 4;     // 0 .. 127
+    int32 off_velocity = 5; // 0 .. 127
+  }
+
+  repeated Note notes = 1;
+  int32 channel = 2;
+}
+
+message MusicalParameterSequence {
+  message TempoEvent {
+    int64 pos = 1; // tick
+    double value = 2;
+  }
+
+  message MeterEvent {
+    int32 pos = 1; // measure
+    int32 numer = 2;
+    int32 denom = 3;
+  }
+
+  repeated TempoEvent tempo_events = 1;
+  repeated MeterEvent meter_events = 2;
+}
+
+message Transport
+{
+  int64 pos = 1; // sample
+  int64 loop_begin = 2; // sample
+  int64 loop_end = 3; // sample
+  bool loop_enabled = 4;
+}
+
+message Project
+{
+  string name = 1;
+  MusicalParameterSequence musical_parameters = 2;
+  Transport transport = 3;
+  NodeGraph graph = 4;
+  Sequence sequence = 5;
+  double sample_rate = 6;
+  double block_size = 7;
+}
+

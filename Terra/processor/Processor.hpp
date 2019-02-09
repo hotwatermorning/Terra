@@ -1,6 +1,10 @@
 #pragma once
 
 #include "./ProcessInfo.hpp"
+#include <project.pb.h>
+#include <plugin_desc.pb.h>
+
+#include "../misc/LockFactory.hpp"
 
 NS_HWM_BEGIN
 
@@ -45,6 +49,15 @@ public:
     
     virtual
     bool HasEditor() const { return false; }
+    
+    std::unique_ptr<schema::Processor> ToSchema() const;
+    
+    static
+    std::unique_ptr<Processor> FromSchema(schema::Processor const &schema);
+    
+private:
+    virtual
+    std::unique_ptr<schema::Processor> ToSchemaImpl() const = 0;
 };
 
 NS_HWM_END
@@ -55,63 +68,82 @@ NS_HWM_END
 
 NS_HWM_BEGIN
 
-class Vst3AudioProcessor
+class PluginAudioProcessor
 :   public Processor
 {
-public:
-    Vst3AudioProcessor(std::shared_ptr<Vst3Plugin> plugin)
-    :   plugin_(plugin)
+protected:
+    PluginAudioProcessor(schema::PluginDescription const &desc)
+    :   desc_(desc)
     {}
     
-    String GetName() const override { return plugin_->GetEffectName(); }
+public:
+    virtual
+    ~PluginAudioProcessor()
+    {}
+    
+    virtual
+    bool IsLoaded() const = 0;
+    
+    struct LoadResult {
+        std::string error_msg_;
+        //! return true if the plugin was loaded successfully.
+        explicit operator bool() const { return error_msg_.empty(); }
+    };
+    
+    //! Do nothing and return a successful LoadResult if `IsLoaded() == true`.
+    LoadResult Load();
+    
+    schema::PluginDescription const & GetDescription() const { return desc_; }
+    
+private:
+    schema::PluginDescription desc_;
+    
+    virtual
+    LoadResult doLoad() = 0;
+};
 
-    void OnStartProcessing(double sample_rate, SampleCount block_size) override
-    {
-        assert(plugin_->IsResumed() == false);
-        plugin_->SetSamplingRate(sample_rate);
-        plugin_->SetBlockSize(block_size);
-        plugin_->Resume();
-    }
+class Vst3AudioProcessor
+:   public PluginAudioProcessor
+{
+public:
+    // lazy initialization
+    Vst3AudioProcessor(schema::Processor const &vst3_data);
     
-    void Process(ProcessInfo &pi)  override
-    {
-        plugin_->Process(pi);
-    }
+    Vst3AudioProcessor(schema::PluginDescription const &desc,
+                       std::shared_ptr<Vst3Plugin> plugin);
+
+    ~Vst3AudioProcessor();
     
-    void OnStopProcessing() override
-    {
-        plugin_->Suspend();
-    }
+    String GetName() const override;
     
-    SampleCount GetLatencySample() const  override
-    {
-        return 0;
-    }
+    bool IsLoaded() const override;
     
-    UInt32 GetAudioChannelCount(BusDirection dir) const override
-    {
-        if(dir == BusDirection::kInputSide) { return plugin_->GetNumInputs(); }
-        else                                { return plugin_->GetNumOutputs(); }
-    }
+    //! Do nothing and return a successful LoadResult if `IsLoaded() == true`.
+    LoadResult doLoad() override;
+
+    void OnStartProcessing(double sample_rate, SampleCount block_size) override;
+    void Process(ProcessInfo &pi) override;
+    void OnStopProcessing() override;
+    SampleCount GetLatencySample() const override;
+    UInt32 GetAudioChannelCount(BusDirection dir) const override;
+    UInt32 GetMidiChannelCount(BusDirection dir) const override;
+    bool HasEditor() const override;
+    
+    std::unique_ptr<schema::Processor> ToSchemaImpl() const override;
     
     static
-    Vst3Plugin::BusDirections ToVst3BusDirection(BusDirection dir)
-    {
-        return
-        dir == BusDirection::kInputSide
-        ? Vst3Plugin::BusDirections::kInput
-        : Vst3Plugin::BusDirections::kOutput;
-    }
+    std::unique_ptr<Vst3AudioProcessor> FromSchemaImpl(schema::Processor const &schema);
     
-    UInt32 GetMidiChannelCount(BusDirection dir) const override
-    {
-        auto const media = Vst3Plugin::MediaTypes::kEvent;
-        return plugin_->GetNumActiveBuses(media, ToVst3BusDirection(dir));
-    }
-    
-    bool HasEditor() const override { return plugin_->HasEditor(); }
-    
+    schema::Processor schema_;
     std::shared_ptr<Vst3Plugin> plugin_;
+    LockFactory process_lock_;
+    
+    struct ProcessSetting {
+        double sample_rate_;
+        SampleCount block_size_;
+    };
+    
+    std::optional<ProcessSetting> process_setting_;
 };
 
 NS_HWM_END

@@ -3,6 +3,8 @@
 
 #include "./IMusicalTimeService.hpp"
 #include "../processor/ProcessInfo.hpp"
+#include <project.pb.h>
+
 
 NS_HWM_BEGIN
 
@@ -42,6 +44,10 @@ struct Sequence
     UInt8 channel_ = 0;
     
     std::vector<ProcessInfo::MidiMessage> Cache(IMusicalTimeService const *conv);
+    
+    std::unique_ptr<schema::Sequence> ToSchema() const;
+    static
+    std::unique_ptr<Sequence> FromSchema(schema::Sequence const &seq);
 };
 
 NS_HWM_END

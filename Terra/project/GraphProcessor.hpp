@@ -223,6 +223,11 @@ public:
     /*! @return 接続を切断した場合はtrueが帰る。接続が一つも見つからないために何もしなかった場合はfalseが帰る。
      */
     bool Disconnect(ConnectionPtr conn);
+    
+    std::unique_ptr<schema::NodeGraph> ToSchema() const;
+    
+    static
+    std::unique_ptr<GraphProcessor> FromSchema(schema::NodeGraph const &schema);
 
 private:
     struct Impl;

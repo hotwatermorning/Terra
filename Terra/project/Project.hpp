@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <wx/filename.h>
 
 #include "../misc/Bypassable.hpp"
 #include "../misc/LockFactory.hpp"
@@ -15,6 +16,7 @@
 #include "./Sequence.hpp"
 #include "./GraphProcessor.hpp"
 #include "./IMusicalTimeService.hpp"
+#include <project.pb.h>
 
 NS_HWM_BEGIN
 
@@ -39,11 +41,23 @@ public:
     
     Project();
     ~Project();
+
+    //! Get project name.
+    /*! usually the name already has extension `.trproj`.
+     */
+    String const & GetFileName() const;
+    void SetFileName(String const &name);
+    
+    wxFileName const & GetProjectDirectory() const;
+    void SetProjectDirectory(wxFileName const &dir_path);
+    
+    wxFileName GetFullPath() const;
     
     void AddAudioInput(String name, UInt32 channel_index, UInt32 num_channel);
     void AddAudioOutput(String name, UInt32 channel_index, UInt32 num_channel);
     void AddMidiInput(MidiDevice *device);
     void AddMidiOutput(MidiDevice *device);
+    void AddDefaultMidiInputs();
     
     Sequence & GetSequence() const;
     void CacheSequence();
@@ -79,6 +93,13 @@ public:
     Tick MBTToTick(MBT mbt) const override;
     double GetTempoAt(double tick) const override;
     Meter GetMeterAt(double tick) const override;
+    
+    std::unique_ptr<schema::Project> ToSchema() const;
+    static
+    std::unique_ptr<Project> FromSchema(schema::Project const &schema);
+    
+    schema::Project * GetLastSchema() const;
+    void UpdateLastSchema(std::unique_ptr<schema::Project> schema);
     
 private:
     struct Impl;

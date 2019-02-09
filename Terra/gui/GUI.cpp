@@ -3,6 +3,7 @@
 #include "../project/Project.hpp"
 
 #include <wx/tglbtn.h>
+#include <wx/stdpaths.h>
 
 #include <vector>
 
@@ -249,6 +250,8 @@ private:
     void OnRewind()
     {
         auto pj = Project::GetCurrentProject();
+        if(!pj) { return; }
+        
         auto &tp = pj->GetTransporter();
         tp.Rewind();
     }
@@ -256,6 +259,8 @@ private:
     void OnStop()
     {
         auto pj = Project::GetCurrentProject();
+        if(!pj) { return; }
+        
         auto &tp = pj->GetTransporter();
         tp.SetStop();
     }
@@ -263,6 +268,8 @@ private:
     void OnPlay()
     {
         auto pj = Project::GetCurrentProject();
+        if(!pj) { return; }
+        
         auto &tp = pj->GetTransporter();
         tp.SetPlaying(tp.IsPlaying() == false);
     }
@@ -270,6 +277,8 @@ private:
     void OnForward()
     {
         auto pj = Project::GetCurrentProject();
+        if(!pj) { return; }
+        
         auto &tp = pj->GetTransporter();
         tp.FastForward();
     }
@@ -277,6 +286,8 @@ private:
     void OnLoop()
     {
         auto pj = Project::GetCurrentProject();
+        if(!pj) { return; }
+        
         auto &tp = pj->GetTransporter();
         tp.SetLoopEnabled(btn_loop_->IsPushed());
     }
@@ -405,6 +416,7 @@ private:
         }
         
         auto pj = Project::GetCurrentProject();
+        if(!pj) { return; }
         auto mbt = pj->TickToMBT(new_state.play_.begin_.tick_);
         UpdateTime(mbt);
     }
@@ -412,6 +424,8 @@ private:
     void OnTimer()
     {
         auto pj = Project::GetCurrentProject();
+        if(!pj) { return; }
+        
         auto &tp = pj->GetTransporter();
         
         if(tp.IsPlaying() && timer_.GetInterval() == kIntervalSlow) {
@@ -453,6 +467,8 @@ private:
     wxColor col_bg_;
 };
 
+Sequence MakeSequence(std::vector<Int8> pitches);
+
 class MyPanel
 :   public wxPanel
 ,   public SingleInstance<MyPanel>
@@ -486,6 +502,19 @@ public:
         Bind(wxEVT_KEY_UP, [this](auto &ev) { keyboard_->HandleWindowEvent(ev); });
         
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(ev); });
+        
+        timer_.Bind(wxEVT_TIMER, [this, i = 0](auto &ev) mutable {
+            auto pj = Project::GetCurrentProject();
+            if(!pj) { return; }
+//            if(i % 2 == 0) {
+//                pj->GetSequence() = MakeSequence({48, 50, 51, 55, 58});
+//            } else {
+//                pj->GetSequence() = MakeSequence({48 + 24, 50 + 24, 51 + 24, 55 + 24, 58 + 24});
+//            }
+            pj->CacheSequence();
+            ++i;
+        });
+        timer_.Start(10);
     }
     
     ~MyPanel()
@@ -518,6 +547,8 @@ private:
     wxPanel         *keyboard_;
     wxPanel         *header_panel_ = nullptr;
     GraphEditor     *graph_panel_ = nullptr;
+    
+    wxTimer timer_;
 };
 
 class MyPanel;
@@ -548,13 +579,22 @@ enum
     ID_Play = 1,
     ID_RescanPlugin,
     ID_ForceRescanPlugin,
-    ID_Setting
+    ID_Setting,
+    ID_File_New,
+    ID_File_Open,
+    ID_File_Save,
+    ID_File_SaveAs,
 };
 
 MyFrame::MyFrame()
 : wxFrame(nullptr, wxID_ANY, "Untitled", wxDefaultPosition, wxDefaultSize)
 {
     wxMenu *menuFile = new wxMenu;
+    menuFile->Append(ID_File_New, "&New File\tCTRL-N", "New File");
+    menuFile->Append(ID_File_Open, "&Open...\tCTRL-O", "Open File");
+    menuFile->Append(ID_File_Save, "&Save\tCTRL-S", "Save File");
+    menuFile->Append(ID_File_SaveAs, "&Save As\tCTRL-SHIFT-S", "Save File As");
+    menuFile->AppendSeparator();
     menuFile->Append(ID_RescanPlugin, "&Rescan Plugins", "Rescan Plugins");
     menuFile->Append(ID_ForceRescanPlugin, "&Clear and Rescan Plugins", "Clear and Rescan Plugins");
     menuFile->AppendSeparator();
@@ -578,9 +618,13 @@ MyFrame::MyFrame()
     
     Bind(wxEVT_MENU, [this](auto &ev) { OnExit(); }, wxID_EXIT);
     //Bind(wxEVT_CLOSE_WINDOW, [this](auto &ev) { OnExit(); });
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { MyApp::GetInstance()->RescanPlugins(); }, ID_RescanPlugin);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { MyApp::GetInstance()->ForceRescanPlugins(); }, ID_ForceRescanPlugin);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { MyApp::GetInstance()->ShowSettingDialog(); }, ID_Setting);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { MyApp::GetInstance()->OnFileNew(); }, ID_File_New);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { MyApp::GetInstance()->OnFileOpen(); }, ID_File_Open);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { MyApp::GetInstance()->OnFileSave(false, false); }, ID_File_Save);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { MyApp::GetInstance()->OnFileSave(true, false); }, ID_File_SaveAs);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { MyApp::GetInstance()->RescanPlugins(); }, ID_RescanPlugin);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { MyApp::GetInstance()->ForceRescanPlugins(); }, ID_ForceRescanPlugin);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { MyApp::GetInstance()->ShowSettingDialog(); }, ID_Setting);
     Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { OnPlay(ev); }, ID_Play);
     
     Bind(wxEVT_MENU, [this](auto &ev) { OnAbout(ev); }, wxID_ABOUT);

@@ -790,7 +790,6 @@ void Vst3Plugin::Impl::InputEvents(ProcessInfo::IEventBufferList const *buffers,
                 auto result = midi_mapping_->getMidiControllerAssignment(0, channel, cc, param_id);
                 if(result == kResultOk) {
                     PushBackParameterChange(param_id, value, offset);
-                    edit_controller_->setParamNormalized(param_id, value);
                 }
             };
             

@@ -24,7 +24,7 @@ public:
     using AudioConnectionPtr = std::shared_ptr<AudioConnection const>;
     using MidiConnectionPtr = std::shared_ptr<MidiConnection const>;
     
-    struct Listener : public ListenerBase
+    struct Listener : public IListenerBase
     {
     protected:
         Listener() {}

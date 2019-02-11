@@ -198,14 +198,9 @@ void PluginScanner::Import(std::string const &str)
     }
 }
 
-void PluginScanner::AddListener(Listener *li)
+PluginScanner::IListenerService & PluginScanner::GetListeners()
 {
-    pimpl_->listeners_.AddListener(li);
-}
-
-void PluginScanner::RemoveListener(Listener const *li)
-{
-    pimpl_->listeners_.RemoveListener(li);
+    return pimpl_->listeners_;
 }
 
 void PluginScanner::ScanAsync()

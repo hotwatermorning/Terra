@@ -34,14 +34,9 @@ IMusicalTimeService const * Transporter::GetMusicalTimeService() const
     return mt_;
 }
 
-void Transporter::AddListener(ITransportStateListener *li)
+Transporter::IListenerService & Transporter::GetListeners()
 {
-    listeners_.AddListener(li);
-}
-
-void Transporter::RemoveListener(ITransportStateListener const *li)
-{
-    listeners_.RemoveListener(li);
+    return listeners_;
 }
 
 TransportInfo Transporter::GetCurrentState() const

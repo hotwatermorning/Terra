@@ -31,7 +31,7 @@ public:
     
     void BeforeExit();
     
-    class ChangeProjectListener : public ListenerBase
+    class ChangeProjectListener : public IListenerBase
     {
     protected:
         ChangeProjectListener() {}
@@ -40,8 +40,10 @@ public:
         virtual
         void OnChangeCurrentProject(Project *prev_pj, Project *new_pj) {}
     };
-    void AddChangeProjectListener(ChangeProjectListener *li);
-    void RemoveChangeProjectListener(ChangeProjectListener const *li);
+    
+    using ChangeProjectListenerService = IListenerService<ChangeProjectListener>;
+    
+    ChangeProjectListenerService & GetChangeProjectListeners();
     
     std::unique_ptr<Vst3Plugin> CreateVst3Plugin(schema::PluginDescription const &desc);
 

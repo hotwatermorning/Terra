@@ -189,12 +189,11 @@ class PluginEditorControl
 :   public wxPanel
 {
 public:
-    class Listener
+    class Listener : public IListenerBase
     {
     protected:
         Listener() {}
     public:
-        virtual ~Listener() {}
         virtual void OnChangeEditorType(bool use_generic_editor) {}
         virtual void OnChangeProgram() {}
     };
@@ -290,8 +289,9 @@ public:
     ~PluginEditorControl()
     {}
     
-    void AddListener(Listener *li) { listeners_.AddListener(li); }
-    void RemoveListener(Listener const *li) { listeners_.RemoveListener(li); }
+    using IListenerService = IListenerService<Listener>;
+    
+    IListenerService & GetListeners() { return listeners_; }
     
 private:
     Vst3Plugin *plugin_ = nullptr;
@@ -413,7 +413,7 @@ public:
         on_destroy_ = on_destroy;
         
         control_ = new PluginEditorControl(this, target_plugin);
-        control_->AddListener(this);
+        control_->GetListeners().AddListener(this);
         
         genedit_ = new GenericParameterView(this, target_plugin);
         
@@ -432,7 +432,7 @@ public:
     }
     
     ~PluginEditorFrame() {
-        control_->RemoveListener(this);
+        control_->GetListeners().RemoveListener(this);
     }
     
     bool Destroy() override

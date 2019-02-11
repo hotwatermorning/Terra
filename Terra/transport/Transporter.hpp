@@ -27,22 +27,16 @@ public:
     TimeRange GetLoopRange() const;
     bool IsLoopEnabled() const;
     
-    class ITransportStateListener
+    class ITransportStateListener : public IListenerBase
     {
-    protected:
-        ITransportStateListener() {}
-        
     public:
-        virtual
-        ~ITransportStateListener() {}
-        
         virtual
         void OnChanged(TransportInfo const &old_state,
                        TransportInfo const &new_state) = 0;
     };
     
-    void AddListener(ITransportStateListener *li);
-    void RemoveListener(ITransportStateListener const *li);
+    using IListenerService = IListenerService<ITransportStateListener>;
+    IListenerService & GetListeners();
     
     void MoveTo(SampleCount pos);
     //! jump 1 measure before

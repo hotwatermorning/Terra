@@ -82,12 +82,12 @@ struct MyApp::Impl
     
     Impl()
     {
-        plugin_scanner_.AddListener(&plugin_list_exporter_);
+        plugin_scanner_.GetListeners().AddListener(&plugin_list_exporter_);
     }
     
     ~Impl()
     {
-        plugin_scanner_.RemoveListener(&plugin_list_exporter_);
+        plugin_scanner_.GetListeners().RemoveListener(&plugin_list_exporter_);
     }
 };
 
@@ -270,8 +270,10 @@ void MyApp::BeforeExit()
 {
 }
 
-void MyApp::AddChangeProjectListener(ChangeProjectListener *li) { pimpl_->cp_listeners_.AddListener(li); }
-void MyApp::RemoveChangeProjectListener(ChangeProjectListener const *li) { pimpl_->cp_listeners_.RemoveListener(li); }
+MyApp::ChangeProjectListenerService & MyApp::GetChangeProjectListeners()
+{
+    return pimpl_->cp_listeners_;
+}
 
 std::unique_ptr<Vst3Plugin> MyApp::CreateVst3Plugin(schema::PluginDescription const &desc)
 {
@@ -556,7 +558,6 @@ bool MyApp::OnFileSave(bool force_save_as, bool need_to_confirm_for_closing)
     schema->SerializeToOstream(&os);
     
     pj->UpdateLastSchema(std::move(schema));
-    
     
     return true;
 }

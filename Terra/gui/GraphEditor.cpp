@@ -400,12 +400,12 @@ public:
         Bind(wxEVT_KEY_UP, [this](auto &ev) { OnKeyUp(ev); });
         Bind(wxEVT_KILL_FOCUS, [this](auto &ev) { OnKillFocus(); });
         Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](auto &ev) { OnReleaseMouse(); });
-        MyApp::GetInstance()->AddChangeProjectListener(this);
+        MyApp::GetInstance()->GetChangeProjectListeners().AddListener(this);
     }
     
     ~GraphEditorImpl()
     {
-        MyApp::GetInstance()->RemoveChangeProjectListener(this);
+        MyApp::GetInstance()->GetChangeProjectListeners().RemoveListener(this);
     }
     
     void OnChangeCurrentProject(Project *old_pj, Project *new_pj) override

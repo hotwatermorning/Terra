@@ -215,28 +215,20 @@ public:
         btn_loop_->Bind(wxEVT_TOGGLEBUTTON, [this](auto &ev) { OnLoop(); });
         //btn_metronome_->Bind(wxEVT_TOGGLEBUTTON, [this](auto &ev) { OnMetronome(); });
         
-        MyApp::GetInstance()->AddChangeProjectListener(this);
+        slr_change_project_.reset(MyApp::GetInstance()->GetChangeProjectListeners(), this);
         
         auto pj = Project::GetCurrentProject();
         assert(pj);
         
         auto &tp = pj->GetTransporter();
-        tp.AddListener(this);
+        slr_transporter_.reset(tp.GetListeners(), this);
         
         btn_play_->SetPushed(tp.IsPlaying());
         btn_loop_->SetPushed(tp.IsLoopEnabled());
     }
     
     ~TransportPanel()
-    {
-        MyApp::GetInstance()->RemoveChangeProjectListener(this);
-        
-        auto pj = Project::GetCurrentProject();
-        if(pj) {
-            auto &tp = pj->GetTransporter();
-            tp.RemoveListener(this);
-        }
-    }
+    {}
 
 private:
     ImageAsset      asset_;
@@ -246,6 +238,8 @@ private:
     ImageButton     *btn_forward_;
     ImageButton     *btn_loop_;
     ImageButton     *btn_metronome_;
+    ScopedListenerRegister<MyApp::ChangeProjectListener> slr_change_project_;
+    ScopedListenerRegister<Transporter::ITransportStateListener> slr_transporter_;
     
     void OnRewind()
     {
@@ -301,11 +295,11 @@ private:
     void OnChangeCurrentProject(Project *old_pj, Project *new_pj) override
     {
         if(old_pj) {
-            old_pj->GetTransporter().RemoveListener(this);
+            slr_transporter_.reset();
         }
         
         if(new_pj) {
-            new_pj->GetTransporter().AddListener(this);
+            slr_transporter_.reset(new_pj->GetTransporter().GetListeners(), this);
         }
     }
     
@@ -357,26 +351,19 @@ public:
         
         Layout();
         
-        MyApp::GetInstance()->AddChangeProjectListener(this);
+        slr_change_project_.reset(MyApp::GetInstance()->GetChangeProjectListeners(), this);
         
         auto pj = Project::GetCurrentProject();
         assert(pj);
         
         auto &tp = pj->GetTransporter();
-        tp.AddListener(this);
+        slr_transporter_.reset(tp.GetListeners(), this);
         
         SetBackgroundColour(wxColour(0x3B, 0x3B, 0x3B));
     }
     
     ~TimeIndicator()
-    {
-        MyApp::GetInstance()->RemoveChangeProjectListener(this);
-        auto pj = Project::GetCurrentProject();
-        if(pj) {
-            auto &tp = pj->GetTransporter();
-            tp.RemoveListener(this);
-        }
-    }
+    {}
     
 private:
     UInt32 kIntervalSlow = 200;
@@ -385,15 +372,17 @@ private:
     wxTimer timer_;
     TransportInfo last_info_;
     wxStaticText *text_;
+    ScopedListenerRegister<MyApp::ChangeProjectListener> slr_change_project_;
+    ScopedListenerRegister<Transporter::ITransportStateListener> slr_transporter_;
 
     void OnChangeCurrentProject(Project *old_pj, Project *new_pj) override
     {
         if(old_pj) {
-            old_pj->GetTransporter().RemoveListener(this);
+            slr_transporter_.reset();
         }
         
         if(new_pj) {
-            new_pj->GetTransporter().AddListener(this);
+            slr_transporter_.reset(new_pj->GetTransporter().GetListeners(), this);
         }
     }
     

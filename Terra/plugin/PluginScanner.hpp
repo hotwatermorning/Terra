@@ -4,6 +4,7 @@
 
 #include "../misc/LockFactory.hpp"
 #include "../misc/SingleInstance.hpp"
+#include "../misc/ListenerService.hpp"
 #include "./vst3/Vst3PluginFactory.hpp"
 #include <plugin_desc.pb.h>
 
@@ -26,14 +27,11 @@ struct PluginScanner
     std::string Export();
     void Import(std::string const &str);
     
-    struct Listener
+    struct Listener : public IListenerBase
     {
     protected:
         Listener() {}
     public:
-        virtual
-        ~Listener() {}
-        
         virtual
         void OnScanningStarted(PluginScanner *scanner) {}
         
@@ -44,8 +42,9 @@ struct PluginScanner
         void OnScanningFinished(PluginScanner *scanner) {}
     };
     
-    void AddListener(Listener *li);
-    void RemoveListener(Listener const *li);
+    using IListenerService = IListenerService<Listener>;
+
+    IListenerService & GetListeners();
     
     void ScanAsync();
     void Wait();

@@ -668,8 +668,12 @@ void Vst3Plugin::Impl::RestartComponent(Steinberg::int32 flags)
 {
 	//! `Controller`側のパラメータが変更された
 	if((flags & Vst::RestartFlags::kParamValuesChanged)) {
-
-		// nothing to do
+        auto num = GetNumParameters();
+        for(int i = 0; i < num; ++i) {
+            auto const value = GetParameterValueByIndex(i);
+            auto const &info = GetParameterInfoList().GetItemByIndex(i);
+            PushBackParameterChange(info.id_, value);
+        }
 
 	} else if((flags & Vst::RestartFlags::kReloadComponent)) {
 

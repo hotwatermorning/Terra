@@ -4,6 +4,24 @@ import "plugin_desc.proto";
 
 package hwm.schema;
 
+message Point
+{
+  int32 x = 1;
+  int32 y = 2;
+}
+
+message Size
+{
+  int32 width = 1;
+  int32 height = 2;
+}
+
+message Rect
+{
+  Point pos = 1;
+  Size size = 2;
+}
+
 message Processor {
   message Vst3 {
     message Bus {
@@ -64,8 +82,9 @@ message Processor {
 }
 
 message Node {
-  int64 id = 1;
+  uint64 id = 1;
   Processor processor = 2;
+  Point pos = 3;
 }
 
 message NodeGraph
@@ -134,5 +153,7 @@ message Project
   Sequence sequence = 5;
   double sample_rate = 6;
   double block_size = 7;
+
+  Rect frame_rect = 8;
 }
 

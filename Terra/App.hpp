@@ -39,6 +39,18 @@ public:
     public:
         virtual
         void OnChangeCurrentProject(Project *prev_pj, Project *new_pj) {}
+        
+        //! called before the schema of the project is saved.
+        /*! this callback is for gui classes to save gui data to the schema.
+         */
+        virtual
+        void OnBeforeSaveProject(Project *pj, schema::Project &schema) {}
+        
+        //! called before the schema of the project is saved.
+        /*! this callback is for gui classes to load gui data from the schema.
+         */
+        virtual
+        void OnAfterLoadProject(Project *pj, schema::Project const &schema) {}
     };
     
     using ChangeProjectListenerService = IListenerService<ChangeProjectListener>;

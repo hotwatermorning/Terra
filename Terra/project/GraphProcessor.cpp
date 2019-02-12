@@ -1,6 +1,7 @@
 #include "./GraphProcessor.hpp"
 #include "../processor/EventBuffer.hpp"
 #include "../misc/StrCnv.hpp"
+#include "../file/ProjectObjectTable.hpp"
 
 NS_HWM_BEGIN
 
@@ -1075,29 +1076,13 @@ bool GraphProcessor::Disconnect(ConnectionPtr conn)
     return true;
 }
 
-Int64 ToId(GraphProcessor::Node *p)
-{
-    return (Int64)p;
-}
-
-Int64 ToId(GraphProcessor::Node const *p)
-{
-    return (Int64)p;
-}
-
-template<class T>
-Int64 ToId(T const &p)
-{
-    return ToId(p.get());
-}
-
 std::unique_ptr<schema::NodeGraph> GraphProcessor::ToSchema() const
 {
     auto p = std::make_unique<schema::NodeGraph>();
     
     for(auto const &node: pimpl_->nodes_) {
         auto new_node = p->add_nodes();
-        new_node->set_id(ToId(node));
+        new_node->set_id(node->GetID());
         
         auto new_proc = node->GetProcessor()->ToSchema();
         new_node->set_allocated_processor(new_proc.release());
@@ -1105,8 +1090,8 @@ std::unique_ptr<schema::NodeGraph> GraphProcessor::ToSchema() const
         for(auto const &ac: node->GetAudioConnections(BusDirection::kOutputSide)) {
             auto conn = p->add_connections();
             conn->set_type(schema::NodeGraph_Connection_Type_kAudio);
-            conn->set_upstream_id(ToId(node));
-            conn->set_downstream_id(ToId(ac->downstream_));
+            conn->set_upstream_id(node->GetID());
+            conn->set_downstream_id(ac->downstream_->GetID());
             conn->set_upstream_channel_index(ac->upstream_channel_index_);
             conn->set_downstream_channel_index(ac->downstream_channel_index_);
         }
@@ -1114,8 +1099,8 @@ std::unique_ptr<schema::NodeGraph> GraphProcessor::ToSchema() const
         for(auto const &ac: node->GetMidiConnections(BusDirection::kOutputSide)) {
             auto conn = p->add_connections();
             conn->set_type(schema::NodeGraph_Connection_Type_kEvent);
-            conn->set_upstream_id(ToId(node));
-            conn->set_downstream_id(ToId(ac->downstream_));
+            conn->set_upstream_id(node->GetID());
+            conn->set_downstream_id(ac->downstream_->GetID());
             conn->set_upstream_channel_index(ac->upstream_channel_index_);
             conn->set_downstream_channel_index(ac->downstream_channel_index_);
         }
@@ -1128,7 +1113,10 @@ std::unique_ptr<GraphProcessor> GraphProcessor::FromSchema(schema::NodeGraph con
 {
     auto p = std::make_unique<GraphProcessor>();
     
-    std::map<Int64, Node *> node_table;
+    auto objects = ProjectObjectTable::GetInstance();
+    assert(objects);
+    
+    auto &node_table = objects->nodes_;
     
     for(auto const &node: schema.nodes()) {
         if(node.has_processor() == false) { continue; }
@@ -1157,13 +1145,13 @@ std::unique_ptr<GraphProcessor> GraphProcessor::FromSchema(schema::NodeGraph con
             proc = Processor::FromSchema(node.processor());
             new_node = p->AddNode(std::move(proc));
         }
-        
-        node_table[node.id()] = new_node.get();
+
+        node_table.Register(node.id(), new_node.get());
     }
     
     for(auto const &conn: schema.connections()) {
-        auto up_node = node_table[conn.upstream_id()];
-        auto down_node = node_table[conn.downstream_id()];
+        auto up_node = node_table.Find(conn.upstream_id());
+        auto down_node = node_table.Find(conn.downstream_id());
         
         if(!up_node || !down_node) { continue; }
         

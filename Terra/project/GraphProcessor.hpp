@@ -172,6 +172,8 @@ public:
     public:
         virtual ~Node() {}
         
+        UInt64 GetID() const { return reinterpret_cast<UInt64>(this); }
+        
         std::shared_ptr<Processor> GetProcessor() const { return processor_; }
         
         std::vector<AudioConnectionPtr> GetAudioConnections(BusDirection dir) const;

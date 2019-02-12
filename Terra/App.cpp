@@ -21,6 +21,7 @@
 #include "gui/SettingDialog.hpp"
 #include "gui/SplashScreen.hpp"
 #include "resource/ResourceHelper.hpp"
+#include "file/ProjectObjectTable.hpp"
 
 NS_HWM_BEGIN
 
@@ -396,6 +397,8 @@ std::unique_ptr<Project> MyApp::CreateInitialProject()
     for(auto mi: pimpl_->midi_ins_) { pj->AddMidiInput(mi); }
     for(auto mo: pimpl_->midi_outs_) { pj->AddMidiOutput(mo); }
     
+    pj->UpdateLastSchema(pj->ToSchema());
+    
     return pj;
 }
 
@@ -418,10 +421,21 @@ void MyApp::ReplaceProject(std::unique_ptr<Project> pj)
         }
     }
     
+    pimpl_->cp_listeners_.Invoke([p](ChangeProjectListener *li) {
+        assert(p->GetLastSchema());
+        li->OnAfterLoadProject(p, *p->GetLastSchema());
+    });
+    
     auto schema = p->ToSchema();
+    assert(schema);
+    
+    pimpl_->cp_listeners_.Invoke([&p, &schema](ChangeProjectListener *li) {
+        li->OnBeforeSaveProject(p, *schema);
+    });
+    
     p->UpdateLastSchema(std::move(schema));
     
-    auto windows_title = p->GetFileName();
+    auto windows_title = wxFileName(p->GetFileName()).GetName();
     if(windows_title.empty()) {
         windows_title = L"Untitled";
     }
@@ -436,6 +450,8 @@ void MyApp::OnFileNew()
 {
     bool const saved = OnFileSave(false, true);
     if(!saved) { return; }
+    
+    ProjectObjectTable scoped_objects;
     
     ReplaceProject(CreateInitialProject());
 }
@@ -455,17 +471,20 @@ void MyApp::OnFileOpen()
     auto file = dlg.GetPath();
     std::ifstream is(file.ToStdString().c_str());
     
-    schema::Project schema;
+    auto schema = std::make_unique<schema::Project>();
 
-    bool successful = schema.ParseFromIstream(&is);
+    bool successful = schema->ParseFromIstream(&is);
     if(!successful) {
         wxMessageBox(L"Failed to load file [{}]"_format(file.ToStdWstring()));
         return;
     }
     
-    auto new_pj = Project::FromSchema(schema);
+    ProjectObjectTable scoped_objects;
+    
+    auto new_pj = Project::FromSchema(*schema);
     assert(new_pj);
     
+    new_pj->UpdateLastSchema(std::move(schema));
     new_pj->SetFileName(wxFileName(file).GetFullName());
     new_pj->SetProjectDirectory(wxFileName(wxFileName(file).GetPath(), ""));
 
@@ -508,6 +527,10 @@ bool MyApp::OnFileSave(bool force_save_as, bool need_to_confirm_for_closing)
     
     auto schema = pj->ToSchema();
     assert(schema);
+    
+    pimpl_->cp_listeners_.Invoke([&pj, &schema](ChangeProjectListener *li) {
+        li->OnBeforeSaveProject(pj, *schema);
+    });
     
     if(auto last_schema = pj->GetLastSchema()) {
         using MD = google::protobuf::util::MessageDifferencer;

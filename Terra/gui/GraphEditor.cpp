@@ -7,6 +7,8 @@
 #include "../plugin/PluginScanner.hpp"
 #include "./Util.hpp"
 #include "../resource/ResourceHelper.hpp"
+#include "../file/ProjectObjectTable.hpp"
+#include "../misc/MathUtil.hpp"
 
 NS_HWM_BEGIN
 
@@ -400,13 +402,24 @@ public:
         Bind(wxEVT_KEY_UP, [this](auto &ev) { OnKeyUp(ev); });
         Bind(wxEVT_KILL_FOCUS, [this](auto &ev) { OnKillFocus(); });
         Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](auto &ev) { OnReleaseMouse(); });
-        MyApp::GetInstance()->GetChangeProjectListeners().AddListener(this);
+        slr_change_project_.reset(MyApp::GetInstance()->GetChangeProjectListeners(), this);
     }
     
     ~GraphEditorImpl()
     {
-        MyApp::GetInstance()->GetChangeProjectListeners().RemoveListener(this);
     }
+    
+    NodeComponent * FindNodeComponent(GraphProcessor::Node const *node)
+    {
+        auto found = std::find_if(node_components_.begin(),
+                                  node_components_.end(),
+                                  [node](auto &nc) { return nc->node_ == node; });
+        if(found == node_components_.end()) {
+            return nullptr;
+        } else {
+            return found->get();
+        }
+    };
     
     void OnChangeCurrentProject(Project *old_pj, Project *new_pj) override
     {
@@ -415,6 +428,56 @@ public:
         if(new_pj) {
             SetGraph(new_pj->GetGraph());
         }
+    }
+    
+    void OnBeforeSaveProject(Project *pj, schema::Project &schema) override
+    {
+        assert(pj && (&pj->GetGraph() == graph_));
+        assert(schema.has_graph());
+        
+        auto &schema_nodes = *schema.mutable_graph()->mutable_nodes();
+        
+        for(auto const &nc: node_components_) {
+            auto const id = nc->node_->GetID();
+            auto found = std::find_if(schema_nodes.begin(), schema_nodes.end(),
+                                      [id](auto const &node) { return node.id() == id; });
+            if(found == schema_nodes.end()) { continue; }
+            auto *pos = found->mutable_pos();
+            pos->set_x(nc->GetPosition().x);
+            pos->set_y(nc->GetPosition().y);
+        }
+    }
+    
+    void OnAfterLoadProject(Project *pj, schema::Project const &schema) override
+    {
+        if(!schema.has_graph()) { return; }
+        
+        assert(pj && (&pj->GetGraph() == graph_));
+        auto objects = ProjectObjectTable::GetInstance();
+        
+        auto &new_nodes = objects->nodes_;
+        auto &schema_nodes = schema.graph().nodes();
+        
+        auto const width = GetClientSize().GetWidth();
+        auto const height = GetClientSize().GetHeight();
+        
+        for(auto &schema_node: schema_nodes) {
+            auto found_node = new_nodes.Find(schema_node.id());
+            if(found_node == nullptr) { continue; }
+            
+            auto nc = FindNodeComponent(found_node);
+            if(nc == nullptr) { continue; }
+            
+            wxPoint pos{};
+            if(schema_node.has_pos()) {
+                pos.x = Clamp<int>(schema_node.pos().x(), 0, width - kDefaultNodeSize.GetWidth());
+                pos.y = Clamp<int>(schema_node.pos().y(), 0, height - kDefaultNodeSize.GetHeight());
+            }
+            
+            nc->SetPosition(pos);
+        }
+        
+        Layout();
     }
     
     void OnLeftDown(wxMouseEvent const &ev)
@@ -445,17 +508,6 @@ public:
     FindConnectionsToRemove(wxPoint begin, wxPoint end,
                            NodeComponent::Pin::Type pin_type)
     {
-        static auto find_node_component = [this](auto *node) -> NodeComponent * {
-            auto found = std::find_if(node_components_.begin(),
-                                      node_components_.end(),
-                                      [node](auto &nc) { return nc->node_ == node; });
-            if(found == node_components_.end()) {
-                return nullptr;
-            } else {
-                return found->get();
-            }
-        };
-        
         std::vector<GraphProcessor::ConnectionPtr> ret;
         
         for(auto const &nc: node_components_) {
@@ -472,7 +524,7 @@ public:
             
             for(auto conn: conns) {
                 auto *node_down = conn->downstream_;
-                auto nc2 = find_node_component(node_down);
+                auto nc2 = FindNodeComponent(node_down);
                 if(!nc2) { continue; }
                 
                 auto upstream_pin_center
@@ -784,6 +836,7 @@ private:
     using NodeComponentPtr = std::unique_ptr<NodeComponent>;
     std::vector<NodeComponentPtr> node_components_;
     GraphProcessor *graph_ = nullptr;
+    ScopedListenerRegister<MyApp::ChangeProjectListener> slr_change_project_;
     
     struct LineSetting {
         wxPoint begin_;

@@ -4,12 +4,14 @@
 
 #include <wx/tglbtn.h>
 #include <wx/stdpaths.h>
+#include <wx/display.h>
 
 #include <vector>
 
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
 
 #include "../misc/StrCnv.hpp"
+#include "../misc/MathUtil.hpp"
 #include "../plugin/PluginScanner.hpp"
 #include "./PluginEditor.hpp"
 #include "./Keyboard.hpp"
@@ -545,6 +547,7 @@ class MyPanel;
 class MyFrame
 :   public wxFrame
 ,   SingleInstance<MyFrame>
+,   MyApp::ChangeProjectListener
 {
 public:
     MyFrame();
@@ -557,10 +560,14 @@ private:
     void OnEnableInputs(wxCommandEvent& event);
     void OnTimer();
     
+    void OnBeforeSaveProject(Project *pj, schema::Project &schema) override;
+    void OnAfterLoadProject(Project *pj, schema::Project const &schema) override;
+    
 private:
     std::string msg_;
     wxTimer timer_;
     MyPanel *my_panel_;
+    ScopedListenerRegister<MyApp::ChangeProjectListener> slr_change_project_;
 };
 
 enum
@@ -623,6 +630,8 @@ MyFrame::MyFrame()
     timer_.Start(1000);
     
     my_panel_ = new MyPanel(this, GetClientSize());
+    
+    slr_change_project_.reset(MyApp::GetInstance()->GetChangeProjectListeners(), this);
 }
 
 MyFrame::~MyFrame()
@@ -639,8 +648,11 @@ bool MyFrame::Destroy()
 
 void MyFrame::OnExit()
 {
-    //MyApp::GetInstance()->BeforeExit();
-    Close( true );
+    auto app = MyApp::GetInstance();
+    auto saved = app->OnFileSave(false, true);
+    if(!saved) { return; }
+    
+    Close(false);
 }
 
 void MyFrame::OnAbout(wxCommandEvent& event)
@@ -657,6 +669,60 @@ void MyFrame::OnPlay(wxCommandEvent &ev)
 
 void MyFrame::OnTimer()
 {
+}
+
+void MyFrame::OnBeforeSaveProject(Project *pj, schema::Project &schema)
+{
+    auto schema_rect = schema.mutable_frame_rect();
+    auto rect = GetScreenRect();
+    
+    auto schema_pos = schema_rect->mutable_pos();
+    schema_pos->set_x(rect.GetX());
+    schema_pos->set_y(rect.GetY());
+    
+    auto schema_size = schema_rect->mutable_size();
+    schema_size->set_width(rect.GetWidth());
+    schema_size->set_height(rect.GetHeight());
+}
+
+UInt32 GetMenuBarHeight();
+
+void MyFrame::OnAfterLoadProject(Project *pj, schema::Project const &schema)
+{
+    wxRect rc;
+    if(schema.has_frame_rect()) {
+        auto const &rect = schema.frame_rect();
+        if(rect.has_pos()) {
+            auto const &pos = rect.pos();
+            rc.SetPosition(wxPoint{pos.x(), pos.y()});
+        }
+        if(rect.has_size()) {
+            auto const &size = rect.size();
+            rc.SetSize(wxSize{size.width(), size.height()});
+        }
+    }
+    
+    wxDisplay disp{};
+    auto client = disp.GetClientArea();
+
+    int menu_height = 0;
+    
+#if defined(_MSC_VER)
+    // do nothing
+#else
+    menu_height = GetMenuBarHeight();
+#endif
+
+    // constrain
+    rc.SetWidth(Clamp<int>(rc.GetWidth(), GetMinWidth(), GetMaxWidth()));
+    rc.SetHeight(Clamp<int>(rc.GetHeight(), GetMinHeight(), GetMaxHeight()));
+    rc.SetX(Clamp<int>(rc.GetX(), 0, client.GetWidth()-100));
+    rc.SetY(Clamp<int>(rc.GetY(), menu_height, client.GetHeight()-100));
+    
+    auto origin = GetClientAreaOrigin();
+    rc.Offset(origin);
+    
+    SetSize(rc);
 }
 
 wxFrame * CreateMainFrame()

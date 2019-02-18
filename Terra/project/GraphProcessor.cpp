@@ -204,6 +204,8 @@ public:
         for(int i = 0; i < ref_.size(); ++i) {
             dest_buf->AddEvent(ref_[i]);
         }
+        
+        ref_ = BufferType();
     }
     
     void OnStopProcessing() override
@@ -273,6 +275,7 @@ public:
         
         ref_ = src_buf->GetRef();
         callback_(this, pi);
+        ref_ = BufferType();
     }
     
     void OnStopProcessing() override

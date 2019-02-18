@@ -16,6 +16,8 @@ class Vst3Plugin::HostContext
 ,   public Vst::IHostApplication
 ,   public Vst::IComponentHandler
 ,   public Vst::IComponentHandler2
+,   public Vst::IUnitHandler
+,   public Vst::IUnitHandler2
 ,   public IPlugFrame
 {
 public:
@@ -26,9 +28,12 @@ public:
     
 public:
     DEFINE_INTERFACES
+    DEF_INTERFACE(FObject)
     DEF_INTERFACE(Vst::IHostApplication)
     DEF_INTERFACE(Vst::IComponentHandler)
     DEF_INTERFACE(Vst::IComponentHandler2)
+    DEF_INTERFACE(Vst::IUnitHandler)
+    DEF_INTERFACE(Vst::IUnitHandler2)
     DEF_INTERFACE(IPlugFrame)
     END_DEFINE_INTERFACES(FObject)
     
@@ -87,6 +92,10 @@ protected:
     tresult PLUGIN_API finishGroupEdit () override;
     
     //! @}
+    
+    tresult notifyUnitSelection (UnitID unitId) override;
+    tresult notifyProgramListChange (ProgramListID listId, int32 programIndex) override;
+    tresult notifyUnitByBusChange () override;
 
     //! @name IPlugFrame
     //! @{

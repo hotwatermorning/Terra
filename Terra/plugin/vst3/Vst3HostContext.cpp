@@ -31,6 +31,8 @@ void Vst3Plugin::HostContext::SetVst3Plugin(Vst3Plugin *plugin)
 
 tresult PLUGIN_API Vst3Plugin::HostContext::getName(Vst::String128 name)
 {
+    hwm::dout << "HostContext::getName" << std::endl;
+
     auto const length = std::min<int>(host_name_.length(), 128);
     std::copy_n(std::begin(host_name_), length, name);
     
@@ -77,6 +79,13 @@ tresult PLUGIN_API Vst3Plugin::HostContext::endEdit (Vst::ParamID id)
 
 tresult PLUGIN_API Vst3Plugin::HostContext::restartComponent (int32 flags)
 {
+    hwm::dout << "restartComponent [{}]"_format(flags) << std::endl;
+    auto app = wxApp::GetInstance();
+    if(wxThread::IsMain() == false) {
+        app->CallAfter([this, flags] { restartComponent(flags); });
+        return kResultOk;
+    }
+    
     std::string str;
     auto add_str = [&](auto value, std::string name) {
         if((flags & value) != 0) {
@@ -126,8 +135,27 @@ tresult PLUGIN_API Vst3Plugin::HostContext::finishGroupEdit ()
     return kResultOk;
 }
 
+tresult Vst3Plugin::HostContext::notifyUnitSelection (UnitID unitId)
+{
+    hwm::dout << "notifyUnitSelection" << std::endl;
+    return kResultOk;
+}
+
+tresult Vst3Plugin::HostContext::notifyProgramListChange (ProgramListID listId, int32 programIndex)
+{
+    hwm::dout << "notifyProgramListChange" << std::endl;
+    return kResultOk;
+}
+
+tresult Vst3Plugin::HostContext::notifyUnitByBusChange ()
+{
+    hwm::dout << "notifyUnitByBusChange" << std::endl;
+    return kResultOk;
+}
+
 tresult PLUGIN_API Vst3Plugin::HostContext::resizeView (IPlugView* view, ViewRect* newSize)
 {
+    hwm::dout << "resizeView" << std::endl;
     assert(newSize);
     ViewRect current;
     view->getSize(&current);

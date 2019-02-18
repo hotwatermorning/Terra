@@ -82,9 +82,13 @@ public:
     {
         btn_open_editor_ = new wxButton(this, wxID_ANY, "E", wxDefaultPosition, wxSize(20, 20));
         btn_open_editor_->Bind(wxEVT_BUTTON, [this](auto &ev) { OnOpenEditor(); });
-        if(dynamic_cast<Vst3AudioProcessor *>(node_->GetProcessor().get()) == nullptr) {
-            btn_open_editor_->Hide();
+        
+        bool enable_editor_button = false;
+        //! There always be a generic plugin view even if the plugin has no editors.
+        if(auto p = dynamic_cast<Vst3AudioProcessor *>(node_->GetProcessor().get())) {
+            enable_editor_button = true;
         }
+        btn_open_editor_->Show(enable_editor_button);
         
         st_plugin_name_ = new wxStaticText(this, wxID_ANY, node->GetProcessor()->GetName(),
                                            wxDefaultPosition, wxSize(1, 20), wxALIGN_CENTRE_HORIZONTAL);

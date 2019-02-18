@@ -44,18 +44,17 @@ tresult PLUGIN_API Vst3Plugin::HostContext::createInstance(TUID cid, TUID iid, v
     auto const classID = FUID::fromTUID(cid);
     auto const interfaceID = FUID::fromTUID(iid);
     
-    if (classID == Vst::IMessage::iid && interfaceID == Vst::IMessage::iid)
-    {
-        *obj = new Vst::HostMessage;
-        return kResultTrue;
+    FUnknown *p = nullptr;
+    
+    if (classID == Vst::IMessage::iid) {
+        p = new Vst::HostMessage();
+    } else if(classID == Vst::IAttributeList::iid) {
+        p = new Vst::HostAttributeList();
     }
-    else if (classID == Vst::IAttributeList::iid && interfaceID == Vst::IAttributeList::iid)
-    {
-        *obj = new Vst::HostAttributeList;
-        return kResultTrue;
-    }
-    *obj = 0;
-    return kResultFalse;
+    
+    if(!p) { return kNotImplemented; }
+    
+    return p->queryInterface(iid, obj);
 }
 
 tresult PLUGIN_API Vst3Plugin::HostContext::beginEdit (Vst::ParamID id)

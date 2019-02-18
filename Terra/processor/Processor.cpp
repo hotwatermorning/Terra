@@ -118,11 +118,14 @@ void Vst3AudioProcessor::LoadDataImpl()
     auto p = std::atomic_load(&plugin_);
     if(!p) { return; }
     
-    if(!p->IsResumed()) {
+    // for a newly created plugin processor.
+    if(schema_.has_vst3_data() == false) {
         return;
     }
     
-    assert(schema_.has_vst3_data());
+    if(!p->IsResumed()) {
+        return;
+    }
 
     auto &vd = schema_.vst3_data();
     if(vd.has_dump()) {

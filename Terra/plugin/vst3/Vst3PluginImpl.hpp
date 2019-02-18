@@ -26,6 +26,7 @@
 
 #include "../../misc/Flag.hpp"
 #include "../../misc/Buffer.hpp"
+#include "../../misc/LockFactory.hpp"
 
 NS_HWM_BEGIN
 
@@ -215,7 +216,7 @@ private:
 private:
 	void LoadPlugin(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context);
 	void LoadInterfaces(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context);
-	void Initialize(vstma_unique_ptr<Vst::IComponentHandler> component_handler);
+	void Initialize();
 
 	tresult CreatePlugView();
 	void DeletePlugView();
@@ -261,10 +262,11 @@ private:
     Buffer<float> input_buffer_;
     Buffer<float> output_buffer_;
     
-    Status status_;
+    std::atomic<Status> status_;
     
 private:
-    std::mutex              parameter_queue_mutex_;
+    LockFactory lf_processing_;
+    LockFactory lf_parameter_queue_;
     Vst::ParameterChanges   param_changes_queue_;
     
     Vst::ParameterChanges input_params_;

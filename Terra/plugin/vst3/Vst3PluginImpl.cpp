@@ -9,6 +9,7 @@
 #include <atomic>
 #include <algorithm>
 #include <vector>
+#include <thread>
 
 #include <pluginterfaces/vst/ivstmidicontrollers.h>
 
@@ -510,6 +511,7 @@ void Vst3Plugin::Impl::CheckHavingEditor()
     auto res = CreatePlugView();
     has_editor_ = (res == kResultOk);
 }
+
 bool Vst3Plugin::Impl::OpenEditor(WindowHandle parent, IPlugFrame *plug_frame)
 {
     assert(HasEditor());
@@ -630,13 +632,8 @@ void Vst3Plugin::Impl::Resume()
 		
 	hwm::dout << "Latency samples : " << GetAudioProcessor()->getLatencySamples() << std::endl;
 
-	//! doc/vstinterfaces/classSteinberg_1_1Vst_1_1IAudioProcessor.html#af252fd721b195b793f3a5dfffc069401
-	/*!
-		@memo
-		Informs the Plug-in about the processing state.
-		This will be called before process calls (one or more) start with true and after with false.
-		In this call the Plug-in should do only light operation (no memory allocation or big setup reconfiguration), this could be used to reset some buffers (like Delay line or Reverb).
-	*/
+	auto lock = lf_processing_.make_lock(std::try_to_lock);
+    
 	res = GetAudioProcessor()->setProcessing(true);
     ThrowIfNotFound(res, { kResultOk, kNotImplemented });
 
@@ -646,11 +643,22 @@ void Vst3Plugin::Impl::Resume()
 
 void Vst3Plugin::Impl::Suspend()
 {
-	if(status_ == Status::kProcessing) {
-		GetAudioProcessor()->setProcessing(false);
-		status_ = Status::kActivated;
-	}
-
+    if(IsResumed() == false) { return; }
+    
+    for( ; ; ) {
+        auto lock = lf_processing_.make_lock(std::try_to_lock);
+        if(!lock) {
+            std::this_thread::yield();
+            continue;
+        }
+        
+        if(status_ == Status::kProcessing) {
+            GetAudioProcessor()->setProcessing(false);
+            status_ = Status::kActivated;
+        }
+        
+        break;
+    }
 
 	GetComponent()->setActive(false);
 	status_ = Status::kSetupDone;
@@ -658,7 +666,7 @@ void Vst3Plugin::Impl::Suspend()
 
 bool Vst3Plugin::Impl::IsResumed() const
 {
-    return (int)status_ > (int)Status::kSetupDone;
+    return (int)status_.load() > (int)Status::kSetupDone;
 }
 
 void Vst3Plugin::Impl::SetBlockSize(int block_size)
@@ -675,31 +683,26 @@ void Vst3Plugin::Impl::RestartComponent(Steinberg::int32 flags)
 {
 	//! `Controller`側のパラメータが変更された
 	if((flags & Vst::RestartFlags::kParamValuesChanged)) {
-        auto num = GetNumParameters();
+        hwm::dout << "Param values changed" << std::endl;
+        auto const num = GetNumParameters();
         for(int i = 0; i < num; ++i) {
             auto const value = GetParameterValueByIndex(i);
             auto const &info = GetParameterInfoList().GetItemByIndex(i);
             PushBackParameterChange(info.id_, value);
         }
-
+    } else if((flags & Vst::RestartFlags::kIoChanged)) {
+        hwm::dout << "IO changed" << std::endl;
 	} else if((flags & Vst::RestartFlags::kReloadComponent)) {
-
 		hwm::dout << "Should reload component" << std::endl;
-
-        tresult res;
-        Steinberg::MemoryStream stream;
-		//! ReloadComponentで行う内容はこれで合っているかどうか分からない。
-		res = component_->getState(&stream);
-        ShowError(res, L"getState");
-
-		bool const is_resumed = IsResumed();
-		if(is_resumed) {
-			Suspend();
-			Resume();
-		}
-
-		res = component_->setState(&stream);
-        ShowError(res, L"setState");
+        bool const is_resumed = IsResumed();
+        Suspend();
+        
+        component_->setActive(false);
+        component_->setActive(true);
+        
+        if(is_resumed) {
+            Resume();
+        }
 	}
 }
 
@@ -753,6 +756,9 @@ std::optional<Vst::Event> const ToVstEvent(ProcessInfo::MidiMessage const &msg)
     using namespace MidiDataType;
     
     if(auto note_on = msg.As<NoteOn>()) {
+        hwm::dout << "Input Note On Event ch:{}, pi:{}, vel{}"_format(msg.channel_,
+                                                                      note_on->pitch_,
+                                                                      note_on->velocity_) << std::endl;
         e.type = Vst::Event::kNoteOnEvent;
         e.noteOn.channel = msg.channel_;
         e.noteOn.pitch = note_on->pitch_;
@@ -762,6 +768,9 @@ std::optional<Vst::Event> const ToVstEvent(ProcessInfo::MidiMessage const &msg)
         e.noteOn.noteId = -1;
         return e;
     } else if(auto note_off = msg.As<NoteOff>()){
+        hwm::dout << "Input Note Off Event ch:{}, pi:{}, vel{}"_format(msg.channel_,
+                                                                      note_off->pitch_,
+                                                                      note_off->off_velocity_) << std::endl;
         e.type = Vst::Event::kNoteOffEvent;
         e.noteOff.channel = msg.channel_;
         e.noteOff.pitch = note_off->pitch_;
@@ -845,7 +854,9 @@ void Vst3Plugin::Impl::OutputEvents(ProcessInfo::IEventBufferList *buffers,
 
 void Vst3Plugin::Impl::Process(ProcessInfo pi)
 {
-    assert(status_ == Status::kProcessing);
+    auto lock = lf_processing_.make_lock();
+    
+    if(status_ != Status::kProcessing) { return; }
     
     assert(pi.time_info_);
     auto &ti = *pi.time_info_;
@@ -936,7 +947,8 @@ void Vst3Plugin::Impl::Process(ProcessInfo pi)
 
 void Vst3Plugin::Impl::PushBackParameterChange(Vst::ParamID id, Vst::ParamValue value, SampleCount offset)
 {
-	auto lock = std::unique_lock(parameter_queue_mutex_);
+	auto lock = lf_parameter_queue_.make_lock();
+    
 	Steinberg::int32 parameter_index = 0;
 	auto *queue = param_changes_queue_.addParameterData(id, parameter_index);
 	Steinberg::int32 ref_point_index = 0;
@@ -946,7 +958,7 @@ void Vst3Plugin::Impl::PushBackParameterChange(Vst::ParamID id, Vst::ParamValue 
 
 void Vst3Plugin::Impl::PopFrontParameterChanges(Vst::ParameterChanges &dest)
 {
-	auto lock = std::unique_lock(parameter_queue_mutex_);
+    auto lock = lf_parameter_queue_.make_lock();
 
 	for(size_t i = 0; i < param_changes_queue_.getParameterCount(); ++i) {
 		auto *src_queue = param_changes_queue_.getParameterData(i);
@@ -976,11 +988,7 @@ void Vst3Plugin::Impl::PopFrontParameterChanges(Vst::ParameterChanges &dest)
 void Vst3Plugin::Impl::LoadPlugin(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context)
 {
 	LoadInterfaces(factory, info, host_context);
-    
-    auto component_handler = queryInterface<Vst::IComponentHandler>(host_context);
-    assert(component_handler.is_right());
-    
-    Initialize(std::move(component_handler.right()));
+    Initialize();
 }
 
 void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context)
@@ -1045,6 +1053,11 @@ void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &
 		res = edit_controller->initialize(host_context);
         ThrowIfNotOk(res);
 	}
+    
+    auto component_handler = queryInterface<Vst::IComponentHandler>(host_context);
+    assert(component_handler.is_right());
+    res = edit_controller->setComponentHandler(component_handler.right().get());
+    ThrowIfNotOk(res);
 
 	HWM_SCOPE_EXIT([&edit_controller, edit_controller_is_created_new] {
 		if(edit_controller_is_created_new && edit_controller) {
@@ -1075,93 +1088,91 @@ void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &
     }
 }
 
-void Vst3Plugin::Impl::Initialize(vstma_unique_ptr<Vst::IComponentHandler> component_handler)
+void Vst3Plugin::Impl::Initialize()
 {
 	tresult res;
+    
+    assert(edit_controller_);
+	
+    auto maybe_cpoint_component = queryInterface<Vst::IConnectionPoint>(component_);
+    auto maybe_cpoint_edit_controller = queryInterface<Vst::IConnectionPoint>(edit_controller_);
 
-	if(edit_controller_) {	
-		if(component_handler) {
-			res = edit_controller_->setComponentHandler(component_handler.get());
-            ThrowIfNotOk(res);
-		}
-
-		auto maybe_cpoint_component = queryInterface<Vst::IConnectionPoint>(component_);
-		auto maybe_cpoint_edit_controller = queryInterface<Vst::IConnectionPoint>(edit_controller_);
-
-        if(maybe_cpoint_component.is_right() && maybe_cpoint_edit_controller.is_right()) {
-            maybe_cpoint_component.right()->connect(maybe_cpoint_edit_controller.right().get());
-            maybe_cpoint_edit_controller.right()->connect(maybe_cpoint_component.right().get());
+    if(maybe_cpoint_component.is_right() && maybe_cpoint_edit_controller.is_right()) {
+        maybe_cpoint_component.right()->connect(maybe_cpoint_edit_controller.right().get());
+        maybe_cpoint_edit_controller.right()->connect(maybe_cpoint_component.right().get());
+    }
+    
+    OutputParameterInfo(edit_controller_.get());
+    
+    auto maybe_unit_info = queryInterface<Vst::IUnitInfo>(edit_controller_);
+    if(maybe_unit_info.is_right()) {
+        unit_handler_ = std::move(maybe_unit_info.right());
+        OutputUnitInfo(unit_handler_.get());
+        
+        if(unit_handler_->getUnitCount() == 0) {
+            hwm::dout << "Warning: This plugin has no unit info." << std::endl;
+            // Treat as this plugin has no IUnitInfo
+            unit_handler_.reset();
         }
+    }
+    
+    if(!unit_handler_) {
+        hwm::dout << "This Plugin has no IUnitInfo interfaces." << std::endl;
+    }
+
+    OutputBusInfo(component_.get(), edit_controller_.get(), unit_handler_.get());
+
+    input_audio_buses_info_.Initialize(this, Vst::BusDirections::kInput);
+    output_audio_buses_info_.Initialize(this, Vst::BusDirections::kOutput);
+    
+    for(int i = 0; i < input_audio_buses_info_.GetNumBuses(); ++i) {
+        input_audio_buses_info_.SetActive(i);
+    }
+    
+    for(int i = 0; i < output_audio_buses_info_.GetNumBuses(); ++i) {
+        output_audio_buses_info_.SetActive(i);
+    }
+   
+    auto input_speakers = input_audio_buses_info_.GetSpeakers();
+    auto output_speakers = output_audio_buses_info_.GetSpeakers();
+
+    auto const result = audio_processor_->setBusArrangements(input_speakers.data(), input_speakers.size(),
+                                                             output_speakers.data(), output_speakers.size());
+    if(result != kResultOk) {
+        hwm::dout << "Failed to set bus arrangement: " << tresult_to_string(result) << std::endl;
+    }
+    
+    input_midi_buses_info_.Initialize(this, Vst::BusDirections::kInput);
+    output_midi_buses_info_.Initialize(this, Vst::BusDirections::kOutput);
+
+    PrepareParameters();
+    PrepareUnitInfo();
+    
+    // synchronize controller to component by using setComponentState
+    MemoryStream stream;
+    if (component_->getState (&stream) == kResultOk)
+    {
+        stream.seek(0, Steinberg::IBStream::IStreamSeekMode::kIBSeekSet, 0);
+        edit_controller_->setComponentState (&stream);
         
-		// synchronize controller to component by using setComponentState
-		MemoryStream stream;
-		if (component_->getState (&stream) == kResultOk)
-		{
-			stream.seek(0, Steinberg::IBStream::IStreamSeekMode::kIBSeekSet, 0);
-			edit_controller_->setComponentState (&stream);
-		}
-        
-        OutputParameterInfo(edit_controller_.get());
-        
-        auto maybe_unit_info = queryInterface<Vst::IUnitInfo>(edit_controller_);
-        if(maybe_unit_info.is_right()) {
-            unit_handler_ = std::move(maybe_unit_info.right());
-            OutputUnitInfo(unit_handler_.get());
-            
-            if(unit_handler_->getUnitCount() == 0) {
-                hwm::dout << "Warning: This plugin has no unit info." << std::endl;
-                // Treat as this plugin has no IUnitInfo
-                unit_handler_.reset();
-            }
+        for(int i = 0; i < edit_controller_->getParameterCount(); ++i) {
+            auto const &info = GetParameterInfoList().GetItemByIndex(i);
+            auto const value = edit_controller_->getParamNormalized(info.id_);
+            PushBackParameterChange(info.id_, value);
         }
-        
-        if(!unit_handler_) {
-            hwm::dout << "This Plugin has no IUnitInfo interfaces." << std::endl;
-        }
+    }
 
-        OutputBusInfo(component_.get(), edit_controller_.get(), unit_handler_.get());
-
-        input_audio_buses_info_.Initialize(this, Vst::BusDirections::kInput);
-        output_audio_buses_info_.Initialize(this, Vst::BusDirections::kOutput);
-        
-        for(int i = 0; i < input_audio_buses_info_.GetNumBuses(); ++i) {
-            input_audio_buses_info_.SetActive(i);
-        }
-        
-        for(int i = 0; i < output_audio_buses_info_.GetNumBuses(); ++i) {
-            output_audio_buses_info_.SetActive(i);
-        }
-       
-        auto input_speakers = input_audio_buses_info_.GetSpeakers();
-        auto output_speakers = output_audio_buses_info_.GetSpeakers();
-
-        auto const result = audio_processor_->setBusArrangements(input_speakers.data(), input_speakers.size(),
-                                                                 output_speakers.data(), output_speakers.size());
-        if(result != kResultOk) {
-            hwm::dout << "Failed to set bus arrangement: " << tresult_to_string(result) << std::endl;
-        }
-        
-        input_midi_buses_info_.Initialize(this, Vst::BusDirections::kInput);
-        output_midi_buses_info_.Initialize(this, Vst::BusDirections::kOutput);
-
-        tresult const ret = CreatePlugView();
-        has_editor_ = (ret == kResultOk);
-
-		PrepareParameters();
-		PrepareUnitInfo();
-
-		input_params_.setMaxParameters(parameter_info_list_.size());
-		output_params_.setMaxParameters(parameter_info_list_.size());
-	}
+    input_params_.setMaxParameters(parameter_info_list_.size());
+    output_params_.setMaxParameters(parameter_info_list_.size());
 }
 
 tresult Vst3Plugin::Impl::CreatePlugView()
 {
     assert(edit_controller_);
 
-    //! 一つのプラグインから複数のPlugViewを構築してはいけない。
-    //! (実際TyrellやPodolskiなどいくつかのプラグインでクラッシュする)
-	assert(!plug_view_);
+    // do nothing if already created.
+    // do not create plug view twice because some plugins (e.g., TyrellN6, Podolski) will be crashed.
+    if(plug_view_) { return kResultOk; }
 
 	plug_view_ = to_unique(edit_controller_->createView(Vst::ViewType::kEditor));
 

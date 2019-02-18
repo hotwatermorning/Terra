@@ -17,6 +17,6 @@ std::string tresult_to_string(Steinberg::tresult result);
 std::wstring tresult_to_wstring(Steinberg::tresult result);
 
 //! resultがkResultOk以外ならエラーメッセージを出力する。
-void ShowError(Steinberg::tresult result, String context);
+Steinberg::tresult ShowError(Steinberg::tresult result, String context);
 
 NS_HWM_END

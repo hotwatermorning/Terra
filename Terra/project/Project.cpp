@@ -282,43 +282,39 @@ Project * Project::GetCurrentProject()
 
 void Project::AddAudioInput(String name, UInt32 channel_index, UInt32 num_channels)
 {
-    pimpl_->graph_
-    ->AddAudioInput(name, channel_index, num_channels)
-    ->SetCallback([this](GraphProcessor::AudioInput *in, ProcessInfo const &pi)
-                  {
-                      OnSetAudio(in, pi, in->GetChannelIndex());
-                  });
+    auto proc = GraphProcessor::CreateAudioInput(name, channel_index, num_channels);
+    proc->SetCallback([this](GraphProcessor::AudioInput *proc, ProcessInfo const &info) {
+        OnSetAudio(proc, info, proc->GetChannelIndex());
+    });
+    pimpl_->graph_->AddNode(std::move(proc));
 }
 
 void Project::AddAudioOutput(String name, UInt32 channel_index, UInt32 num_channels)
 {
-    pimpl_->graph_
-    ->AddAudioOutput(name, channel_index, num_channels)
-    ->SetCallback([this](GraphProcessor::AudioOutput *out, ProcessInfo const &pi)
-                  {
-                      OnGetAudio(out, pi, out->GetChannelIndex());
-                  });
+    auto proc = GraphProcessor::CreateAudioOutput(name, channel_index, num_channels);
+    proc->SetCallback([this](GraphProcessor::AudioOutput *proc, ProcessInfo const &info) {
+        OnGetAudio(proc, info, proc->GetChannelIndex());
+    });
+    pimpl_->graph_->AddNode(std::move(proc));
 }
 
 void Project::AddMidiInput(MidiDevice *device)
 {
     pimpl_->midi_input_table_[device].reserve(2048);
-    pimpl_->graph_
-    ->AddMidiInput(device->GetDeviceInfo().name_id_)
-    ->SetCallback([device, this](GraphProcessor::MidiInput *in, ProcessInfo const &pi)
-                  {
-                      OnSetMidi(in, pi, device);
-                  });
+    auto proc = GraphProcessor::CreateMidiInput(device->GetDeviceInfo().name_id_);
+    proc->SetCallback([this, device](GraphProcessor::MidiInput *proc, ProcessInfo const &info) {
+        OnSetMidi(proc, info, device);
+    });
+    pimpl_->graph_->AddNode(std::move(proc));
 }
 
 void Project::AddMidiOutput(MidiDevice *device)
 {
-//    pimpl_->graph_
-//    ->AddMidiOutput(device->GetDeviceInfo().name_id_)
-//    ->SetCallback([device, this](GraphProcessor::MidiOutput *in, ProcessInfo const &pi)
-//                  {
-//                      OnGetMidi(in, pi, device);
-//                  });
+    auto proc = GraphProcessor::CreateMidiOutput(device->GetDeviceInfo().name_id_);
+    proc->SetCallback([this, device](GraphProcessor::MidiOutput *proc, ProcessInfo const &info) {
+        OnGetMidi(proc, info, device);
+    });
+    pimpl_->graph_->AddNode(std::move(proc));
 }
 
 void Project::AddDefaultMidiInputs()
@@ -603,9 +599,9 @@ std::unique_ptr<Project> Project::FromSchema(schema::Project const &schema)
     opened_midi_devices.push_back(&kSoftwareKeyboardMidiInput);
     
     auto remove_element = [&](auto &container, auto const &elem) {
-        container.erase(std::find(std::begin(container),
-                                  std::end(container),
-                                  elem),
+        container.erase(std::remove(std::begin(container),
+                                    std::end(container),
+                                    elem),
                         std::end(container));
     };
     
@@ -693,30 +689,25 @@ std::unique_ptr<Project> Project::FromSchema(schema::Project const &schema)
         }
         
         for(auto proc: midi_ins_to_remove) {
-            new_graph->RemoveNode(proc);
+            auto node = new_graph->GetNodeOf(proc);
+            if(!node) { continue; }
+            
+            new_graph->RemoveNode(node);
         }
         for(auto proc: midi_outs_to_remove) {
-            new_graph->RemoveNode(proc);
+            auto node = new_graph->GetNodeOf(proc);
+            if(!node) { continue; }
+            
+            new_graph->RemoveNode(node);
         }
     }
     for(auto device: opened_midi_devices) {
         auto const &info = device->GetDeviceInfo();
         if(info.io_type_ == DeviceIOType::kInput) {
-            p->pimpl_->midi_input_table_[device].reserve(2048);
-            p->pimpl_->graph_
-            ->AddMidiInput(info.name_id_)
-            ->SetCallback([pj = p.get(), device](GraphProcessor::MidiInput *proc, ProcessInfo const &pi)
-                              {
-                                  pj->OnSetMidi(proc, pi, device);
-                              });
+            p->AddMidiInput(device);
         } else {
             // @note midi output devices are not supported yet.
-//            p->pimpl_->graph_
-//            ->AddMidiOutput(info.name_id_)
-//            ->SetCallback([pj = p.get(), device](GraphProcessor::MidiOutput *proc, ProcessInfo const &pi)
-//                          {
-//                              pj->OnGetMidi(proc, pi, device);
-//                          });
+            p->AddMidiOutput(device);
         }
     }
         
@@ -979,7 +970,20 @@ void Project::OnGetAudio(GraphProcessor::AudioOutput *output, ProcessInfo const 
 
 void Project::OnSetMidi(GraphProcessor::MidiInput *input, ProcessInfo const &pi, MidiDevice *device)
 {
-    input->SetData(pimpl_->midi_input_table_[device]);
+    auto &entry = pimpl_->midi_input_table_[device];
+    if(entry.size() != 0) {
+#if defined(_DEBUG)
+        for(int i = 0; i < entry.size(); ++i) {
+            auto const &e = entry[i];
+            if(auto p = e.As<MidiDataType::NoteOn>()) {
+                hwm::dout << "note on: offset {}, pitch {}"_format(e.offset_, p->pitch_) << std::endl;
+            } else if(auto p = e.As<MidiDataType::NoteOff>()) {
+                hwm::dout << "note off: offset {}, pitch {}"_format(e.offset_, p->pitch_) << std::endl;
+            }
+        }
+#endif
+        input->SetData(entry);
+    }
 }
 
 void Project::OnGetMidi(GraphProcessor::MidiOutput *output, ProcessInfo const &pi, MidiDevice *device)

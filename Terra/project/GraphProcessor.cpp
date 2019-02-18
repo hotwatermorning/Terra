@@ -327,16 +327,10 @@ GraphProcessor::Node::GetMidiConnections(BusDirection dir) const
 }
 
 template<class List, class F>
-auto GetConnectionsTo(List const &list, BusDirection dir, F pred)
+auto GetConnectionsToImpl(List const &list, F pred)
 {
     List ret;
-    
-    if(dir == BusDirection::kInputSide) {
-        std::copy_if(list.begin(), list.end(), std::back_inserter(ret), pred);
-    } else {
-        std::copy_if(list.begin(), list.end(), std::back_inserter(ret), pred);
-    }
-    
+    std::copy_if(list.begin(), list.end(), std::back_inserter(ret), pred);
     return ret;
 }
 
@@ -344,9 +338,9 @@ std::vector<GraphProcessor::AudioConnectionPtr>
 GraphProcessor::Node::GetAudioConnectionsTo(BusDirection dir, Node const *target) const
 {
     if(dir == BusDirection::kInputSide) {
-        return GetConnectionsTo(input_audio_connections_, dir, [target](auto x) { return x->upstream_ == target; });
+        return GetConnectionsToImpl(input_audio_connections_, [target](auto x) { return x->upstream_ == target; });
     } else {
-        return GetConnectionsTo(output_audio_connections_, dir, [target](auto x) { return x->downstream_ == target; });
+        return GetConnectionsToImpl(output_audio_connections_, [target](auto x) { return x->downstream_ == target; });
     }
 }
 
@@ -354,9 +348,9 @@ std::vector<GraphProcessor::MidiConnectionPtr>
 GraphProcessor::Node::GetMidiConnectionsTo(BusDirection dir, Node const *target) const
 {
     if(dir == BusDirection::kInputSide) {
-        return GetConnectionsTo(input_midi_connections_, dir, [target](auto x) { return x->upstream_ == target; });
+        return GetConnectionsToImpl(input_midi_connections_, [target](auto x) { return x->upstream_ == target; });
     } else {
-        return GetConnectionsTo(output_midi_connections_, dir, [target](auto x) { return x->downstream_ == target; });
+        return GetConnectionsToImpl(output_midi_connections_, [target](auto x) { return x->downstream_ == target; });
     }
 }
 
@@ -624,15 +618,45 @@ struct GraphProcessor::Impl
     std::vector<MidiInput *> midi_input_ptrs_;
     std::vector<MidiOutput *> midi_output_ptrs_;
     
-    void AddIONode(AudioInput *p) { AddIONodeImpl(audio_input_ptrs_, p); }
-    void AddIONode(AudioOutput *p) { AddIONodeImpl(audio_output_ptrs_, p); }
-    void AddIONode(MidiInput *p) { AddIONodeImpl(midi_input_ptrs_, p); }
-    void AddIONode(MidiOutput *p) { AddIONodeImpl(midi_output_ptrs_, p); }
+    void RegisterIOProcessorIfNeeded(Processor *proc)
+    {
+        if(auto p = dynamic_cast<AudioInput *>(proc)) {
+            AddIOProcessorImpl(audio_input_ptrs_, p);
+            return;
+        }
+        if(auto p = dynamic_cast<AudioOutput *>(proc)) {
+            AddIOProcessorImpl(audio_output_ptrs_, p);
+            return;
+        }
+        if(auto p = dynamic_cast<MidiInput *>(proc)) {
+            AddIOProcessorImpl(midi_input_ptrs_, p);
+            return;
+        }
+        if(auto p = dynamic_cast<MidiOutput *>(proc)) {
+            AddIOProcessorImpl(midi_output_ptrs_, p);
+            return;
+        }
+    }
     
-    void RemoveIONode(AudioInput const *p) { RemoveIONodeImpl(audio_input_ptrs_, p); }
-    void RemoveIONode(AudioOutput const *p) { RemoveIONodeImpl(audio_output_ptrs_, p); }
-    void RemoveIONode(MidiInput const *p) { RemoveIONodeImpl(midi_input_ptrs_, p); }
-    void RemoveIONode(MidiOutput const *p) { RemoveIONodeImpl(midi_output_ptrs_, p); }
+    void UnregisterIOProcessorIfNeeded(Processor const *proc)
+    {
+        if(auto p = dynamic_cast<AudioInput const *>(proc)) {
+            RemoveIOProcessorImpl(audio_input_ptrs_, p);
+            return;
+        }
+        if(auto p = dynamic_cast<AudioOutput const *>(proc)) {
+            RemoveIOProcessorImpl(audio_output_ptrs_, p);
+            return;
+        }
+        if(auto p = dynamic_cast<MidiInput const *>(proc)) {
+            RemoveIOProcessorImpl(midi_input_ptrs_, p);
+            return;
+        }
+        if(auto p = dynamic_cast<MidiOutput const *>(proc)) {
+            RemoveIOProcessorImpl(midi_output_ptrs_, p);
+            return;
+        }
+    }
     
     double sample_rate_ = 0;
     SampleCount block_size_ = 0;
@@ -650,14 +674,14 @@ struct GraphProcessor::Impl
     
 private:
     template<class List, class T>
-    void AddIONodeImpl(List &list, T x) {
+    void AddIOProcessorImpl(List &list, T x) {
         auto found = std::find(list.begin(), list.end(), x);
         assert(found == list.end());
         list.push_back(x);
     }
     
     template<class List, class T>
-    void RemoveIONodeImpl(List &list, T x) {
+    void RemoveIOProcessorImpl(List &list, T x) {
         auto found = std::find(list.begin(), list.end(), x);
         assert(found != list.end());
         list.erase(found);
@@ -714,64 +738,28 @@ GraphProcessor::GraphProcessor()
 GraphProcessor::~GraphProcessor()
 {}
 
-GraphProcessor::AudioInput *
-GraphProcessor::AddAudioInput(String name, UInt32 channel_index, UInt32 num_channels)
+std::unique_ptr<GraphProcessor::AudioInput>
+GraphProcessor::CreateAudioInput(String name, UInt32 channel_index, UInt32 num_channels)
 {
-    auto p = std::make_shared<AudioInputImpl>(name, channel_index, num_channels);
-    AddNode(p);
-    pimpl_->AddIONode(p.get());
-    return p.get();
+    return std::make_unique<AudioInputImpl>(name, channel_index, num_channels);
 }
 
-GraphProcessor::AudioOutput *
-GraphProcessor::AddAudioOutput(String name, UInt32 channel_index, UInt32 num_channels)
+std::unique_ptr<GraphProcessor::AudioOutput>
+GraphProcessor::CreateAudioOutput(String name, UInt32 channel_index, UInt32 num_channels)
 {
-    auto p = std::make_shared<AudioOutputImpl>(name, channel_index, num_channels);
-    AddNode(p);
-    pimpl_->AddIONode(p.get());
-    return p.get();
+    return std::make_unique<AudioOutputImpl>(name, channel_index, num_channels);
 }
 
-GraphProcessor::MidiInput *
-GraphProcessor::AddMidiInput(String name)
+std::unique_ptr<GraphProcessor::MidiInput>
+GraphProcessor::CreateMidiInput(String name)
 {
-    auto p = std::make_shared<MidiInputImpl>(name);
-    AddNode(p);
-    pimpl_->AddIONode(p.get());
-    return p.get();
+    return std::make_unique<MidiInputImpl>(name);
 }
 
-GraphProcessor::MidiOutput *
-GraphProcessor::AddMidiOutput(String name)
+std::unique_ptr<GraphProcessor::MidiOutput>
+GraphProcessor::CreateMidiOutput(String name)
 {
-    auto p = std::make_shared<MidiOutputImpl>(name);
-    AddNode(p);
-    pimpl_->AddIONode(p.get());
-    return p.get();
-}
-
-void GraphProcessor::RemoveAudioInput(AudioInput const *p)
-{
-    RemoveNode(p);
-    pimpl_->RemoveIONode(p);
-}
-
-void GraphProcessor::RemoveAudioOutput(AudioOutput const *p)
-{
-    RemoveNode(p);
-    pimpl_->RemoveIONode(p);
-}
-
-void GraphProcessor::RemoveMidiInput(MidiInput const *p)
-{
-    RemoveNode(p);
-    pimpl_->RemoveIONode(p);
-}
-
-void GraphProcessor::RemoveMidiOutput(MidiOutput const *p)
-{
-    RemoveNode(p);
-    pimpl_->RemoveIONode(p);
+    return std::make_unique<MidiOutputImpl>(name);
 }
 
 UInt32 GraphProcessor::GetNumAudioInputs() const
@@ -902,6 +890,8 @@ void GraphProcessor::StopProcessing()
 //! Nothing to do if the processor is added aleady.
 GraphProcessor::NodePtr GraphProcessor::AddNode(std::shared_ptr<Processor> processor)
 {
+    assert(processor);
+    
     auto const found = std::find_if(pimpl_->nodes_.begin(), pimpl_->nodes_.end(),
                                     [p = processor.get()](auto const &x) {
                                         return x->GetProcessor().get() == p;
@@ -910,7 +900,9 @@ GraphProcessor::NodePtr GraphProcessor::AddNode(std::shared_ptr<Processor> proce
     if(found != pimpl_->nodes_.end()) { return *found; }
     
     auto node = std::make_shared<NodeImpl>(processor);
+    
     pimpl_->nodes_.push_back(node);
+    pimpl_->RegisterIOProcessorIfNeeded(node->GetProcessor().get());
     
     if(pimpl_->prepared_) {
         node->OnStartProcessing(pimpl_->sample_rate_, pimpl_->block_size_);
@@ -921,28 +913,34 @@ GraphProcessor::NodePtr GraphProcessor::AddNode(std::shared_ptr<Processor> proce
 
 //! don't call this function on the realtime thread.
 //! Nothing to do if the processor is not added.
-std::shared_ptr<Processor> GraphProcessor::RemoveNode(Processor const *processor)
+std::shared_ptr<Processor> GraphProcessor::RemoveNode(std::shared_ptr<Node const> node)
 {
-    assert(processor);
+    return RemoveNode(node.get());
+}
+
+std::shared_ptr<Processor> GraphProcessor::RemoveNode(Node const *node)
+{
+    assert(node);
     
     bool const should_stop_processing = pimpl_->prepared_;
     
     auto const found = std::find_if(pimpl_->nodes_.begin(), pimpl_->nodes_.end(),
-                                    [p = processor](auto const &x) { return x->GetProcessor().get() == p; }
+                                    [node](auto &elem) { return elem.get() == node; }
                                     );
     
     if(found == pimpl_->nodes_.end()) { return nullptr; }
     
     Disconnect(found->get());
     
-    auto node = *found;
+    auto moved = std::move(*found);
     pimpl_->nodes_.erase(found);
+    pimpl_->UnregisterIOProcessorIfNeeded(moved->GetProcessor().get());
     
     if(should_stop_processing) {
-        ToNodeImpl(node.get())->OnStopProcessing();
+        ToNodeImpl(moved.get())->OnStopProcessing();
     }
     
-    return node->GetProcessor();
+    return moved->GetProcessor();
 }
 
 GraphProcessor::NodePtr GraphProcessor::GetNodeOf(Processor const *processor) const
@@ -1172,28 +1170,19 @@ std::unique_ptr<GraphProcessor> GraphProcessor::FromSchema(schema::NodeGraph con
         auto &np = node.processor();
         std::unique_ptr<Processor> proc;
         
-        auto add_io_node = [&p](auto const &schema, auto factory) {
-            auto proc = factory(schema);
-            auto pproc = proc.get();
-            auto node = p->AddNode(std::move(proc));
-            p->pimpl_->AddIONode(pproc);
-            return node;
-        };
-        
-        NodePtr new_node;
         if(np.has_audio_input_data()) {
-            new_node = add_io_node(np, AudioInputImpl::FromSchemaImpl);
+            proc = AudioInputImpl::FromSchemaImpl(np);
         } else if(np.has_audio_output_data()) {
-            new_node = add_io_node(np, AudioOutputImpl::FromSchemaImpl);
+            proc = AudioOutputImpl::FromSchemaImpl(np);
         } else if(np.has_midi_input_data()) {
-            new_node = add_io_node(np, MidiInputImpl::FromSchemaImpl);
+            proc = MidiInputImpl::FromSchemaImpl(np);
         } else if(np.has_midi_output_data()) {
-            new_node = add_io_node(np, MidiOutputImpl::FromSchemaImpl);
+            proc = MidiOutputImpl::FromSchemaImpl(np);
         } else {
             proc = Processor::FromSchema(node.processor());
-            new_node = p->AddNode(std::move(proc));
         }
 
+        NodePtr new_node = p->AddNode(std::move(proc));
         node_table.Register(node.id(), new_node.get());
     }
     

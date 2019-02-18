@@ -91,15 +91,17 @@ public:
     
 public:
     //! @param
-    AudioInput *    AddAudioInput(String name, UInt32 channel_index, UInt32 num_channels);
-    AudioOutput *   AddAudioOutput(String name, UInt32 channel_index, UInt32 num_channels);
-    MidiInput *    AddMidiInput(String name);
-    MidiOutput *   AddMidiOutput(String name);
-    
-    void RemoveAudioInput(AudioInput const *);
-    void RemoveAudioOutput(AudioOutput const *);
-    void RemoveMidiInput(MidiInput const *);
-    void RemoveMidiOutput(MidiOutput const *);
+    static
+    std::unique_ptr<AudioInput>  CreateAudioInput(String name, UInt32 channel_index, UInt32 num_channels);
+
+    static
+    std::unique_ptr<AudioOutput> CreateAudioOutput(String name, UInt32 channel_index, UInt32 num_channels);
+
+    static
+    std::unique_ptr<MidiInput>   CreateMidiInput(String name);
+
+    static
+    std::unique_ptr<MidiOutput>  CreateMidiOutput(String name);
     
     UInt32 GetNumAudioInputs() const;
     UInt32 GetNumAudioOutputs() const;
@@ -201,10 +203,14 @@ public:
     //! don't call this function on the realtime thread.
     //! Nothing to do if the processor is added aleady.
     NodePtr AddNode(std::shared_ptr<Processor> processor);
-        
+    
     //! don't call this function on the realtime thread.
     //! Nothing to do if the processor is not added.
-    std::shared_ptr<Processor> RemoveNode(Processor const *processor);
+    std::shared_ptr<Processor> RemoveNode(std::shared_ptr<Node const> node);
+    
+    //! don't call this function on the realtime thread.
+    //! Nothing to do if the processor is not added.
+    std::shared_ptr<Processor> RemoveNode(Node const *node);
     
     NodePtr GetNodeOf(Processor const *processor) const;
     std::vector<NodePtr> GetNodes() const;
@@ -235,8 +241,10 @@ public:
     static
     std::unique_ptr<GraphProcessor> FromSchema(schema::NodeGraph const &schema);
 
-private:
+public:
     struct Impl;
+
+private:
     std::unique_ptr<Impl> pimpl_;
 };
 

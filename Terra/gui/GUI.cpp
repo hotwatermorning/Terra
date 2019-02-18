@@ -502,10 +502,10 @@ public:
 //            } else {
 //                pj->GetSequence() = MakeSequence({48 + 24, 50 + 24, 51 + 24, 55 + 24, 58 + 24});
 //            }
-            pj->CacheSequence();
+//            pj->CacheSequence();
             ++i;
         });
-        timer_.Start(10);
+        //timer_.Start(16000);
     }
     
     ~MyPanel()

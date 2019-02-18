@@ -334,7 +334,7 @@ Sequence & Project::GetSequence() const
 
 void Project::CacheSequence()
 {
-    auto cache = pimpl_->sequence_->Cache(this);
+    auto cache = pimpl_->sequence_->MakeCache(this);
     pimpl_->cached_sequence_.Set(std::make_unique<decltype(cache)>(std::move(cache)));
 }
 

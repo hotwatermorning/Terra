@@ -43,7 +43,7 @@ struct Sequence
     std::vector<Note> notes_;
     UInt8 channel_ = 0;
     
-    std::vector<ProcessInfo::MidiMessage> Cache(IMusicalTimeService const *conv);
+    std::vector<ProcessInfo::MidiMessage> MakeCache(IMusicalTimeService const *conv) const;
     
     std::unique_ptr<schema::Sequence> ToSchema() const;
     static

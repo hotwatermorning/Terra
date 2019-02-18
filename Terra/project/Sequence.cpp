@@ -4,7 +4,7 @@
 NS_HWM_BEGIN
 
 std::vector<ProcessInfo::MidiMessage>
-Sequence::Cache(IMusicalTimeService const *mt)
+Sequence::MakeCache(IMusicalTimeService const *mt) const
 {
     std::vector<ProcessInfo::MidiMessage> buf;
     

@@ -39,20 +39,7 @@ Module::platform_module_type Module::load_impl(char const *path)
         CFRelease (error);
     }
     
-    typedef bool (*BundleEntryProc)(CFBundleRef);
-    
-    if (auto proc = (BundleEntryProc)get_proc_address_impl(bundleRef, "bundleEntry"))
-    {
-        if (proc (bundleRef)) {
-            return bundleRef;
-        } else {
-            return nullptr;
-        }
-    }
-    else
-    {
-        return bundleRef;
-    }
+    return bundleRef;    
 }
 
 void Module::unload_impl(Module::platform_module_type handle)

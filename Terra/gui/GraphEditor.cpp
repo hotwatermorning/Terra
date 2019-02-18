@@ -635,6 +635,9 @@ public:
         auto nc = std::make_unique<NodeComponent>(this, node.get(), this);
         nc->MoveConstrained(pt);
         node_components_.push_back(std::move(nc));
+        
+        // open editor automatically.
+        node_components_.back()->OnOpenEditor();
     }
 
     //! return true if removed.

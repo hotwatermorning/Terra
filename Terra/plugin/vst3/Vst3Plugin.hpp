@@ -228,6 +228,7 @@ public:
 	void	SetSamplingRate(int sampling_rate);
     
 	bool	HasEditor		() const;
+    void    CheckHavingEditor();
 
 #if defined(_MSC_VER)
     using WindowHandle = HWND;

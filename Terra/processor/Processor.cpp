@@ -210,6 +210,15 @@ bool Vst3AudioProcessor::HasEditor() const
     }
 }
 
+void Vst3AudioProcessor::CheckHavingEditor()
+{
+    auto p = std::atomic_load(&plugin_);
+    
+    if(p) {
+        plugin_->CheckHavingEditor();
+    }
+}
+
 void FillBusSchema(schema::Processor_Vst3_Bus &schema, Vst3Plugin::BusInfo const &bus)
 {
     schema.set_name(to_utf8(bus.name_));

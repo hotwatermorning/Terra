@@ -503,6 +503,13 @@ bool Vst3Plugin::Impl::HasEditor() const
 	return has_editor_.get();
 }
 
+void Vst3Plugin::Impl::CheckHavingEditor()
+{
+    // some plugin (e.g., TyrellN6) may crash while loading saved data
+    // if a plug view has been created but not attached to an window handle.
+    auto res = CreatePlugView();
+    has_editor_ = (res == kResultOk);
+}
 bool Vst3Plugin::Impl::OpenEditor(WindowHandle parent, IPlugFrame *plug_frame)
 {
     assert(HasEditor());

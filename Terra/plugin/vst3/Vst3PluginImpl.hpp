@@ -171,6 +171,9 @@ public:
     void    SetProgramIndex(UInt32 index, Vst::UnitID unit_id = 0);
 
 	bool HasEditor() const;
+    
+    // Call this function once before to call HasEditor().
+    void CheckHavingEditor();
 
 	bool OpenEditor(WindowHandle parent, IPlugFrame *plug_frame);
 

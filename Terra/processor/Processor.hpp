@@ -128,6 +128,7 @@ public:
     UInt32 GetAudioChannelCount(BusDirection dir) const override;
     UInt32 GetMidiChannelCount(BusDirection dir) const override;
     bool HasEditor() const override;
+    void CheckHavingEditor();
     
     std::unique_ptr<schema::Processor> ToSchemaImpl() const override;
     

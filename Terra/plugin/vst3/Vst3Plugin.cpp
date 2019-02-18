@@ -194,6 +194,11 @@ bool Vst3Plugin::HasEditor() const
 	return pimpl_->HasEditor();
 }
 
+void Vst3Plugin::CheckHavingEditor()
+{
+    return pimpl_->CheckHavingEditor();
+}
+
 bool Vst3Plugin::OpenEditor(WindowHandle parent, PlugFrameListener *listener)
 {
     //! not support multiple plug view yet.

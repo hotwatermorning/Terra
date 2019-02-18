@@ -229,6 +229,7 @@ public:
             cho_select_program_->SetSelection(plugin->GetProgramIndex(0));
         }
         
+        plugin->CheckHavingEditor();
         if(plugin->HasEditor()) {
             chk_gen_editor_->SetValue(false);
         } else {

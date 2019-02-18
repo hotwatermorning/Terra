@@ -685,8 +685,10 @@ std::shared_ptr<GraphProcessor::Impl::FrameProcedure> GraphProcessor::Impl::Crea
 {
     auto copy = nodes_;
     
-    // begin側が最上流になる
+    // 接続のあるノードを、begin側が最上流になるように整列
+    // 接続のないノードは最下流にあるものとみなす。(これがないと、ソートの条件がStrict Weak Orderingを満たさないので、正しくソートできない）
     std::stable_sort(copy.begin(), copy.end(), [](auto const &lhs, auto const &rhs) {
+        if(rhs->IsConnected() == false) { return true; }
         return lhs->HasPathTo(rhs.get());
     });
     

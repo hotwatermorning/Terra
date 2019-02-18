@@ -360,6 +360,43 @@ GraphProcessor::Node::GetMidiConnectionsTo(BusDirection dir, Node const *target)
     }
 }
 
+template<class List, class F>
+bool HasConnectionsToImpl(List const &list, F pred)
+{
+    return std::any_of(list.begin(), list.end(), pred);
+}
+
+bool GraphProcessor::Node::HasAudioConnectionsTo(BusDirection dir, Node const *target) const
+{
+    if(dir == BusDirection::kInputSide) {
+        return HasConnectionsToImpl(input_audio_connections_, [target](auto x) { return x->upstream_ == target; });
+    } else {
+        return HasConnectionsToImpl(output_audio_connections_, [target](auto x) { return x->downstream_ == target; });
+    }
+}
+
+bool GraphProcessor::Node::HasMidiConnectionsTo(BusDirection dir, Node const *target) const
+{
+    if(dir == BusDirection::kInputSide) {
+        return HasConnectionsToImpl(input_midi_connections_, [target](auto x) { return x->upstream_ == target; });
+    } else {
+        return HasConnectionsToImpl(output_midi_connections_, [target](auto x) { return x->downstream_ == target; });
+    }
+}
+
+bool GraphProcessor::Node::HasConnectionsTo(BusDirection dir, Node const *target) const
+{
+    return HasAudioConnectionsTo(dir, target) || HasMidiConnectionsTo(dir, target);
+}
+
+bool GraphProcessor::Node::IsConnected() const
+{
+    return  input_audio_connections_.size() > 0
+    ||      output_audio_connections_.size() > 0
+    ||      input_midi_connections_.size() > 0
+    ||      output_midi_connections_.size() > 0;
+}
+
 // upstrea から downstream に対して、(間接的にでも) 接続が存在しているかどうか
 template<class F>
 bool HasPathImpl(GraphProcessor::Node const *upstream,
@@ -393,14 +430,23 @@ bool GraphProcessor::Node::HasAudioPathTo(Node const *downstream) const
 
 bool GraphProcessor::Node::HasMidiPathTo(Node const *downstream) const
 {
-    return HasPathImpl(this, downstream, [](auto stream) {
-        return stream->GetMidiConnections(BusDirection::kOutputSide);
+    return HasPathImpl(this, downstream, [](auto node) {
+        return node->GetMidiConnections(BusDirection::kOutputSide);
     });
 }
 
 bool GraphProcessor::Node::HasPathTo(Node const *downstream) const
 {
-    return HasAudioPathTo(downstream) || HasMidiPathTo(downstream);
+    auto result = HasPathImpl(this, downstream, [](auto stream) {
+        std::vector<ConnectionPtr> tmp;
+        auto audio_conns = stream->GetAudioConnections(BusDirection::kOutputSide);
+        tmp.insert(tmp.end(), audio_conns.begin(), audio_conns.end());
+        auto midi_conns = stream->GetMidiConnections(BusDirection::kOutputSide);
+        tmp.insert(tmp.end(), midi_conns.begin(), midi_conns.end());
+        return tmp;
+    });
+    
+    return result;
 }
 
 class NodeImpl : public GraphProcessor::Node

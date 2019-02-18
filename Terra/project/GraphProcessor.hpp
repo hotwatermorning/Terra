@@ -181,6 +181,10 @@ public:
         
         std::vector<AudioConnectionPtr> GetAudioConnectionsTo(BusDirection dir, Node const *target) const;
         std::vector<MidiConnectionPtr> GetMidiConnectionsTo(BusDirection dir, Node const *target) const;
+        bool HasAudioConnectionsTo(BusDirection dir, Node const *target) const;
+        bool HasMidiConnectionsTo(BusDirection dir, Node const *target) const;
+        bool HasConnectionsTo(BusDirection dir, Node const *target) const;
+        bool IsConnected() const;
         
         bool HasAudioPathTo(Node const *downstream) const;
         bool HasMidiPathTo(Node const *downstream) const;

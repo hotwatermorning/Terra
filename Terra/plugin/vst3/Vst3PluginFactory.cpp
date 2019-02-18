@@ -17,6 +17,9 @@ using namespace Steinberg;
 
 NS_HWM_BEGIN
 
+Module LoadAndInitializeModule(String path);
+void TerminateAndReleaseModule(Module &mod);
+
 extern
 std::unique_ptr<Vst3Plugin>
 	CreatePlugin(IPluginFactory *factory,
@@ -222,14 +225,9 @@ void OutputFactoryInfo(FactoryInfo const &info)
 
 Vst3PluginFactory::Impl::Impl(String module_path)
 {
-    Module mod(module_path.c_str());
+    Module mod = LoadAndInitializeModule(module_path);
 	if(!mod) {
 		throw std::runtime_error("cannot load library");
-	}
-
-    auto init_dll = reinterpret_cast<SetupProc>(mod.get_proc_address("InitDll"));
-	if(init_dll) {
-		init_dll();
 	}
 
 	//! GetPluginFactoryという名前でエクスポートされている、
@@ -281,14 +279,11 @@ Vst3PluginFactory::Impl::Impl(String module_path)
 Vst3PluginFactory::Impl::~Impl()
 {
     assert(loaded_plugins_.empty());
+    
+    if(!module_) { return; }
 	factory_.reset();
 
-	if(module_) {
-		auto exit_dll = (SetupProc)module_.get_proc_address("ExitDll");
-		if(exit_dll) {
-			exit_dll();
-		}
-	}
+    TerminateAndReleaseModule(module_);
 }
 
 Vst3PluginFactory::Vst3PluginFactory(String module_path)

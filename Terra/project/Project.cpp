@@ -7,6 +7,7 @@
 #include "../misc/MathUtil.hpp"
 #include "../misc/StrCnv.hpp"
 #include <map>
+#include <thread>
 
 NS_HWM_BEGIN
 
@@ -139,57 +140,130 @@ private:
 template<class T>
 struct Borrowable
 {
-    struct Releaser
-    {
-        Releaser(Borrowable *owner)
-        :   owner_(owner)
-        {}
-        
-        template<class U>
-        void operator()(U *p) {
-            auto lock = owner_->lf_.make_lock();
-            if(owner_->data_ == nullptr) {
-                owner_->data_.reset(p);
-            } else {
-                assert(owner_->released_ == nullptr);
-                owner_->released_.reset(p);
-            }
-        }
-        
-    private:
-        Borrowable *owner_;
-    };
+    using TokenType = UInt64;
+    static constexpr TokenType kInvalidToken = 0;
     
     //! from non-realtime thread
-    void Set(std::unique_ptr<T> x)
+    void Set(std::shared_ptr<T> x)
     {
         auto lock = lf_.make_lock();
         auto tmp_released = std::move(released_);
         auto tmp_data = std::move(data_);
+        assert(!data_ && !released_);
         data_ = std::move(x);
+        token_ += 1;
         lock.unlock();
     }
     
-    std::unique_ptr<T, Releaser> Borrow()
+    struct Item final
+    {
+        T const * get() const { return ptr_.get(); }
+        T const * operator->() const { return ptr_.get(); }
+        T const & operator*() const
+        {
+            assert(ptr_);
+            return *ptr_;
+        }
+
+        Item()
+        {}
+        
+        Item(std::shared_ptr<T> &&ptr, UInt64 token, Borrowable<T> *owner)
+        :   ptr_(std::move(ptr))
+        ,   token_(token)
+        ,   owner_(owner)
+        {
+            assert(owner_);
+        }
+        
+        Item(Item const &rhs) = delete;
+        Item & operator=(Item const &rhs) = delete;
+        Item(Item &&rhs)
+        :   ptr_(std::move(rhs.ptr_))
+        ,   token_(rhs.token_)
+        ,   owner_(rhs.owner_)
+        {
+            rhs.owner_ = nullptr;
+        }
+        
+        Item & operator=(Item &&rhs)
+        {
+            Item(std::move(rhs)).swap(*this);
+            return *this;
+        }
+        
+        UInt64 GetToken() const { return token_; }
+        
+        void swap(Item &rhs)
+        {
+            std::swap(ptr_, rhs.ptr_);
+            std::swap(token_, rhs.token_);
+            std::swap(owner_, rhs.owner_);
+        }
+        
+        void reset()
+        {
+            if(ptr_ == nullptr) { return; }
+            
+            auto lock = owner_->lf_.make_lock();
+            
+            if(owner_->token_ == token_) {
+                assert(owner_->data_ == nullptr);
+                owner_->data_ = std::move(ptr_);
+            } else {
+                assert(owner_->released_ == nullptr);
+                owner_->released_ = std::move(ptr_);
+            }
+        }
+     
+        ~Item()
+        {
+            reset();
+        }
+        
+        bool operator==(Item const &rhs) const
+        {
+            return  (ptr_ == rhs.ptr_)
+            &&      (token_ == rhs.token_)
+            &&      (owner_ == rhs.owner_)
+            ;
+        }
+        
+        bool operator!=(Item const &rhs) const
+        {
+            return !(*this == rhs);
+        }
+        
+        explicit operator bool() const { return !!ptr_; }
+        
+    private:
+        std::shared_ptr<T> ptr_;
+        Borrowable<T> *owner_ = nullptr;
+        UInt64 token_ = kInvalidToken;
+    };
+    
+    Item Borrow()
     {
         auto lock = lf_.make_lock();
-        if(data_) {
-            return std::unique_ptr<T, Releaser>(data_.release(), Releaser(this));
-        } else {
-            return std::unique_ptr<T, Releaser>(released_.release(), Releaser(this));
-        }
+        
+        auto p = std::move(data_ ? data_ : released_);
+        return Item { std::move(p), token_, this };
     }
     
 private:
     LockFactory lf_;
-    std::unique_ptr<T> data_;
-    std::unique_ptr<T> released_;
+    std::shared_ptr<T> data_;
+    std::shared_ptr<T> released_;
+    UInt64 token_ = kInvalidToken;
 };
 
 struct Project::Impl
 {
     Impl(Project *pj)
     :   tp_(pj)
+    {}
+    
+    ~Impl()
     {}
     
     String file_name_;
@@ -208,7 +282,7 @@ struct Project::Impl
     PlayingNoteList playing_sequence_notes_;
     PlayingNoteList requested_sample_notes_;
     PlayingNoteList playing_sample_notes_;
-    SampleCount smp_last_pos_ = 0;
+    SampleCount expected_next_pos_ = 0;
     std::unique_ptr<GraphProcessor> graph_;
     
     //! input from device
@@ -217,8 +291,9 @@ struct Project::Impl
     BufferRef<float> output_;
     
     using CachedSequence = std::vector<ProcessInfo::MidiMessage>;
+    using BorrowableCachedSequence = Borrowable<CachedSequence>;
     
-    CachedSequence *last_cached_sequence_ = nullptr;
+    BorrowableCachedSequence::TokenType last_sequence_cache_token_ = BorrowableCachedSequence::kInvalidToken;
     using cached_iter_t = CachedSequence::const_iterator;
     cached_iter_t cached_iter_;
     Borrowable<CachedSequence> cached_sequence_;
@@ -767,6 +842,20 @@ TraversalCallback<F> MakeTraversalCallback(F f)
     return TraversalCallback<F>(std::forward<F>(f));
 }
 
+template<class Iter, class Container>
+void CheckIterValidity(Iter it, Container const &cont)
+{
+    auto begin = cont.begin();
+    auto end = cont.end();
+    auto begin_addr = &cont[0];
+    auto end_addr = &cont[0] + cont.size();
+    if(begin <= it && it <= end) {
+        // do nothing.
+    } else {
+        assert(false);
+    }
+}
+
 void Project::Process(SampleCount block_size, float const * const * input, float **output)
 {
     ScopedBypassGuard guard;
@@ -780,7 +869,7 @@ void Project::Process(SampleCount block_size, float const * const * input, float
     
     SampleCount num_processed = 0;
     
-    auto cb = MakeTraversalCallback([&, this](TransportInfo const &ti) {        
+    auto cb = MakeTraversalCallback([&, this](TransportInfo const &ti) {
         for(auto &entry: pimpl_->midi_input_table_) {
             entry.second.clear();
         }
@@ -817,17 +906,21 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             pimpl_->midi_input_table_[device].push_back(mm);
         };
         
-        auto cache = pimpl_->cached_sequence_.Borrow();
-        assert(cache != nullptr);
+        auto const cache = pimpl_->cached_sequence_.Borrow();
+        assert(cache);
         
+        bool const is_new_cache = cache.GetToken() != pimpl_->last_sequence_cache_token_;
+        pimpl_->last_sequence_cache_token_ = cache.GetToken();
+
         bool const need_stop_all_sequence_notes
         = (ti.playing_ == false)
-        || (ti.playing_ && ti.play_.begin_.sample_ != pimpl_->smp_last_pos_)
-        || (cache.get() != pimpl_->last_cached_sequence_)
+        || (ti.play_.begin_.sample_ != pimpl_->expected_next_pos_)
+        || (is_new_cache)
         ;
         
-        pimpl_->last_cached_sequence_ = cache.get();
-        pimpl_->smp_last_pos_ = ti.play_.end_.sample_;
+        pimpl_->expected_next_pos_ = (ti.playing_ ? ti.play_.end_ : ti.play_.begin_).sample_;
+        
+        //hwm::dout << "#2 " << std::this_thread::get_id() << ": " << cache.get() << ", " << pimpl_->cached_sequence_ << std::endl;
 
         if(need_stop_all_sequence_notes) {
             int x = 0;
@@ -842,26 +935,41 @@ void Project::Process(SampleCount block_size, float const * const * input, float
                 }
             });
             
+            assert(std::is_sorted(cache->begin(), cache->end(), [](auto const &left, auto const &right) {
+                return left.offset_ < right.offset_;
+            }));
+            
             pimpl_->cached_iter_ = std::lower_bound(cache->begin(), cache->end(),
                                                     ti.play_.begin_.sample_,
                                                     [](auto const &left, auto const right) {
                                                         return left.offset_ < right;
                                                     });
         }
-        
+
         if(ti.playing_) {
-            for(auto &it = pimpl_->cached_iter_; it != cache->end(); ++it) {
+            CheckIterValidity(pimpl_->cached_iter_, *cache);
+            
+            auto it = pimpl_->cached_iter_;
+            
+            for( ; it != cache->end(); ++it) {
                 auto const &ev = *it;
+                assert(ev.offset_ >= ti.play_.begin_.sample_);
                 if(ev.offset_ >= ti.play_.end_.sample_) { break; }
                 
                 if(auto p = ev.As<MidiDataType::NoteOn>()) {
+                    hwm::dout << "note on [{}][{}]"_format(p->pitch_, ev.offset_) << std::endl;
                     add_note(ev.offset_, ev.channel_, p->pitch_, p->velocity_, true, &kSequencerMidiInput);
                     pimpl_->playing_sequence_notes_.SetNoteOn(ev.channel_, p->pitch_, p->velocity_);
                 } else if(auto p = ev.As<MidiDataType::NoteOff>()) {
+                    hwm::dout << "note off [{}][{}]"_format(p->pitch_, ev.offset_) << std::endl;
                     add_note(ev.offset_, ev.channel_, p->pitch_, p->off_velocity_, false, &kSequencerMidiInput);
                     pimpl_->playing_sequence_notes_.ClearNote(ev.channel_, p->pitch_);
                 }
             }
+            
+            pimpl_->cached_iter_ = it;
+            
+            CheckIterValidity(pimpl_->cached_iter_, *cache);
         }
         
         pimpl_->requested_sample_notes_.Traverse([&](auto ch, auto pi, auto &x) {

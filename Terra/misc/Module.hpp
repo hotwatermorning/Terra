@@ -3,23 +3,19 @@
 #if defined(_MSC_VER)
 #include <windows.h>
 #else
+#include <Carbon/Carbon.h>
 #include <cstdlib>
 #include <cwchar>
 #include <vector>
+#endif
 
 NS_HWM_BEGIN
-
-void * load_impl(char const *path);
-void unload_impl(void *handle);
-void * get_proc_address(void *bundle, char const *function_name);
-
-#endif
 
 class Module
 {
 public:
 #if defined(_MSC_VER)
-    typedef HMODULE platform_module_type;
+    using platform_module_type = HMODULE;
     
     static
     platform_module_type load_impl(const char *path) { return LoadLibraryA(path); }
@@ -33,7 +29,7 @@ public:
         return GetProcAddress(module, function_name);
     }
 #else
-    typedef    void *    platform_module_type;
+    using platform_module_type = CFBundleRef;
 
     static
     platform_module_type load_impl(const wchar_t *path)
@@ -67,8 +63,6 @@ public:
 #endif
     
 public:
-    typedef platform_module_type    module_type;
-    
     Module() {}
     
     explicit
@@ -81,15 +75,13 @@ public:
     :    module_(load_impl(path))
     {}
     
-    Module(module_type module)
+    Module(platform_module_type module)
     :    module_(module)
     {}
     
     Module(Module &&r)
     :    module_(std::exchange(r.module_, platform_module_type()))
-    {
-        r.module_ = nullptr;
-    }
+    {}
     
     Module & operator=(Module &&r)
     {
@@ -102,6 +94,7 @@ public:
         return get_proc_address_impl(module_, function_name);
     }
 
+    platform_module_type get_native_handle() const { return module_; }
     
     ~Module()
     {
@@ -109,9 +102,9 @@ public:
     }
     
 public:
-    module_type get() { return module_; }
-    module_type get() const { return module_; }
-    module_type release() { return std::exchange(module_, platform_module_type()); }
+    platform_module_type get() { return module_; }
+    platform_module_type get() const { return module_; }
+    platform_module_type release() { return std::exchange(module_, platform_module_type()); }
     
     template<class... Args>
     void reset(Args&&... args) { *this = Module(args...); }
@@ -120,7 +113,7 @@ public:
     operator bool() const { return module_ != platform_module_type(); }
     
 private:
-    module_type    module_ = platform_module_type();
+    platform_module_type module_ = platform_module_type();
 };
 
 NS_HWM_END

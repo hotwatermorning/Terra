@@ -37,6 +37,8 @@ Module::platform_module_type Module::load_impl(char const *path)
         }
         
         CFRelease (error);
+        CFRelease (bundleRef);
+        return nullptr;
     }
     
     return bundleRef;    

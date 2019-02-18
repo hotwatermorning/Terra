@@ -33,6 +33,11 @@ message Processor {
       int32 speaker = 4;
     }
 
+    message Dump {
+      bytes processor_data = 1;
+      bytes edit_controller_data = 2;
+    }
+
     message Param {
       int32 id = 1;
       double value = 2;
@@ -46,9 +51,9 @@ message Processor {
     repeated Bus event_input_buses = 4;
     repeated Bus event_output_buses = 5;
 
-    // if bank_data is valid, params is ignored.
-    bytes bank_data = 7;
+    // if dump is valid, params are ignored.
     repeated Param params = 6;
+    Dump dump = 8;
   }
 
   message AudioInput {

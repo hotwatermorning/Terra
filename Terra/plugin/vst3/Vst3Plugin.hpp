@@ -265,6 +265,15 @@ public:
 
 	void Process(ProcessInfo &pi);
     
+    struct DumpData
+    {
+        std::vector<char> processor_data_;
+        std::vector<char> edit_controller_data_;
+    };
+    
+    std::optional<DumpData> SaveData() const;
+    void LoadData(DumpData const &dump);
+    
 private:
 	std::unique_ptr<Impl> pimpl_;
     std::unique_ptr<HostContext> host_context_;

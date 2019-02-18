@@ -90,6 +90,8 @@ PluginAudioProcessor::LoadResult Vst3AudioProcessor::doLoad()
     auto app = MyApp::GetInstance();
     auto p = app->CreateVst3Plugin(GetDescription());
     
+    assert(schema_.has_vst3_data());
+    
     for( ; ; ) {
         std::optional<ProcessSetting> copied_process_setting;
         
@@ -104,9 +106,40 @@ PluginAudioProcessor::LoadResult Vst3AudioProcessor::doLoad()
         
         lock.unlock();
         apply_process_setting(*copied_process_setting, p.get());
+        
+    }
+ 
+    LoadDataImpl();
+    return LoadResult{};
+}
+
+void Vst3AudioProcessor::LoadDataImpl()
+{
+    auto p = std::atomic_load(&plugin_);
+    if(!p) { return; }
+    
+    if(!p->IsResumed()) {
+        return;
     }
     
-    return LoadResult{};
+    assert(schema_.has_vst3_data());
+
+    auto &vd = schema_.vst3_data();
+    if(vd.has_dump()) {
+        Vst3Plugin::DumpData dd;
+        auto const &proc_data = vd.dump().processor_data();
+        auto const &edit_data = vd.dump().edit_controller_data();
+        
+        dd.processor_data_.assign(proc_data.begin(), proc_data.end());
+        dd.edit_controller_data_.assign(edit_data.begin(), edit_data.end());
+        p->LoadData(dd);
+    } else if(vd.params().size() > 0) {
+        // TODO: set parameters to both processor and edit controller.
+    }
+    
+    auto mvd = schema_.mutable_vst3_data();
+    mvd->clear_dump();
+    mvd->clear_params();
 }
 
 String Vst3AudioProcessor::GetName() const
@@ -122,16 +155,16 @@ String Vst3AudioProcessor::GetName() const
 void Vst3AudioProcessor::OnStartProcessing(double sample_rate, SampleCount block_size)
 {
     auto lock = process_lock_.make_lock();
+    
+    ProcessSetting ps;
+    ps.sample_rate_ = sample_rate;
+    ps.block_size_ = block_size;
 
     if(plugin_) {
         assert(plugin_->IsResumed() == false);
-        plugin_->SetSamplingRate(sample_rate);
-        plugin_->SetBlockSize(block_size);
-        plugin_->Resume();
+        apply_process_setting(ps, plugin_.get());
+        LoadDataImpl();
     } else {
-        ProcessSetting ps;
-        ps.sample_rate_ = sample_rate;
-        ps.block_size_ = block_size;
         process_setting_ = ps;
     }
 }
@@ -268,12 +301,21 @@ std::unique_ptr<schema::Processor> Vst3AudioProcessor::ToSchemaImpl() const
                       FillBusSchema(*vst3->add_event_output_buses(), bus_info);
                   });
         
-        auto const num_params = plugin_->GetNumParams();
-        for(int i = 0; i < num_params; ++i) {
-            auto const &param_info = plugin_->GetParameterInfoByIndex(i);
-            auto sparam = vst3->add_params();
-            sparam->set_id(param_info.id_);
-            sparam->set_value(plugin_->GetParameterValueByIndex(i));
+        auto dump = plugin_->SaveData();
+        if(dump) {
+            auto schema_dump = vst3->mutable_dump();
+            schema_dump->set_processor_data(dump->processor_data_.data(),
+                                            dump->processor_data_.size());
+            schema_dump->set_edit_controller_data(dump->edit_controller_data_.data(),
+                                                  dump->edit_controller_data_.size());
+        } else {
+            auto const num_params = plugin_->GetNumParams();
+            for(int i = 0; i < num_params; ++i) {
+                auto const &param_info = plugin_->GetParameterInfoByIndex(i);
+                auto sparam = vst3->add_params();
+                sparam->set_id(param_info.id_);
+                sparam->set_value(plugin_->GetParameterValueByIndex(i));
+            }
         }
         
         *vst3->mutable_desc() = GetDescription();

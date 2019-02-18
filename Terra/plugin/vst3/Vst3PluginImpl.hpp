@@ -197,6 +197,9 @@ public:
 	void	RestartComponent(Steinberg::int32 flags);
 
 	void    Process(ProcessInfo pi);
+    
+    std::optional<DumpData> SaveData() const;
+    void LoadData(DumpData const &dump);
 
 //! Parameter Change
 public:

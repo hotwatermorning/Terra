@@ -1355,4 +1355,57 @@ void Vst3Plugin::Impl::UnloadPlugin()
 	component_.reset();
 }
 
+std::optional<Vst3Plugin::DumpData> Vst3Plugin::Impl::SaveData() const
+{
+    Vst3Plugin::DumpData ret;
+    
+    MemoryStream stream;
+    auto res = component_->getState(&stream);
+    ShowError(res, L"set data to IComponent");
+    
+    if(res != kResultOk) {
+        return std::nullopt;
+    }
+    
+    ret.processor_data_.assign(stream.getData(), stream.getData() + stream.getSize());
+
+    stream = MemoryStream();
+    res = edit_controller_->getState(&stream);
+    if(res != kResultOk) {
+        // do nothing.
+    } else {
+        ret.edit_controller_data_.assign(stream.getData(), stream.getData() + stream.getSize());
+    }
+    
+    return ret;
+}
+
+void Vst3Plugin::Impl::LoadData(DumpData const &dump)
+{
+    //! Melodyne crashes if a non-owned version of MemoryStream is used.
+    MemoryStream stream;
+    stream.write((void *)dump.processor_data_.data(), dump.processor_data_.size(), nullptr);
+    stream.seek(0, Steinberg::IBStream::kIBSeekSet, nullptr);
+    
+    if(ShowError(component_->setState(&stream), L"setState") != kResultOk) {
+        return;
+    }
+    
+    stream.seek(0, Steinberg::IBStream::kIBSeekSet, nullptr);
+    ShowError(edit_controller_->setComponentState(&stream), L"setComponentState");
+    for(int i = 0; i < GetNumParameters(); ++i) {
+        auto const &info = GetParameterInfoList().GetItemByIndex(i);
+        auto const value = GetParameterValueByIndex(i);
+        PushBackParameterChange(info.id_, value);
+    }
+    
+    if(dump.edit_controller_data_.empty() == false) {
+        stream = MemoryStream();
+        stream.write((void *)dump.edit_controller_data_.data(), dump.edit_controller_data_.size(), nullptr);
+        stream.seek(0, Steinberg::IBStream::kIBSeekSet, nullptr);
+        
+        ShowError(edit_controller_->setState(&stream), L"setState to IEditController");
+    }
+}
+
 NS_HWM_END

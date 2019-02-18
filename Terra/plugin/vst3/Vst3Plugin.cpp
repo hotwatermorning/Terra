@@ -252,6 +252,16 @@ void Vst3Plugin::Process(ProcessInfo &pi)
     pimpl_->Process(pi);
 }
 
+std::optional<Vst3Plugin::DumpData> Vst3Plugin::SaveData() const
+{
+    return pimpl_->SaveData();
+}
+
+void Vst3Plugin::LoadData(DumpData const &dump)
+{
+    pimpl_->LoadData(dump);
+}
+
 std::unique_ptr<Vst3Plugin>
 	CreatePlugin(IPluginFactory *factory,
                  FactoryInfo const &factory_info,

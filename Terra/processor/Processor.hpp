@@ -144,7 +144,10 @@ public:
         SampleCount block_size_;
     };
     
+private:
     std::optional<ProcessSetting> process_setting_;
+    // apply saved data to the plugin if it has been resumed().
+    void LoadDataImpl();
 };
 
 NS_HWM_END

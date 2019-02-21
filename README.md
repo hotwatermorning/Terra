@@ -41,6 +41,7 @@ Terra uses these libraries.
 * [RtMidi](https://github.com/thestk/rtmidi)
 * [Protocol Buffers](https://developers.google.com/protocol-buffers/)
 * [MPark.Variant](https://github.com/mpark/variant)
+* [midifile](https://github.com/craigsapp/midifile)
 
 ## Contact
 

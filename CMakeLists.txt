@@ -162,6 +162,8 @@ include_directories(
   "./ext/protobuf/${BUILD_DIR_NAME}/install/include"
   "./ext/fmt/${BUILD_DIR_NAME}/install/include"
   "./ext/rtmidi/${BUILD_DIR_NAME}/install/include"
+  "./ext/midifile/include"
+  "./ext/midifile/src-library"
   )
 
 target_link_libraries(

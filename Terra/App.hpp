@@ -57,6 +57,9 @@ public:
     
     ChangeProjectListenerService & GetChangeProjectListeners();
     
+    //! load a specified plugin.
+    /*! @return the created plugin if successful, nullptr otherwise.
+     */
     std::unique_ptr<Vst3Plugin> CreateVst3Plugin(schema::PluginDescription const &desc);
 
     void RescanPlugins();

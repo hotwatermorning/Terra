@@ -621,11 +621,10 @@ public:
     void AddNode(schema::PluginDescription const &desc, wxPoint pt)
     {
         auto app = MyApp::GetInstance();
-        std::unique_ptr<Vst3Plugin> plugin;
-        try {
-            plugin = app->CreateVst3Plugin(desc);
-        } catch(std::exception &e) {
-            wxMessageBox("Failed to load {}: {}"_format(desc.name(), e.what()));
+        std::unique_ptr<Vst3Plugin> plugin = app->CreateVst3Plugin(desc);
+        
+        if(!plugin) {
+            wxMessageBox("Failed to load {}"_format(desc.name()));
             return;
         }
         

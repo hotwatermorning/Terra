@@ -24,6 +24,18 @@ class ParameterSlider
 :   public wxPanel
 {
 public:
+    class Callback
+    {
+    protected:
+        Callback() {}
+    public:
+        virtual ~Callback() {}
+        
+        virtual
+        void OnChangeParameter(ParameterSlider *slider) = 0;
+    };
+    
+public:
     enum { kDefaultValueMax = 1'000'000 };
     
     UInt32 ToInteger(double normalized) const {
@@ -77,10 +89,13 @@ public:
         
         slider_->Bind(wxEVT_SLIDER, [id = param_info.id_, this](auto &) {
             auto const normalized = ToNormalized(slider_->GetValue());
+            
             plugin_->EnqueueParameterChange(id, normalized);
+            plugin_->SetParameterValueByID(id, normalized);
             
             auto str = plugin_->ValueToStringByID(id, normalized);
             disp_->SetValue(str);
+            if(callback_) { callback_->OnChangeParameter(this); }
         });
         
         auto apply_text = [id = param_info.id_, this](auto &e) {
@@ -104,6 +119,11 @@ public:
         disp_->SetValue(str);
     }
     
+    void SetCallback(Callback *callback)
+    {
+        callback_ = callback;
+    }
+    
 private:
     wxStaticText *name_ = nullptr;
     wxSlider *slider_ = nullptr;
@@ -111,10 +131,12 @@ private:
     Vst3Plugin *plugin_ = nullptr;
     UInt32 param_index_ = -1;
     UInt32 value_max_ = kDefaultValueMax;
+    Callback *callback_ = nullptr;
 };
 
 class GenericParameterView
 :   public wxPanel
+,   ParameterSlider::Callback
 {
     constexpr static UInt32 kParameterHeight = 20;
     constexpr static UInt32 kPageSize = 3 * kParameterHeight;
@@ -131,7 +153,11 @@ public:
         sb_->SetScrollbar(0, 1, num * kParameterHeight, 1);
         
         for(UInt32 i = 0; i < num; ++i) {
+            auto const &info = plugin->GetParameterInfoByIndex(i);
             auto slider = new ParameterSlider(this, plugin, i);
+            if(info.is_program_change_) {
+                slider->SetCallback(this);
+            }
             sliders_.push_back(slider);
         }
         
@@ -174,6 +200,13 @@ public:
     }
     
     void UpdateParameters()
+    {
+        for(auto slider: sliders_) {
+            slider->UpdateSliderValue();
+        }
+    }
+    
+    void OnChangeParameter(ParameterSlider *slider) override
     {
         for(auto slider: sliders_) {
             slider->UpdateSliderValue();

@@ -675,6 +675,8 @@ struct GraphProcessor::Impl
     void ReplaceFrameProcedure(std::shared_ptr<FrameProcedure> p);
     std::shared_ptr<FrameProcedure> CreateFrameProcedure() const;
     
+    ListenerService<GraphProcessor::Listener> listeners_;
+    
 private:
     template<class List, class T>
     void AddIOProcessorImpl(List &list, T x) {
@@ -740,6 +742,11 @@ GraphProcessor::GraphProcessor()
 
 GraphProcessor::~GraphProcessor()
 {}
+
+GraphProcessor::IListenerService & GraphProcessor::GetListeners()
+{
+    return pimpl_->listeners_;
+}
 
 std::unique_ptr<GraphProcessor::AudioInput>
 GraphProcessor::CreateAudioInput(String name, UInt32 channel_index, UInt32 num_channels)
@@ -911,6 +918,9 @@ GraphProcessor::NodePtr GraphProcessor::AddNode(std::shared_ptr<Processor> proce
         node->OnStartProcessing(pimpl_->sample_rate_, pimpl_->block_size_);
     }
     
+    pimpl_->listeners_.Invoke([&](Listener *li) {
+        li->OnAfterNodeIsAdded(node.get());
+    });
     return node;
 }
 
@@ -932,6 +942,10 @@ std::shared_ptr<Processor> GraphProcessor::RemoveNode(Node const *node)
                                     );
     
     if(found == pimpl_->nodes_.end()) { return nullptr; }
+    
+    pimpl_->listeners_.Invoke([&](Listener *li) {
+        li->OnBeforeNodeIsRemoved(found->get());
+    });
     
     Disconnect(found->get());
     

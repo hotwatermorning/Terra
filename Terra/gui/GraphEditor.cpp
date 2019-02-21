@@ -383,6 +383,7 @@ class GraphEditorImpl
 :   public GraphEditor
 ,   public NodeComponent::Callback
 ,   public MyApp::ChangeProjectListener
+,   public GraphProcessor::Listener
 {
 public:
     wxCursor scissors_;
@@ -634,32 +635,21 @@ public:
         
         auto proc = std::make_shared<Vst3AudioProcessor>(desc, std::move(plugin));
         auto node = graph_->AddNode(proc);
+
+        auto &back = node_components_.back();
         
-        auto nc = std::make_unique<NodeComponent>(this, node.get(), this);
-        nc->MoveConstrained(pt);
-        node_components_.push_back(std::move(nc));
-        
-        // open editor automatically.
-        node_components_.back()->OnOpenEditor();
+        assert(back->node_ == node.get());
+        back->MoveConstrained(pt);
     }
 
     //! return true if removed.
     //! return false if not found.
     bool RemoveNode(Processor const *proc)
     {
-        auto found = std::find_if(node_components_.begin(), node_components_.end(),
-                                  [proc](auto const &nc) { return nc->node_->GetProcessor().get() == proc; });
-        if(found == node_components_.end()) { return false; }
-        
-        auto nc = std::move(*found);
-        
-        node_components_.erase(found);
-        
-        graph_->RemoveNode(nc->node_);
-        
-        nc.reset();
-        
-        Refresh();
+        auto node = graph_->GetNodeOf(proc);
+        if(!node) { return false; }
+
+        graph_->RemoveNode(node);
         return true;
     }
     
@@ -676,11 +666,16 @@ public:
             node_components_.push_back(std::move(nc));
         }
         
+        graph_->GetListeners().AddListener(this);
         Refresh();
     }
     
     void RemoveGraph()
     {
+        if(!graph_) { return; }
+        
+        graph_->GetListeners().RemoveListener(this);
+
         for(auto &node: node_components_) {
             RemoveChild(node.get());
             node->Destroy();
@@ -922,6 +917,30 @@ private:
                         dragging_line_->end_
                         );
         }
+    }
+    
+    void OnAfterNodeIsAdded(GraphProcessor::Node *node) override
+    {
+        auto nc = std::make_unique<NodeComponent>(this, node, this);
+        node_components_.push_back(std::move(nc));
+        
+        // open editor automatically.
+        node_components_.back()->OnOpenEditor();
+        Refresh();
+    }
+    
+    void OnBeforeNodeIsRemoved(GraphProcessor::Node *node) override
+    {
+        auto found = std::find_if(node_components_.begin(), node_components_.end(),
+                                  [node](auto const &nc) { return nc->node_ == node; });
+        if(found == node_components_.end()) {
+            return;
+        }
+        
+        auto nc = std::move(*found);
+        node_components_.erase(found);
+        nc.reset();
+        Refresh();
     }
 };
 

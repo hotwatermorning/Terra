@@ -33,9 +33,13 @@ public:
         virtual void OnBeforeNodeIsRemoved(Node *node) {};
     };
     
+    using IListenerService = IListenerService<Listener>;
+    
 public:
     GraphProcessor();
     ~GraphProcessor();
+    
+    IListenerService & GetListeners();
     
     class AudioInput : public Processor {
     public:

@@ -423,6 +423,17 @@ Vst::ParamValue Vst3Plugin::Impl::GetParameterValueByID(Vst::ParamID id) const
     return edit_controller_->getParamNormalized(id);
 }
 
+void Vst3Plugin::Impl::SetParameterValueByIndex(UInt32 index, Vst::ParamValue value)
+{
+    auto id = GetParameterInfoList().GetItemByIndex(index).id_;
+    return SetParameterValueByID(id, value);
+}
+
+void Vst3Plugin::Impl::SetParameterValueByID(Vst::ParamID id, Vst::ParamValue value)
+{
+    edit_controller_->setParamNormalized(id, value);
+}
+
 String Vst3Plugin::Impl::ValueToStringByIndex(UInt32 index, ParamValue value)
 {
     return ValueToStringByID(GetParameterInfoList().GetItemByIndex(index).id_, value);

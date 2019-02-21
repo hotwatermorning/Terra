@@ -111,6 +111,16 @@ Vst3Plugin::ParamValue Vst3Plugin::GetParameterValueByID(ParamID id) const
     return pimpl_->GetParameterValueByID(id);
 }
 
+void Vst3Plugin::SetParameterValueByIndex(UInt32 index, ParamValue value)
+{
+    pimpl_->SetParameterValueByIndex(index, value);
+}
+
+void Vst3Plugin::SetParameterValueByID(ParamID id, ParamValue value)
+{
+    pimpl_->SetParameterValueByID(id, value);
+}
+
 String Vst3Plugin::ValueToStringByIndex(UInt32 index, ParamValue value)
 {
     return pimpl_->ValueToStringByIndex(index, value);

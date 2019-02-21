@@ -161,6 +161,8 @@ public:
     UInt32 GetNumParameters() const;
     Vst::ParamValue GetParameterValueByIndex(UInt32 index) const;
     Vst::ParamValue GetParameterValueByID(Vst::ParamID id) const;
+    void SetParameterValueByIndex(UInt32 index, Vst::ParamValue value);
+    void SetParameterValueByID(Vst::ParamID id, Vst::ParamValue value);
     
     String ValueToStringByIndex(UInt32 index, ParamValue value);
     ParamValue StringToValueTByIndex(UInt32 index, String string);

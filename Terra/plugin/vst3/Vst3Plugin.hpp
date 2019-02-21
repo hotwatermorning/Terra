@@ -208,6 +208,8 @@ public:
     
     ParamValue GetParameterValueByIndex(UInt32 index) const;
     ParamValue GetParameterValueByID(ParamID id) const;
+    void SetParameterValueByIndex(UInt32 index, ParamValue value);
+    void SetParameterValueByID(ParamID id, ParamValue value);
     
     String ValueToStringByIndex(UInt32 index, ParamValue value);
     ParamValue StringToValueTByIndex(UInt32 index, String string);

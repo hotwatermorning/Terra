@@ -2,8 +2,8 @@
 
 NS_HWM_BEGIN
 
-//! 失敗か成功かどちらかの状況を返すクラス
-//! is_right() == trueの時は成功の状況
+//! a class represents either success or failure
+//! if succeeded, is_right() and operator bool() returns true.
 template<class Left, class Right>
 class Either
 {
@@ -12,6 +12,8 @@ public:
     Either(T &&data) : data_(std::forward<T>(data)) {}
     
     bool is_right() const { return data_.index() == 1; }
+    
+    explicit operator bool() const { return is_right(); }
     
     Left & left() { return std::get<Left>(data_); }
     Left const & left() const { return std::get<Left>(data_); }

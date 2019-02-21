@@ -5,6 +5,7 @@
 #include <wx/tglbtn.h>
 #include <wx/stdpaths.h>
 #include <wx/display.h>
+#include <wx/dnd.h>
 
 #include <vector>
 
@@ -535,7 +536,7 @@ private:
         schema::PluginDescription desc_;
     };
     
-    wxPanel         *keyboard_;
+    wxPanel         *keyboard_ = nullptr;
     wxPanel         *header_panel_ = nullptr;
     GraphEditor     *graph_panel_ = nullptr;
     

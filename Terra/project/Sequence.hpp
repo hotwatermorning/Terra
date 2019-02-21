@@ -33,13 +33,14 @@ struct Sequence
         Tick GetEndPos() const { return pos_ + length_; }
     };
     
-    Sequence()
+    explicit
+    Sequence(String name = L"", std::vector<Note> notes = {}, UInt32 channel = 0)
+    :   name_(name)
+    ,   notes_(std::move(notes))
+    ,   channel_(channel)
     {}
     
-    Sequence(std::vector<Note> notes)
-    : notes_(std::move(notes))
-    {}
-    
+    String name_;
     std::vector<Note> notes_;
     UInt8 channel_ = 0;
     

@@ -77,6 +77,9 @@ public:
     //! @return true if saved or no need to save. false if canceled.
     bool OnFileSave(bool force_save_as, bool need_to_confirm_for_closing);
     
+    void LoadProject(String path);
+    void ImportFile(String path);
+    
     //! modal
     void ShowSettingDialog();
     

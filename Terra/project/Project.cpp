@@ -2,16 +2,137 @@
 #include "../transport/Traverser.hpp"
 #include "../device/MidiDeviceManager.hpp"
 #include "../device/AudioDeviceManager.hpp"
+#include "../file/ProjectObjectTable.hpp"
 #include "./GraphProcessor.hpp"
 #include "../App.hpp"
 #include "../misc/MathUtil.hpp"
 #include "../misc/StrCnv.hpp"
+#include "../misc/Borrowable.hpp"
 #include <map>
 #include <thread>
 
 NS_HWM_BEGIN
 
 namespace {
+    
+    struct InternalPlayingNoteInfo
+    {
+        InternalPlayingNoteInfo()
+        {}
+        
+        InternalPlayingNoteInfo(bool is_note_on, UInt8 velocity)
+        :   initialized_(true)
+        ,   is_note_on_(is_note_on)
+        ,   velocity_(velocity)
+        {}
+        
+        bool initialized_ = false;
+        bool is_note_on_ = false;
+        UInt8 velocity_ = 0; // may be a note off velocity.
+        
+        bool IsNoteOn() const {
+            assert(initialized());
+            return is_note_on_;
+        }
+        
+        bool IsNoteOff() const {
+            assert(initialized());
+            return is_note_on_ == false;
+        }
+        
+        explicit operator bool() const { return initialized_; }
+        bool initialized() const { return initialized_; }
+    };
+    
+    struct PlayingNoteList
+    {
+        static constexpr UInt8 kNumChannels = 16;
+        static constexpr UInt8 kNumPitches = 128;
+        
+        using value_type = InternalPlayingNoteInfo;
+        using ch_container = std::array<std::atomic<InternalPlayingNoteInfo>, kNumPitches>;
+        using container = std::array<ch_container, kNumChannels>;
+        
+        //! @tparam F is a functor where its signature is
+        //! `void(UInt8 channel, UInt8 pitch, std::atomic<std::optional<InternalPlayingNoteInfo> &)`
+        template<class F>
+        void Traverse(F f) { TraverseImpl(list_, f); }
+        
+        //! @tparam F is a functor where its signature is
+        //! `void(UInt8 channel, UInt8 pitch, std::atomic<std::optional<InternalPlayingNoteInfo> &)`
+        template<class F>
+        void Traverse(F f) const { TraverseImpl(list_, f); }
+        
+        void Clear()
+        {
+            Traverse([](auto ch, auto pi, auto &x) { x.store(InternalPlayingNoteInfo()); });
+        }
+        
+        std::vector<Project::PlayingNoteInfo> GetPlayingNotes() const
+        {
+            std::vector<Project::PlayingNoteInfo> tmp;
+            Traverse([&tmp](auto ch, auto pi, auto &x) {
+                auto note = x.load();
+                if(note && note.IsNoteOn()) {
+                    tmp.emplace_back(ch, pi, note.velocity_);
+                }
+            });
+            return tmp;
+        }
+        
+        void SetNoteOn(UInt8 channel, UInt8 pitch, UInt8 velocity)
+        {
+            assert(channel < kNumChannels);
+            assert(pitch < kNumPitches);
+            list_[channel][pitch] = { true, velocity };
+        }
+        
+        void SetNoteOff(UInt8 channel, UInt8 pitch, UInt8 off_velocity)
+        {
+            assert(channel < kNumChannels);
+            assert(pitch < kNumPitches);
+            list_[channel][pitch] = { false, off_velocity };
+        }
+        
+        void ClearNote(UInt8 channel, UInt8 pitch)
+        {
+            assert(channel < kNumChannels);
+            assert(pitch < kNumPitches);
+            list_[channel][pitch] = InternalPlayingNoteInfo();
+        }
+        
+        InternalPlayingNoteInfo Get(UInt8 channel, UInt8 pitch) const
+        {
+            return list_[channel][pitch].load();
+        }
+        
+    private:
+        template<class List, class F>
+        static
+        void TraverseImpl(List &list, F f)
+        {
+            for(UInt8 ch = 0; ch < kNumChannels; ++ch) {
+                for(UInt8 pi = 0; pi < kNumPitches; ++pi) {
+                    f(ch, pi, list[ch][pi]);
+                }
+            }
+        }
+        
+        container list_;
+    };
+    
+    void SetNoteData(ProcessInfo::MidiMessage &msg,
+                     bool is_note_on,
+                     UInt8 pitch,
+                     UInt8 velocity)
+    {
+        using namespace MidiDataType;
+        if(is_note_on) {
+            msg.data_ = NoteOn { pitch, velocity };
+        } else {
+            msg.data_ = NoteOff { pitch, velocity };
+        }
+    }
     
     class VirtualMidiInDevice : public MidiDevice {
     public:
@@ -27,235 +148,124 @@ namespace {
         MidiDeviceInfo info_;
     };
     
-    VirtualMidiInDevice kSoftwareKeyboardMidiInput = { L"Software Keyboard" };
-    VirtualMidiInDevice kSequencerMidiInput = { L"Sequencer" };
-}
-
-struct InternalPlayingNoteInfo
-{
-    InternalPlayingNoteInfo()
-    {}
-    
-    InternalPlayingNoteInfo(bool is_note_on, UInt8 velocity)
-    :   initialized_(true)
-    ,   is_note_on_(is_note_on)
-    ,   velocity_(velocity)
-    {}
-    
-    bool initialized_ = false;
-    bool is_note_on_ = false;
-    UInt8 velocity_ = 0; // may be a note off velocity.
-    
-    bool IsNoteOn() const {
-        assert(initialized());
-        return is_note_on_;
-    }
-    
-    bool IsNoteOff() const {
-        assert(initialized());
-        return is_note_on_ == false;
-    }
-    
-    explicit operator bool() const { return initialized_; }
-    bool initialized() const { return initialized_; }
-};
-
-struct PlayingNoteList
-{
-    static constexpr UInt8 kNumChannels = 16;
-    static constexpr UInt8 kNumPitches = 128;
-    
-    using value_type = InternalPlayingNoteInfo;
-    using ch_container = std::array<std::atomic<InternalPlayingNoteInfo>, kNumPitches>;
-    using container = std::array<ch_container, kNumChannels>;
-    
-    //! @tparam F is a functor where its signature is
-    //! `void(UInt8 channel, UInt8 pitch, std::atomic<std::optional<InternalPlayingNoteInfo> &)`
-    template<class F>
-    void Traverse(F f) { TraverseImpl(list_, f); }
-    
-    //! @tparam F is a functor where its signature is
-    //! `void(UInt8 channel, UInt8 pitch, std::atomic<std::optional<InternalPlayingNoteInfo> &)`
-    template<class F>
-    void Traverse(F f) const { TraverseImpl(list_, f); }
-    
-    void Clear()
+    class MidiSequenceDevice : public MidiDevice
     {
-        Traverse([](auto ch, auto pi, auto &x) { x.store(InternalPlayingNoteInfo()); });
-    }
-    
-    std::vector<Project::PlayingNoteInfo> GetPlayingNotes() const
-    {
-        std::vector<Project::PlayingNoteInfo> tmp;
-        Traverse([&tmp](auto ch, auto pi, auto &x) {
-            auto note = x.load();
-            if(note && note.IsNoteOn()) {
-                tmp.emplace_back(ch, pi, note.velocity_);
-            }
-        });
-        return tmp;
-    }
-    
-    void SetNoteOn(UInt8 channel, UInt8 pitch, UInt8 velocity)
-    {
-        assert(channel < kNumChannels);
-        assert(pitch < kNumPitches);
-        list_[channel][pitch] = { true, velocity };
-    }
-    
-    void SetNoteOff(UInt8 channel, UInt8 pitch, UInt8 off_velocity)
-    {
-        assert(channel < kNumChannels);
-        assert(pitch < kNumPitches);
-        list_[channel][pitch] = { false, off_velocity };
-    }
-    
-    void ClearNote(UInt8 channel, UInt8 pitch)
-    {
-        assert(channel < kNumChannels);
-        assert(pitch < kNumPitches);
-        list_[channel][pitch] = InternalPlayingNoteInfo();
-    }
-    
-    InternalPlayingNoteInfo Get(UInt8 channel, UInt8 pitch) const
-    {
-        return list_[channel][pitch].load();
-    }
-    
-private:
-    template<class List, class F>
-    static
-    void TraverseImpl(List &list, F f)
-    {
-        for(UInt8 ch = 0; ch < kNumChannels; ++ch) {
-            for(UInt8 pi = 0; pi < kNumPitches; ++pi) {
-                f(ch, pi, list[ch][pi]);
-            }
-        }
-    }
-    
-    container list_;
-};
-
-template<class T>
-struct Borrowable
-{
-    using TokenType = UInt64;
-    static constexpr TokenType kInvalidToken = 0;
-    
-    //! from non-realtime thread
-    void Set(std::shared_ptr<T> x)
-    {
-        auto lock = lf_.make_lock();
-        auto tmp_released = std::move(released_);
-        auto tmp_data = std::move(data_);
-        assert(!data_ && !released_);
-        data_ = std::move(x);
-        token_ += 1;
-        lock.unlock();
-    }
-    
-    struct Item final
-    {
-        T const * get() const { return ptr_.get(); }
-        T const * operator->() const { return ptr_.get(); }
-        T const & operator*() const
+    public:
+        using BufferRefType = ArrayRef<ProcessInfo::MidiMessage>;
+        
+        MidiSequenceDevice()
         {
-            assert(ptr_);
-            return *ptr_;
+            midi_buffer_.reserve(256);
         }
-
-        Item()
+        
+        ~MidiSequenceDevice()
         {}
         
-        Item(std::shared_ptr<T> &&ptr, UInt64 token, Borrowable<T> *owner)
-        :   ptr_(std::move(ptr))
-        ,   token_(token)
-        ,   owner_(owner)
-        {
-            assert(owner_);
+        MidiDeviceInfo const & GetDeviceInfo() const override {
+            info_.name_id_ = seq_.name_;
+            info_.io_type_ = DeviceIOType::kInput;
+            return info_;
         }
         
-        Item(Item const &rhs) = delete;
-        Item & operator=(Item const &rhs) = delete;
-        Item(Item &&rhs)
-        :   ptr_(std::move(rhs.ptr_))
-        ,   token_(rhs.token_)
-        ,   owner_(rhs.owner_)
+        Sequence & GetSequence() { return seq_; }
+        Sequence const & GetSequence() const { return seq_; }
+        void CacheSequence(hwm::IMusicalTimeService *conv)
         {
-            rhs.owner_ = nullptr;
+            cached_sequence_.Set(std::make_shared<CachedSequence>(seq_.MakeCache(conv)));
         }
         
-        Item & operator=(Item &&rhs)
+        //! prepare sequence midi messages before calling of GraphProcessor::Process()
+        void PrepareEvents(TransportInfo const ti, IMusicalTimeService *ts, bool restart)
         {
-            Item(std::move(rhs)).swap(*this);
-            return *this;
-        }
-        
-        UInt64 GetToken() const { return token_; }
-        
-        void swap(Item &rhs)
-        {
-            std::swap(ptr_, rhs.ptr_);
-            std::swap(token_, rhs.token_);
-            std::swap(owner_, rhs.owner_);
-        }
-        
-        void reset()
-        {
-            if(ptr_ == nullptr) { return; }
+            midi_buffer_.clear();
             
-            auto lock = owner_->lf_.make_lock();
-            
-            if(owner_->token_ == token_) {
-                assert(owner_->data_ == nullptr);
-                owner_->data_ = std::move(ptr_);
-            } else {
-                assert(owner_->released_ == nullptr);
-                owner_->released_ = std::move(ptr_);
+            auto cache = cached_sequence_.Borrow();
+            if(!cache) {
+                last_cache_token_ = BorrowableCachedSequence::kInvalidToken;
+                return;
             }
-        }
-     
-        ~Item()
-        {
-            reset();
+            
+            bool const is_new_cache = cache.GetToken() != last_cache_token_;
+            last_cache_token_ = cache.GetToken();
+            
+            if(is_new_cache || restart) {
+                StopAllNotes();
+                
+                assert(std::is_sorted(cache->begin(), cache->end(), [](auto const &left, auto const &right) {
+                    return left.offset_ < right.offset_;
+                }));
+                
+                cached_iter_ = std::lower_bound(cache->begin(), cache->end(),
+                                                ti.play_.begin_.sample_,
+                                                [](auto const &left, auto const right) {
+                                                    return left.offset_ < right;
+                                                });
+            }
+            
+            auto it = cached_iter_;
+            
+            for( ; it != cache->end(); ++it) {
+                auto const &ev = *it;
+                assert(ev.offset_ >= ti.play_.begin_.sample_);
+                if(ev.offset_ >= ti.play_.end_.sample_) { break; }
+                
+                ProcessInfo::MidiMessage msg;
+                msg.offset_ = ev.offset_ - ti.play_.begin_.sample_;
+                msg.channel_ = ev.channel_;
+                msg.ppq_pos_ = ts->SampleToTick(ev.offset_) / ts->GetTpqn();
+                msg.data_ = ev.data_;
+
+                if(auto p = msg.As<MidiDataType::NoteOn>()) {
+                    hwm::dout << "note on [{}][{}]"_format(p->pitch_, ev.offset_) << std::endl;
+                    playing_notes_.SetNoteOn(msg.channel_, p->pitch_, p->velocity_);
+                } else if(auto p = msg.As<MidiDataType::NoteOff>()) {
+                    hwm::dout << "note off [{}][{}]"_format(p->pitch_, ev.offset_) << std::endl;
+                    playing_notes_.ClearNote(msg.channel_, p->pitch_);
+                }
+                
+                midi_buffer_.push_back(msg);
+            }
+            
+            cached_iter_ = it;
         }
         
-        bool operator==(Item const &rhs) const
+        BufferRefType GetEvents()
         {
-            return  (ptr_ == rhs.ptr_)
-            &&      (token_ == rhs.token_)
-            &&      (owner_ == rhs.owner_)
-            ;
+            return midi_buffer_;
         }
         
-        bool operator!=(Item const &rhs) const
-        {
-            return !(*this == rhs);
+        void StopAllNotes() {
+            playing_notes_.Traverse([&](auto ch, auto pi, auto &x) {
+                auto note = x.load();
+                if(note) {
+                    ProcessInfo::MidiMessage msg;
+                    msg.offset_ = 0;
+                    msg.channel_ = ch;
+                    msg.ppq_pos_ = 0;
+                    SetNoteData(msg, false, pi, 0);
+                    midi_buffer_.push_back(msg);
+                    x.store(InternalPlayingNoteInfo());
+                }
+            });
         }
-        
-        explicit operator bool() const { return !!ptr_; }
         
     private:
-        std::shared_ptr<T> ptr_;
-        Borrowable<T> *owner_ = nullptr;
-        UInt64 token_ = kInvalidToken;
+        Sequence seq_;
+        MidiDeviceInfo mutable info_;
+        
+        using CachedSequence = std::vector<ProcessInfo::MidiMessage>;
+        using BorrowableCachedSequence = Borrowable<CachedSequence>;
+        
+        BorrowableCachedSequence cached_sequence_;
+        BorrowableCachedSequence::TokenType last_cache_token_ = BorrowableCachedSequence::kInvalidToken;
+        using cached_iter_t = CachedSequence::const_iterator;
+        cached_iter_t cached_iter_;
+        std::vector<ProcessInfo::MidiMessage> midi_buffer_;
+        PlayingNoteList playing_notes_;
     };
     
-    Item Borrow()
-    {
-        auto lock = lf_.make_lock();
-        
-        auto p = std::move(data_ ? data_ : released_);
-        return Item { std::move(p), token_, this };
-    }
-    
-private:
-    LockFactory lf_;
-    std::shared_ptr<T> data_;
-    std::shared_ptr<T> released_;
-    UInt64 token_ = kInvalidToken;
-};
+    VirtualMidiInDevice kSoftwareKeyboardMidiInput = { L"Software Keyboard" };
+}
 
 struct Project::Impl
 {
@@ -278,7 +288,6 @@ struct Project::Impl
     BypassFlag bypass_;
     int num_device_inputs_ = 0;
     int num_device_outputs_ = 0;
-    std::unique_ptr<Sequence> sequence_;
     PlayingNoteList playing_sequence_notes_;
     PlayingNoteList requested_sample_notes_;
     PlayingNoteList playing_sample_notes_;
@@ -290,6 +299,8 @@ struct Project::Impl
     //! output to device
     BufferRef<float> output_;
     
+    using MidiSequenceDevicePtr = std::unique_ptr<MidiSequenceDevice>;
+    std::vector<MidiSequenceDevicePtr> sequence_devices_;
     using CachedSequence = std::vector<ProcessInfo::MidiMessage>;
     using BorrowableCachedSequence = Borrowable<CachedSequence>;
     
@@ -299,13 +310,129 @@ struct Project::Impl
     Borrowable<CachedSequence> cached_sequence_;
     
     std::vector<DeviceMidiMessage> device_midi_input_buffer_;
-    std::map<MidiDevice const *, std::vector<ProcessInfo::MidiMessage>> midi_input_table_;
+    
+    class MidiProcessorData
+    {
+    public:
+        MidiProcessorData(MidiDevice *device, Processor *proc)
+        :   device_(device)
+        ,   proc_(proc)
+        {
+            buffer_.resize(1024);
+        }
+        
+        MidiDevice *device_;
+        Processor *proc_;
+        std::vector<ProcessInfo::MidiMessage> buffer_;
+    };
+    
+    class MidiProcessorList
+    {
+    private:
+        std::vector<MidiProcessorData> list_;
+        
+        template<class Container, class Pred>
+        static
+        auto FindEntry(Container &cont, Pred pred)
+        {
+            return std::find_if(cont.begin(), cont.end(), pred);
+        }
+        
+        static
+        auto MakePredicate(MidiDevice const *device) {
+            return [device](auto const &entry) { return entry.device_ == device; };
+        };
+        
+        static
+        auto MakePredicate(Processor const *proc) {
+            return [proc](auto const &entry) { return entry.proc_ == proc; };
+        };
+        
+        template<class Container, class Pred>
+        static
+        auto GetEntryOf(Container &cont, Pred pred)
+        {
+            auto found = FindEntry(cont, pred);
+            auto p = (found == cont.end()) ? nullptr : &*found;
+            return p;
+        }
+        
+    public:
+        //! device and proc are must be unique in this list.
+        void Add(MidiDevice *device, Processor *proc)
+        {
+            assert(GetProcessorOf(device) == nullptr);
+            assert(GetDeviceOf(proc) == nullptr);
+            
+            list_.push_back(MidiProcessorData(device, proc));
+        }
+        
+        Processor * GetProcessorOf(MidiDevice const *device) const
+        {
+            if(auto p = GetEntryOf(device)) {
+                return p->proc_;
+            } else {
+                return nullptr;
+            }
+        }
+        
+        MidiDevice * GetDeviceOf(Processor const *proc) const
+        {
+            if(auto p = GetEntryOf(proc)) {
+                return p->device_;
+            } else {
+                return nullptr;
+            }
+        }
+        
+        MidiProcessorData * GetEntryOf(MidiDevice const *device)
+        {
+            return GetEntryOf(list_, MakePredicate(device));
+        }
+        
+        MidiProcessorData const * GetEntryOf(MidiDevice const *device) const
+        {
+            return GetEntryOf(list_, MakePredicate(device));
+        }
+        
+        MidiProcessorData * GetEntryOf(Processor const *proc)
+        {
+            return GetEntryOf(list_, MakePredicate(proc));
+        }
+        
+        MidiProcessorData const * GetEntryOf(Processor const *proc) const
+        {
+            return GetEntryOf(list_, MakePredicate(proc));
+        }
+        
+        void Remove(MidiDevice const *device)
+        {
+            auto found = FindEntry(list_, [device](auto const &entry) { return entry.device_ == device; });
+            if(found != list_.end()) {
+                list_.erase(found);
+            }
+        }
+        
+        void Remove(Processor const *proc)
+        {
+            auto found = FindEntry(list_, [proc](auto const &entry) { return entry.proc_ == proc; });
+            if(found != list_.end()) {
+                list_.erase(found);
+            }
+        }
+        
+        auto begin() { return list_.begin(); }
+        auto end() { return list_.end(); }
+        auto begin() const { return list_.begin(); }
+        auto end() const { return list_.end(); }
+    };
+    
+    MidiProcessorList midi_processors_;
 };
 
 Project::Project()
 :   pimpl_(std::make_unique<Impl>(this))
 {
-    pimpl_->sequence_ = std::make_unique<Sequence>();
     pimpl_->graph_ = std::make_unique<GraphProcessor>();
     
     pimpl_->playing_sequence_notes_.Clear();
@@ -375,11 +502,11 @@ void Project::AddAudioOutput(String name, UInt32 channel_index, UInt32 num_chann
 
 void Project::AddMidiInput(MidiDevice *device)
 {
-    pimpl_->midi_input_table_[device].reserve(2048);
     auto proc = GraphProcessor::CreateMidiInput(device->GetDeviceInfo().name_id_);
     proc->SetCallback([this, device](GraphProcessor::MidiInput *proc, ProcessInfo const &info) {
         OnSetMidi(proc, info, device);
     });
+    pimpl_->midi_processors_.Add(device, proc.get());
     pimpl_->graph_->AddNode(std::move(proc));
 }
 
@@ -389,24 +516,87 @@ void Project::AddMidiOutput(MidiDevice *device)
     proc->SetCallback([this, device](GraphProcessor::MidiOutput *proc, ProcessInfo const &info) {
         OnGetMidi(proc, info, device);
     });
+    pimpl_->midi_processors_.Add(device, proc.get());
     pimpl_->graph_->AddNode(std::move(proc));
+}
+
+void Project::RemoveMidiInput(MidiDevice const *device)
+{
+    auto proc = pimpl_->midi_processors_.GetProcessorOf(device);
+    if(!proc) { return; }
+    
+    auto node = pimpl_->graph_->GetNodeOf(proc);
+    assert(node);
+    
+    pimpl_->graph_->RemoveNode(node);
+    pimpl_->midi_processors_.Remove(proc);
+}
+
+void Project::RemoveMidiOutput(MidiDevice const *device)
+{
+    auto proc = pimpl_->midi_processors_.GetProcessorOf(device);
+    if(!proc) { return; }
+    
+    auto node = pimpl_->graph_->GetNodeOf(proc);
+    assert(node);
+    
+    pimpl_->graph_->RemoveNode(node);
+    pimpl_->midi_processors_.Remove(proc);
 }
 
 void Project::AddDefaultMidiInputs()
 {
     AddMidiInput(&kSoftwareKeyboardMidiInput);
-    AddMidiInput(&kSequencerMidiInput);
 }
 
-Sequence & Project::GetSequence() const
+UInt32 Project::GetNumSequences() const
 {
-    return *pimpl_->sequence_;
+    return pimpl_->sequence_devices_.size();
 }
 
-void Project::CacheSequence()
+void Project::AddSequence(String name, UInt32 insert_at)
 {
-    auto cache = pimpl_->sequence_->MakeCache(this);
-    pimpl_->cached_sequence_.Set(std::make_unique<decltype(cache)>(std::move(cache)));
+    AddSequence(Sequence(name), insert_at);
+}
+
+void Project::AddSequence(Sequence &&seq, UInt32 insert_at)
+{
+    if(insert_at == -1) { insert_at = GetNumSequences(); }
+    auto device = std::make_unique<MidiSequenceDevice>();
+    device->GetSequence() = std::move(seq);
+    
+    auto p = device.get();
+    pimpl_->sequence_devices_.insert(pimpl_->sequence_devices_.begin() + insert_at,
+                                     std::move(device));
+    AddMidiInput(p);
+    p->CacheSequence(this);
+}
+
+void Project::RemoveSequence(UInt32 index)
+{
+    assert(index < GetNumSequences());
+    
+    auto *device = pimpl_->sequence_devices_[index].get();
+    RemoveMidiInput(device);
+    pimpl_->sequence_devices_.erase(pimpl_->sequence_devices_.begin() + index);
+}
+
+Sequence & Project::GetSequence(UInt32 index)
+{
+    assert(index < GetNumSequences());
+    return pimpl_->sequence_devices_[index]->GetSequence();
+}
+
+Sequence const & Project::GetSequence(UInt32 index) const
+{
+    assert(index < GetNumSequences());
+    return pimpl_->sequence_devices_[index]->GetSequence();
+}
+
+void Project::CacheSequence(UInt32 index)
+{
+    assert(index < GetNumSequences());
+    pimpl_->sequence_devices_[index]->CacheSequence(this);
 }
 
 Transporter & Project::GetTransporter()
@@ -632,8 +822,16 @@ std::unique_ptr<schema::Project> Project::ToSchema() const
     auto graph = pimpl_->graph_->ToSchema();
     p->set_allocated_graph(graph.release());
     
-    auto seq = pimpl_->sequence_->ToSchema();
-    p->set_allocated_sequence(seq.release());
+    for(int i = 0; i < GetNumSequences(); ++i) {
+        auto schema_seq = GetSequence(i).ToSchema();
+        auto proc = pimpl_->midi_processors_.GetProcessorOf(pimpl_->sequence_devices_[i].get());
+        assert(proc);
+        auto node = pimpl_->graph_->GetNodeOf(proc);
+        assert(node);
+        
+        schema_seq->set_node_id(reinterpret_cast<UInt64>(node.get()));
+        p->mutable_sequences()->AddAllocated(schema_seq.release());
+    }
     
     return p;
 }
@@ -641,6 +839,8 @@ std::unique_ptr<schema::Project> Project::ToSchema() const
 std::unique_ptr<Project> Project::FromSchema(schema::Project const &schema)
 {
     auto p = std::make_unique<Project>();
+    
+    auto objs = ProjectObjectTable::GetInstance();
     
     p->pimpl_->sample_rate_ = std::max<double>(schema.sample_rate(), 22050.0);
     p->pimpl_->block_size_ = std::max<UInt32>(schema.block_size(), 16);
@@ -657,27 +857,28 @@ std::unique_ptr<Project> Project::FromSchema(schema::Project const &schema)
         p->pimpl_->tp_.SetLoopEnabled(tp.loop_enabled());
     }
     
-    if(schema.has_sequence()) {
-        auto new_sequence = Sequence::FromSchema(schema.sequence());
-        assert(new_sequence);
-        p->pimpl_->sequence_ = std::move(new_sequence);
-    }
-    
     auto mdm = MidiDeviceManager::GetInstance();
     
-    std::vector<MidiDevice *> opened_midi_devices;
+    std::vector<MidiDevice *> midi_devices_to_add;
     for(auto const &info: mdm->Enumerate()) {
         auto device = mdm->GetDevice(info);
-        if(device) { opened_midi_devices.push_back(device); }
+        if(device) { midi_devices_to_add.push_back(device); }
     }
-    opened_midi_devices.push_back(&kSequencerMidiInput);
-    opened_midi_devices.push_back(&kSoftwareKeyboardMidiInput);
+    midi_devices_to_add.push_back(&kSoftwareKeyboardMidiInput);
     
-    auto remove_element = [&](auto &container, auto const &elem) {
-        container.erase(std::remove(std::begin(container),
-                                    std::end(container),
-                                    elem),
+    static auto remove_element = [](auto &container, auto const &elem) {
+        container.erase(std::remove(std::begin(container), std::end(container), elem),
                         std::end(container));
+    };
+
+    static auto find_element = [](auto &container, auto const &elem) {
+        auto found = std::find(std::begin(container), std::end(container), elem);
+        auto p = (found != std::end(container)) ? &*found : nullptr;
+        return p;
+    };
+    
+    static auto has_element = [](auto &container, auto const &elem) {
+        return find_element(container, elem) != nullptr;
     };
     
     if(schema.has_graph()) {
@@ -700,6 +901,27 @@ std::unique_ptr<Project> Project::FromSchema(schema::Project const &schema)
                                   pj->OnGetAudio(proc, pi, proc->GetChannelIndex());
                               });
         }
+
+        std::map<GraphProcessor::Node *, Impl::MidiSequenceDevicePtr> node_to_sequence_device;
+        
+        std::vector<schema::Sequence> schema_sequences;
+        if(schema.sequences().size() > 0) {
+            for(auto const &seq: schema.sequences()) { schema_sequences.push_back(seq); }
+        } else if(schema.has_deprecated_sequence()) {
+            schema_sequences.push_back(schema.deprecated_sequence());
+        }
+        
+        for(auto const &schema_seq: schema_sequences) {
+            auto node = objs->nodes_.Find(schema_seq.node_id());
+            if(!node) { continue; }
+            
+            auto sequence = Sequence::FromSchema(schema_seq);
+            assert(sequence);
+            
+            auto device = std::make_unique<MidiSequenceDevice>();
+            device->GetSequence() = std::move(*sequence);
+            node_to_sequence_device[node] = std::move(device);
+        }
         
         std::vector<GraphProcessor::MidiInput *> midi_ins_to_remove;
         std::vector<GraphProcessor::MidiOutput *> midi_outs_to_remove;
@@ -707,20 +929,28 @@ std::unique_ptr<Project> Project::FromSchema(schema::Project const &schema)
         for(int i = 0; i < new_graph->GetNumMidiInputs(); ++i) {
             auto proc = new_graph->GetMidiInput(i);
             auto node = new_graph->GetNodeOf(proc);
-            if(node->GetMidiConnections(BusDirection::kOutputSide).empty()) {
+
+            auto sequence_device = std::move(node_to_sequence_device[node.get()]);
+            
+            if(node->IsConnected() == false && sequence_device == nullptr) {
                 midi_ins_to_remove.push_back(proc);
                 continue;
             }
+
+            MidiDevice *device = nullptr;
             
-            MidiDeviceInfo info;
-            info.io_type_ = DeviceIOType::kInput;
-            info.name_id_ = proc->GetName();
-            auto device = mdm->GetDevice(info);
-            if(device == nullptr) {
-                if(info == kSoftwareKeyboardMidiInput.GetDeviceInfo()) {
-                    device = &kSoftwareKeyboardMidiInput;
-                } else if(info == kSequencerMidiInput.GetDeviceInfo()) {
-                    device = &kSequencerMidiInput;
+            if(sequence_device) {
+                device = sequence_device.get();
+            } else {
+                MidiDeviceInfo info;
+                info.io_type_ = DeviceIOType::kInput;
+                info.name_id_ = proc->GetName();
+                if(auto p = mdm->GetDevice(info)) {
+                    device = p;
+                } else {
+                    if(info == kSoftwareKeyboardMidiInput.GetDeviceInfo()) {
+                        device = &kSoftwareKeyboardMidiInput;
+                    }
                 }
             }
             
@@ -729,13 +959,16 @@ std::unique_ptr<Project> Project::FromSchema(schema::Project const &schema)
                 continue;
             }
             
-            remove_element(opened_midi_devices, device);
+            remove_element(midi_devices_to_add, device);
             
-            p->pimpl_->midi_input_table_[device].reserve(2048);
             proc->SetCallback([pj = p.get(), device](GraphProcessor::MidiInput *proc, ProcessInfo const &pi)
                               {
                                   pj->OnSetMidi(proc, pi, device);
                               });
+            p->pimpl_->midi_processors_.Add(device, proc);
+            if(sequence_device) {
+                p->pimpl_->sequence_devices_.push_back(std::move(sequence_device));
+            }
         }
         
         for(int i = 0; i < new_graph->GetNumMidiOutputs(); ++i) {
@@ -755,7 +988,7 @@ std::unique_ptr<Project> Project::FromSchema(schema::Project const &schema)
                 continue;
             }
             
-            remove_element(opened_midi_devices, device);
+            remove_element(midi_devices_to_add, device);
             
             proc->SetCallback([pj = p.get(), device](GraphProcessor::MidiOutput *proc, ProcessInfo const &pi)
                               {
@@ -776,7 +1009,7 @@ std::unique_ptr<Project> Project::FromSchema(schema::Project const &schema)
             new_graph->RemoveNode(node);
         }
     }
-    for(auto device: opened_midi_devices) {
+    for(auto device: midi_devices_to_add) {
         auto const &info = device->GetDeviceInfo();
         if(info.io_type_ == DeviceIOType::kInput) {
             p->AddMidiInput(device);
@@ -818,7 +1051,10 @@ void Project::StartProcessing(double sample_rate,
     SampleCount const loop_end_sample = Round<SampleCount>(TickToSample(info.loop_.end_.tick_));
     pimpl_->tp_.SetLoopRange(loop_begin_sample, loop_end_sample);
     
-    CacheSequence();
+    auto const num_seqs = GetNumSequences();
+    for(UInt32 i = 0; i < num_seqs; ++i) {
+        CacheSequence(i);
+    }
 }
 
 template<class F>
@@ -870,8 +1106,8 @@ void Project::Process(SampleCount block_size, float const * const * input, float
     SampleCount num_processed = 0;
     
     auto cb = MakeTraversalCallback([&, this](TransportInfo const &ti) {
-        for(auto &entry: pimpl_->midi_input_table_) {
-            entry.second.clear();
+        for(auto &entry: pimpl_->midi_processors_) {
+            entry.buffer_.clear();
         }
         
         if(auto mdm = MidiDeviceManager::GetInstance()) {
@@ -879,97 +1115,51 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             auto frame_length = ti.play_.duration_.sec_;
             auto frame_begin_time = timestamp - frame_length;
             for(auto dm: pimpl_->device_midi_input_buffer_) {
-                assert(pimpl_->midi_input_table_.count(dm.device_) == 1);
+                auto entry = pimpl_->midi_processors_.GetEntryOf(dm.device_);
+                if(!entry) { continue; }
                 
                 auto const pos = std::max<double>(0, dm.time_stamp_ - frame_begin_time);
                 ProcessInfo::MidiMessage pm((SampleCount)std::round(pos * pimpl_->sample_rate_),
                                             dm.channel_, 0, dm.data_);
-                pimpl_->midi_input_table_[dm.device_].push_back(pm);
+                entry->buffer_.push_back(pm);
             }
         }
         
-        auto add_note = [&, this](SampleCount sample_pos,
+        auto add_note = [&, this](SampleCount sample_abs_pos,
                                   UInt8 channel, UInt8 pitch, UInt8 velocity, bool is_note_on,
-                                  MidiDevice *device)
+                                  MidiDevice *device
+                                  )
         {
             ProcessInfo::MidiMessage mm;
-            mm.offset_ = sample_pos - ti.play_.begin_.sample_;
+            mm.offset_ = sample_abs_pos - ti.play_.begin_.sample_;
             mm.channel_ = channel;
-            mm.ppq_pos_ = SampleToTick(sample_pos) / GetTpqn();
-            if(is_note_on) {
-                mm.data_ = MidiDataType::NoteOn { pitch, velocity };
-            } else {
-                mm.data_ = MidiDataType::NoteOff { pitch, velocity };
-            }
+            mm.ppq_pos_ = SampleToTick(sample_abs_pos) / GetTpqn();
+            SetNoteData(mm, is_note_on, pitch, velocity);
             
-            assert(pimpl_->midi_input_table_.count(device) == 1);
-            pimpl_->midi_input_table_[device].push_back(mm);
+            auto entry = pimpl_->midi_processors_.GetEntryOf(device);
+            assert(entry);
+            entry->buffer_.push_back(mm);
         };
-        
-        auto const cache = pimpl_->cached_sequence_.Borrow();
-        assert(cache);
-        
-        bool const is_new_cache = cache.GetToken() != pimpl_->last_sequence_cache_token_;
-        pimpl_->last_sequence_cache_token_ = cache.GetToken();
 
         bool const need_stop_all_sequence_notes
         = (ti.playing_ == false)
         || (ti.play_.begin_.sample_ != pimpl_->expected_next_pos_)
-        || (is_new_cache)
         ;
         
         pimpl_->expected_next_pos_ = (ti.playing_ ? ti.play_.end_ : ti.play_.begin_).sample_;
         
         //hwm::dout << "#2 " << std::this_thread::get_id() << ": " << cache.get() << ", " << pimpl_->cached_sequence_ << std::endl;
 
-        if(need_stop_all_sequence_notes) {
-            int x = 0;
-            x = 1;
-            
-            pimpl_->playing_sequence_notes_.Traverse([&](auto ch, auto pi, auto &x) {
-                auto note = x.load();
-                if(note) {
-                    assert(note.IsNoteOn());
-                    add_note(ti.play_.begin_.sample_, ch, pi, 0, false, &kSequencerMidiInput);
-                    x.store(InternalPlayingNoteInfo());
-                }
-            });
-            
-            assert(std::is_sorted(cache->begin(), cache->end(), [](auto const &left, auto const &right) {
-                return left.offset_ < right.offset_;
-            }));
-            
-            pimpl_->cached_iter_ = std::lower_bound(cache->begin(), cache->end(),
-                                                    ti.play_.begin_.sample_,
-                                                    [](auto const &left, auto const right) {
-                                                        return left.offset_ < right;
-                                                    });
-        }
-
         if(ti.playing_) {
-            CheckIterValidity(pimpl_->cached_iter_, *cache);
-            
-            auto it = pimpl_->cached_iter_;
-            
-            for( ; it != cache->end(); ++it) {
-                auto const &ev = *it;
-                assert(ev.offset_ >= ti.play_.begin_.sample_);
-                if(ev.offset_ >= ti.play_.end_.sample_) { break; }
+            for(auto &seq_dev: pimpl_->sequence_devices_) {
+                seq_dev->PrepareEvents(ti, this, need_stop_all_sequence_notes);
+                auto entry = pimpl_->midi_processors_.GetEntryOf(seq_dev.get());
+                assert(entry);
                 
-                if(auto p = ev.As<MidiDataType::NoteOn>()) {
-                    hwm::dout << "note on [{}][{}]"_format(p->pitch_, ev.offset_) << std::endl;
-                    add_note(ev.offset_, ev.channel_, p->pitch_, p->velocity_, true, &kSequencerMidiInput);
-                    pimpl_->playing_sequence_notes_.SetNoteOn(ev.channel_, p->pitch_, p->velocity_);
-                } else if(auto p = ev.As<MidiDataType::NoteOff>()) {
-                    hwm::dout << "note off [{}][{}]"_format(p->pitch_, ev.offset_) << std::endl;
-                    add_note(ev.offset_, ev.channel_, p->pitch_, p->off_velocity_, false, &kSequencerMidiInput);
-                    pimpl_->playing_sequence_notes_.ClearNote(ev.channel_, p->pitch_);
-                }
+                auto ref = seq_dev->GetEvents();
+                entry->buffer_.clear();
+                std::copy(ref.begin(), ref.end(), std::back_inserter(entry->buffer_));
             }
-            
-            pimpl_->cached_iter_ = it;
-            
-            CheckIterValidity(pimpl_->cached_iter_, *cache);
         }
         
         pimpl_->requested_sample_notes_.Traverse([&](auto ch, auto pi, auto &x) {
@@ -1078,20 +1268,20 @@ void Project::OnGetAudio(GraphProcessor::AudioOutput *output, ProcessInfo const 
 
 void Project::OnSetMidi(GraphProcessor::MidiInput *input, ProcessInfo const &pi, MidiDevice *device)
 {
-    auto &entry = pimpl_->midi_input_table_[device];
-    if(entry.size() != 0) {
+    auto entry = pimpl_->midi_processors_.GetEntryOf(input);
+    if(!entry) { return; }
+
+    auto const &buffer = entry->buffer_;
 #if defined(_DEBUG)
-        for(int i = 0; i < entry.size(); ++i) {
-            auto const &e = entry[i];
-            if(auto p = e.As<MidiDataType::NoteOn>()) {
-                hwm::dout << "note on: offset {}, pitch {}"_format(e.offset_, p->pitch_) << std::endl;
-            } else if(auto p = e.As<MidiDataType::NoteOff>()) {
-                hwm::dout << "note off: offset {}, pitch {}"_format(e.offset_, p->pitch_) << std::endl;
-            }
+    for(auto const &e: buffer) {
+        if(auto p = e.As<MidiDataType::NoteOn>()) {
+            hwm::dout << "note on: offset {}, pitch {}"_format(e.offset_, p->pitch_) << std::endl;
+        } else if(auto p = e.As<MidiDataType::NoteOff>()) {
+            hwm::dout << "note off: offset {}, pitch {}"_format(e.offset_, p->pitch_) << std::endl;
         }
-#endif
-        input->SetData(entry);
     }
+#endif
+    input->SetData(buffer);
 }
 
 void Project::OnGetMidi(GraphProcessor::MidiOutput *output, ProcessInfo const &pi, MidiDevice *device)

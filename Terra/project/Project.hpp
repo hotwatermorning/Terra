@@ -57,10 +57,17 @@ public:
     void AddAudioOutput(String name, UInt32 channel_index, UInt32 num_channel);
     void AddMidiInput(MidiDevice *device);
     void AddMidiOutput(MidiDevice *device);
+    void RemoveMidiInput(MidiDevice const *device);
+    void RemoveMidiOutput(MidiDevice const *device);
     void AddDefaultMidiInputs();
     
-    Sequence & GetSequence() const;
-    void CacheSequence();
+    UInt32 GetNumSequences() const;
+    void AddSequence(String name, UInt32 insert_at = -1);
+    void AddSequence(Sequence &&seq, UInt32 insert_at = -1);
+    void RemoveSequence(UInt32 index);
+    Sequence & GetSequence(UInt32 index);
+    Sequence const & GetSequence(UInt32 index) const;
+    void CacheSequence(UInt32 index);
     
     Transporter & GetTransporter();
     Transporter const & GetTransporter() const;

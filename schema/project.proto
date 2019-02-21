@@ -123,6 +123,7 @@ message Sequence
 
   repeated Note notes = 1;
   int32 channel = 2;
+  string name = 3;
 }
 
 message MusicalParameterSequence {
@@ -155,10 +156,12 @@ message Project
   MusicalParameterSequence musical_parameters = 2;
   Transport transport = 3;
   NodeGraph graph = 4;
-  Sequence sequence = 5;
   double sample_rate = 6;
   double block_size = 7;
 
   Rect frame_rect = 8;
+
+  repeated Sequence sequences = 9;
+  Sequence deprecated_sequence = 5;
 }
 

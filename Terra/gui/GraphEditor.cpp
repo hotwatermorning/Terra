@@ -1,6 +1,7 @@
 #include "GraphEditor.hpp"
 
 #include <tuple>
+#include <wx/dnd.h>
 
 #include "../App.hpp"
 #include "./PluginEditor.hpp"
@@ -383,6 +384,7 @@ class GraphEditorImpl
 :   public GraphEditor
 ,   public NodeComponent::Callback
 ,   public MyApp::ChangeProjectListener
+,   public wxFileDropTarget
 ,   public GraphProcessor::Listener
 {
 public:
@@ -390,6 +392,7 @@ public:
     GraphEditorImpl(wxWindow *parent)
     :   GraphEditor(parent)
     {
+        SetDropTarget(this);
         wxImage img;
         
         img.LoadFile(GetResourcePath(L"/cursor/scissors.png"));
@@ -917,6 +920,37 @@ private:
                         dragging_line_->end_
                         );
         }
+    }
+    
+    bool OnDropFiles(wxCoord x, wxCoord y, const wxArrayString &filenames) override
+    {
+        if(filenames.size() == 1 && wxFileName(filenames[0]).GetExt() == ".trproj") {
+            CallAfter([path = filenames[0]] {
+                auto app = MyApp::GetInstance();
+                app->LoadProject(path);
+            });
+            
+            return true;
+        }
+        
+        auto pred = [](auto const &name) {
+            auto ext = wxFileName(name).GetExt();
+            return ext == "mid" || ext == "smf";
+        };
+        
+        bool const all_smf = std::all_of(filenames.begin(), filenames.end(), pred);
+        if(all_smf) {
+            CallAfter([paths = filenames] {
+                auto app = MyApp::GetInstance();
+                for(auto path: paths) {
+                    app->ImportFile(path);
+                }
+            });
+            
+            return true;
+        }
+        
+        return false;
     }
     
     void OnAfterNodeIsAdded(GraphProcessor::Node *node) override

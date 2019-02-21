@@ -22,6 +22,7 @@
 #include "gui/SplashScreen.hpp"
 #include "resource/ResourceHelper.hpp"
 #include "file/ProjectObjectTable.hpp"
+#include "file/MidiFile.hpp"
 
 NS_HWM_BEGIN
 
@@ -35,7 +36,7 @@ std::string GetPluginDescFileName() {
     return "plugin_list.bin";
 }
 
-Sequence MakeSequence(std::vector<Int8> pitches) {
+Sequence MakeInitialSequence(String name, std::vector<Int8> pitches) {
     auto create_note = [](int tick_pos, int tick_length, UInt8 pitch, UInt8 velocity = 64, UInt8 off_velocity = 0) {
         return Sequence::Note { tick_pos, tick_length, pitch, velocity, off_velocity };
     };
@@ -43,13 +44,13 @@ Sequence MakeSequence(std::vector<Int8> pitches) {
     std::vector<Sequence::Note> notes;
     
     for(int i = 0; i < 64; ++i) {
-        notes.push_back(create_note(i * 60, 60, pitches[i % pitches.size()]));
+        notes.push_back(create_note(i * 480, 480, pitches[i % pitches.size()]));
     }
     
     assert(std::is_sorted(notes.begin(), notes.end(), [](auto const &lhs, auto const &rhs) {
         return lhs.pos_ < rhs.pos_;
     }));
-    return Sequence(notes);
+    return Sequence(L"Sequencer", notes);
 }
 
 struct MyApp::Impl
@@ -294,8 +295,8 @@ std::unique_ptr<Vst3Plugin> MyApp::CreateVst3Plugin(schema::PluginDescription co
     try {
         auto plugin = factory->CreateByID(*cid);
         auto activate_all_buses = [](Vst3Plugin *plugin,
-                                           Steinberg::Vst::MediaTypes media,
-                                           Steinberg::Vst::BusDirections dir)
+                                     Steinberg::Vst::MediaTypes media,
+                                     Steinberg::Vst::BusDirections dir)
         {
             auto const num = plugin->GetNumBuses(media, dir);
             for(int i = 0; i < num; ++i) { plugin->SetBusActive(media, dir, i); }
@@ -375,8 +376,9 @@ Project * MyApp::GetCurrentProject()
 std::unique_ptr<Project> MyApp::CreateInitialProject()
 {
     auto pj = std::make_unique<Project>();
-    auto &seq = pj->GetSequence();
-    seq = MakeSequence({48, 50, 52, 55, 60});
+    pj->AddSequence(L"Sequence");
+    auto &seq = pj->GetSequence(0);
+    seq = MakeInitialSequence(L"Sequencer", {48, 50, 52, 55, 60});
     pj->GetTransporter().SetLoopRange(0, 4 * kSampleRate);
     pj->GetTransporter().SetLoopEnabled(true);
     
@@ -583,6 +585,59 @@ bool MyApp::OnFileSave(bool force_save_as, bool need_to_confirm_for_closing)
     pj->UpdateLastSchema(std::move(schema));
     
     return true;
+}
+
+void MyApp::LoadProject(String path)
+{
+#if defined(_MSC_VER)
+    std::ifstream is(path.c_str());
+#else
+    std::ifstream is(to_utf8(path));
+#endif
+    if(is.fail()) {
+        wxMessageBox(L"Cannot open file [{}]"_format(path));
+        return;
+    }
+    
+    auto schema = std::make_unique<schema::Project>();
+    
+    bool successful = schema->ParseFromIstream(&is);
+    if(!successful) {
+        wxMessageBox(L"Failed to load file [{}]"_format(path));
+        return;
+    }
+    
+    ProjectObjectTable scoped_objects;
+    
+    auto new_pj = Project::FromSchema(*schema);
+    assert(new_pj);
+    
+    new_pj->UpdateLastSchema(std::move(schema));
+    new_pj->SetFileName(wxFileName(path).GetFullName());
+    new_pj->SetProjectDirectory(wxFileName(wxFileName(path).GetPath(), ""));
+    
+    ReplaceProject(std::move(new_pj));
+}
+
+void MyApp::ImportFile(String path)
+{
+#if defined(_MSC_VER)
+    std::ifstream is(path.c_str());
+#else
+    std::ifstream is(to_utf8(path));
+#endif
+    
+    if(is.fail()) {
+        wxMessageBox(L"Cannot open file [{}]"_format(path));
+        return;
+    }
+    
+    std::vector<Sequence> sequences = CreateSequenceFromSMF(path);
+    
+    auto pj = Project::GetCurrentProject();
+    for(auto &&seq: sequences) {
+        pj->AddSequence(std::move(seq));
+    }
 }
 
 void MyApp::ShowSettingDialog()

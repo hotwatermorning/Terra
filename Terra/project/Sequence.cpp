@@ -1,5 +1,6 @@
 #include "Sequence.hpp"
 #include "../misc/MathUtil.hpp"
+#include "../misc/StrCnv.hpp"
 
 NS_HWM_BEGIN
 
@@ -48,6 +49,7 @@ std::unique_ptr<schema::Sequence> Sequence::ToSchema() const
     }
     
     p->set_channel(channel_);
+    p->set_name(to_utf8(name_));
     
     return p;
 }
@@ -56,6 +58,7 @@ std::unique_ptr<Sequence> Sequence::FromSchema(schema::Sequence const &schema)
 {
     auto seq = std::make_unique<Sequence>();
     
+    seq->name_ = to_wstr(schema.name());
     seq->channel_ = schema.channel();
     for(auto const &note: schema.notes()) {
         seq->notes_.push_back(Note {
@@ -71,3 +74,6 @@ std::unique_ptr<Sequence> Sequence::FromSchema(schema::Sequence const &schema)
 }
 
 NS_HWM_END
+
+template class std::vector<hwm::Sequence>;
+template class std::vector<hwm::ProcessInfo::MidiMessage>;

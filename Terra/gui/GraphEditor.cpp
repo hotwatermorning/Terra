@@ -32,6 +32,7 @@ BrushPen const background = BrushPen(HSVToColour(0.0, 0.0, 0.9));
 BrushPen const background_having_focus = BrushPen(HSVToColour(0.0, 0.0, 0.9), HSVToColour(0.7, 1.0, 0.9));
 
 wxSize const kDefaultNodeSize = { 200, 60 };
+Int32 kNodeAlignmentSize = 10;
 
 class NodeComponent
 :   public wxPanel
@@ -324,6 +325,9 @@ public:
     
     void MoveConstrained(wxPoint pt)
     {
+        pt.x = (pt.x / kNodeAlignmentSize) * kNodeAlignmentSize;
+        pt.y = (pt.y / kNodeAlignmentSize) * kNodeAlignmentSize;
+        
         pt.x = std::max<int>(pt.x, 0);
         pt.y = std::max<int>(pt.y, 0);
         pt.x = std::min<int>(pt.x, GetParent()->GetClientSize().x - GetClientSize().x);

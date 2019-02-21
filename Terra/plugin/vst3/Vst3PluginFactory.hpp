@@ -95,7 +95,7 @@ public:
 	FactoryInfo const &
 			GetFactoryInfo() const;
 
-	//! PClassInfo::category が kVstAudioEffectClass のもののみ
+	//! count number of components where PClassInfo::category is kVstAudioEffectClass.
 	size_t GetComponentCount() const;
 
 	ClassInfo const &

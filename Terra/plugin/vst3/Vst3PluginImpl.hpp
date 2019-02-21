@@ -217,8 +217,9 @@ private:
                       Vst::ProcessContext const &process_context);
 
 private:
-	void LoadPlugin(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context);
+    //! create and initialize components, pass the host_context to the components, obtain interfaces.
 	void LoadInterfaces(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context);
+    //! initialize this instance with loaded interfaces.
 	void Initialize();
 
 	tresult CreatePlugView();
@@ -245,7 +246,8 @@ private:
     Vst::ProcessSetup       applied_process_setup_ = {};
     
 	Flag					is_processing_started_;
-	Flag					edit_controller_is_created_new_;
+    //! represents that this plugin do not split components.
+	Flag					is_single_component_;
 	Flag					has_editor_;
 	Flag					is_editor_opened_;
 	Flag					param_value_changes_was_specified_;

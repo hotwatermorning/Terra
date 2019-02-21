@@ -304,7 +304,7 @@ Vst3Plugin::Impl::Impl(IPluginFactory *factory,
                        ClassInfo const &class_info,
                        FUnknown *host_context)
 	:	factory_info_(factory_info)
-    ,   edit_controller_is_created_new_(false)
+    ,   is_single_component_(false)
 	,	is_editor_opened_(false)
 	,	is_processing_started_(false)
 	,	block_size_(2048)
@@ -314,7 +314,8 @@ Vst3Plugin::Impl::Impl(IPluginFactory *factory,
 {
     assert(host_context);
     
-	LoadPlugin(factory, class_info, std::move(host_context));
+    LoadInterfaces(factory, class_info, host_context);
+    Initialize();
 
     input_events_.setMaxSize(128);
     output_events_.setMaxSize(128);
@@ -985,128 +986,118 @@ void Vst3Plugin::Impl::PopFrontParameterChanges(Vst::ParameterChanges &dest)
 	param_changes_queue_.clearQueue();
 }
 
-void Vst3Plugin::Impl::LoadPlugin(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context)
-{
-	LoadInterfaces(factory, info, host_context);
-    Initialize();
-}
-
 void Vst3Plugin::Impl::LoadInterfaces(IPluginFactory *factory, ClassInfo const &info, FUnknown *host_context)
 {
-    auto cid = FUID::fromTUID(info.cid().data());
-	auto maybe_component = createInstance<Vst::IComponent>(factory, cid);
-    ThrowIfNotRight(maybe_component);
+    assert(status_ == Status::kInvalid);
     
-	auto component = std::move(maybe_component.right());
+    auto cid = FUID::fromTUID(info.cid().data());
+	auto component = createInstance<Vst::IComponent>(factory, cid);
+    ThrowIfNotRight(component);
+    
 	tresult res;
-	res = component->setIoMode(Vst::IoModes::kAdvanced);
+	res = component.right()->setIoMode(Vst::IoModes::kAdvanced);
     ThrowIfNotFound(res, { kResultOk, kNotImplemented });
     
-	status_ = Status::kCreated;
-
-	res = component->initialize(host_context);
+    res = component.right()->initialize(host_context);
     ThrowIfNotOk(res);
     
-	status_ = Status::kInitialized;
-
-    HWM_SCOPE_EXIT([&component] {
-		if(component) {
-			component->terminate();
-			component.reset();
-		}
+    HWM_SCOPE_EXIT([&, this] {
+        if(status_ != Status::kCreated) {
+            component.right()->terminate();
+        }
     });
-
-	auto maybe_audio_processor = queryInterface<Vst::IAudioProcessor>(component);
-    ThrowIfNotRight(maybe_audio_processor);
     
-	auto audio_processor = std::move(maybe_audio_processor.right());
-
-	res = audio_processor->canProcessSampleSize(Vst::SymbolicSampleSizes::kSample32);
-    ThrowIfNotOk(res);
-
 	// $(DOCUMENT_ROOT)/vstsdk360_22_11_2013_build_100/VST3%20SDK/doc/vstinterfaces/index.html
 	// Although it is not recommended, it is possible to implement both, 
 	// the processing part and the controller part in one component class.
 	// The host tries to query the Steinberg::Vst::IEditController 
 	// interface after creating an Steinberg::Vst::IAudioProcessor 
 	// and on success uses it as controller. 
-	auto maybe_edit_controller = queryInterface<Vst::IEditController>(component);
-	bool edit_controller_is_created_new = false;
-	if(!maybe_edit_controller.is_right()) {
+	auto edit_controller = queryInterface<Vst::IEditController>(component.right());
+	bool is_single_component = false;
+    if(edit_controller) {
+        is_single_component = true;
+    } else {
 		TUID controller_id;
-		res = component->getControllerClassId(controller_id);
-		if(res == kResultOk) {
-            maybe_edit_controller = createInstance<Vst::IEditController>(factory, FUID::fromTUID(controller_id));
-			if(maybe_edit_controller.is_right()) {
-				edit_controller_is_created_new = true;
-			} else {
-				//! this plugin has no edit controller.
-			}
-		}
+		component.right()->getControllerClassId(controller_id);
+        //ThrowIfNotOk(res);
+        
+        edit_controller = createInstance<Vst::IEditController>(factory, FUID::fromTUID(controller_id));
+        
+        //! Not right if this plugin has no edit controller. Such a plugin is not supported for Terra.
+        ThrowIfNotRight(edit_controller);
 	}
 
-    ThrowIfNotRight(maybe_edit_controller);
+    assert(edit_controller.is_right());
     
-	edit_controller_ptr_t edit_controller = std::move(maybe_edit_controller.right());
-
-	if(edit_controller_is_created_new) {
-		res = edit_controller->initialize(host_context);
+    if(is_single_component == false) {
+        res = edit_controller.right()->initialize(host_context);
         ThrowIfNotOk(res);
-	}
+    }
+    
+    HWM_SCOPE_EXIT([&, this] {
+        if(status_ != Status::kCreated && is_single_component == false) {
+            edit_controller.right()->terminate();
+        }
+    });
     
     auto component_handler = queryInterface<Vst::IComponentHandler>(host_context);
     assert(component_handler.is_right());
-    res = edit_controller->setComponentHandler(component_handler.right().get());
+    res = edit_controller.right()->setComponentHandler(component_handler.right().get());
     ThrowIfNotOk(res);
-
-	HWM_SCOPE_EXIT([&edit_controller, edit_controller_is_created_new] {
-		if(edit_controller_is_created_new && edit_controller) {
-			edit_controller->terminate();
-			edit_controller.reset();
-		}
-	});
-
-	edit_controller2_ptr_t edit_controller2;
-	if(edit_controller) {
-		auto maybe_edit_controller2 = queryInterface<Vst::IEditController2>(edit_controller);
-
-		if(maybe_edit_controller2.is_right()) {
-			edit_controller2 = std::move(maybe_edit_controller2.right());
-		}
-	}
     
-    auto maybe_midi_mapping = queryInterface<Vst::IMidiMapping>(edit_controller);
+    auto audio_processor = queryInterface<Vst::IAudioProcessor>(component.right());
+    ThrowIfNotRight(audio_processor);
 
-	class_info_ = info;
-	component_ = std::move(component);
-	audio_processor_ = std::move(audio_processor);
-	edit_controller_ = std::move(edit_controller);
-	edit_controller2_ = std::move(edit_controller2);
-	edit_controller_is_created_new_ = edit_controller_is_created_new;
-    if(maybe_midi_mapping.is_right()) {
-        midi_mapping_ = std::move(maybe_midi_mapping.right());
+	auto edit_controller2 = queryInterface<Vst::IEditController2>(edit_controller.right());
+    if(edit_controller2) {
+        hwm::dout << "This pluging implements IEditController2 interface." << std::endl;
     }
+    
+    auto midi_mapping = queryInterface<Vst::IMidiMapping>(edit_controller.right());
+    auto unit_info = queryInterface<Vst::IUnitInfo>(edit_controller.right());
+    
+	class_info_ = info;
+	component_ = std::move(component.right());
+	audio_processor_ = std::move(audio_processor.right());
+	edit_controller_ = std::move(edit_controller.right());
+    is_single_component_ = is_single_component;
+    
+    if(edit_controller2) {
+        edit_controller2_ = std::move(edit_controller2.right());
+    }
+    
+    if(midi_mapping) {
+        midi_mapping_ = std::move(midi_mapping.right());
+    }
+    
+    if(unit_info) {
+        unit_handler_ = std::move(unit_info.right());
+    }
+    status_ = Status::kCreated;
 }
 
 void Vst3Plugin::Impl::Initialize()
 {
-	tresult res;
+    tresult res = kResultFalse;
     
+    assert(component_);
     assert(edit_controller_);
+    
+    res = audio_processor_->canProcessSampleSize(Vst::SymbolicSampleSizes::kSample32);
+    ThrowIfNotOk(res);
 	
-    auto maybe_cpoint_component = queryInterface<Vst::IConnectionPoint>(component_);
-    auto maybe_cpoint_edit_controller = queryInterface<Vst::IConnectionPoint>(edit_controller_);
+    auto cpoint_component = queryInterface<Vst::IConnectionPoint>(component_);
+    auto cpoint_edit_controller = queryInterface<Vst::IConnectionPoint>(edit_controller_);
 
-    if(maybe_cpoint_component.is_right() && maybe_cpoint_edit_controller.is_right()) {
-        maybe_cpoint_component.right()->connect(maybe_cpoint_edit_controller.right().get());
-        maybe_cpoint_edit_controller.right()->connect(maybe_cpoint_component.right().get());
+    if(cpoint_component.is_right() && cpoint_edit_controller.is_right()) {
+        cpoint_component.right()->connect(cpoint_edit_controller.right().get());
+        cpoint_edit_controller.right()->connect(cpoint_component.right().get());
     }
     
     OutputParameterInfo(edit_controller_.get());
     
-    auto maybe_unit_info = queryInterface<Vst::IUnitInfo>(edit_controller_);
-    if(maybe_unit_info.is_right()) {
-        unit_handler_ = std::move(maybe_unit_info.right());
+    if(unit_handler_) {
         OutputUnitInfo(unit_handler_.get());
         
         if(unit_handler_->getUnitCount() == 0) {
@@ -1114,9 +1105,7 @@ void Vst3Plugin::Impl::Initialize()
             // Treat as this plugin has no IUnitInfo
             unit_handler_.reset();
         }
-    }
-    
-    if(!unit_handler_) {
+    } else {
         hwm::dout << "This Plugin has no IUnitInfo interfaces." << std::endl;
     }
 
@@ -1155,15 +1144,12 @@ void Vst3Plugin::Impl::Initialize()
         stream.seek(0, Steinberg::IBStream::IStreamSeekMode::kIBSeekSet, 0);
         edit_controller_->setComponentState (&stream);
         
-        for(int i = 0; i < edit_controller_->getParameterCount(); ++i) {
-            auto const &info = GetParameterInfoList().GetItemByIndex(i);
-            auto const value = edit_controller_->getParamNormalized(info.id_);
-            PushBackParameterChange(info.id_, value);
-        }
     }
 
     input_params_.setMaxParameters(parameter_info_list_.size());
     output_params_.setMaxParameters(parameter_info_list_.size());
+    
+    status_ = Status::kInitialized;
 }
 
 tresult Vst3Plugin::Impl::CreatePlugView()
@@ -1323,16 +1309,20 @@ void Vst3Plugin::Impl::PrepareUnitInfo()
 
 void Vst3Plugin::Impl::UnloadPlugin()
 {
+    // never called if initialization failed.
+    assert(component_);
+    assert(edit_controller_);
+    
 	if(status_ == Status::kActivated || status_ == Status::kProcessing) {
 		Suspend();
 	}
     
-    auto maybe_cpoint_component = queryInterface<Vst::IConnectionPoint>(component_);
-    auto maybe_cpoint_edit_controller = queryInterface<Vst::IConnectionPoint>(edit_controller_);
+    auto cpoint_component = queryInterface<Vst::IConnectionPoint>(component_);
+    auto cpoint_edit_controller = queryInterface<Vst::IConnectionPoint>(edit_controller_);
     
-    if (maybe_cpoint_component.is_right() && maybe_cpoint_edit_controller.is_right()) {
-        maybe_cpoint_component.right()->disconnect(maybe_cpoint_edit_controller.right().get());
-        maybe_cpoint_edit_controller.right()->disconnect(maybe_cpoint_component.right().get());
+    if (cpoint_component && cpoint_edit_controller) {
+        cpoint_component.right()->disconnect(cpoint_edit_controller.right().get());
+        cpoint_edit_controller.right()->disconnect(cpoint_component.right().get());
     }
     
     edit_controller_->setComponentHandler(nullptr);
@@ -1340,7 +1330,7 @@ void Vst3Plugin::Impl::UnloadPlugin()
 	unit_handler_.reset();
 	plug_view_.reset();
 
-	if(edit_controller_ && edit_controller_is_created_new_) {
+	if(is_single_component_ == false) {
 		edit_controller_->terminate();
 	}
 
@@ -1349,9 +1339,7 @@ void Vst3Plugin::Impl::UnloadPlugin()
 	edit_controller_.reset();
 	audio_processor_.reset();
 
-    if(component_) {
-        component_->terminate();
-    }
+    component_->terminate();
 	component_.reset();
 }
 
@@ -1393,11 +1381,6 @@ void Vst3Plugin::Impl::LoadData(DumpData const &dump)
     
     stream.seek(0, Steinberg::IBStream::kIBSeekSet, nullptr);
     ShowError(edit_controller_->setComponentState(&stream), L"setComponentState");
-    for(int i = 0; i < GetNumParameters(); ++i) {
-        auto const &info = GetParameterInfoList().GetItemByIndex(i);
-        auto const value = GetParameterValueByIndex(i);
-        PushBackParameterChange(info.id_, value);
-    }
     
     if(dump.edit_controller_data_.empty() == false) {
         stream = MemoryStream();

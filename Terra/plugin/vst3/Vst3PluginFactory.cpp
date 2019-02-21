@@ -248,22 +248,18 @@ Vst3PluginFactory::Impl::Impl(String module_path)
 	std::vector<ClassInfo> class_info_list;
 
 	for(int i = 0; i < factory->countClasses(); ++i) {
-		auto maybe_factory3 = queryInterface<IPluginFactory3>(factory);
-		if(maybe_factory3.is_right()) {
+        if(auto f = queryInterface<IPluginFactory3>(factory)) {
 			PClassInfoW info;
-			maybe_factory3.right()->getClassInfoUnicode(i, &info);
+			f.right()->getClassInfoUnicode(i, &info);
+			class_info_list.emplace_back(info);
+        } else if(auto f = queryInterface<IPluginFactory2>(factory)) {
+			PClassInfo2 info;
+			f.right()->getClassInfo2(i, &info);
 			class_info_list.emplace_back(info);
 		} else {
-			auto maybe_factory2 = queryInterface<IPluginFactory2>(factory);
-			if(maybe_factory2.is_right()) {
-				PClassInfo2 info;
-				maybe_factory2.right()->getClassInfo2(i, &info);
-				class_info_list.emplace_back(info);
-			} else {
-				PClassInfo info;
-				factory->getClassInfo(i, &info);
-				class_info_list.emplace_back(info);
-			}
+			PClassInfo info;
+			factory->getClassInfo(i, &info);
+			class_info_list.emplace_back(info);
 		}
 	}
 

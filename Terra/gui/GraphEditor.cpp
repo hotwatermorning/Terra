@@ -384,15 +384,29 @@ class GraphEditorImpl
 :   public GraphEditor
 ,   public NodeComponent::Callback
 ,   public MyApp::ChangeProjectListener
-,   public wxFileDropTarget
 ,   public GraphProcessor::Listener
 {
+    struct DropTarget
+    :    public wxFileDropTarget
+    {
+        DropTarget(GraphEditorImpl *owner)
+        :   owner_(owner)
+        {}
+        
+        bool OnDropFiles(wxCoord x, wxCoord y, const wxArrayString &filenames) override
+        {
+            return owner_->OnDropFiles(x, y, filenames);
+        }
+        
+    private:
+        GraphEditorImpl *owner_;
+    };
 public:
     wxCursor scissors_;
     GraphEditorImpl(wxWindow *parent)
     :   GraphEditor(parent)
     {
-        SetDropTarget(this);
+        SetDropTarget(new DropTarget(this));
         wxImage img;
         
         img.LoadFile(GetResourcePath(L"/cursor/scissors.png"));
@@ -419,6 +433,10 @@ public:
     
     ~GraphEditorImpl()
     {
+        RemoveGraph();
+        slr_change_project_.reset();
+    }
+    
     }
     
     NodeComponent * FindNodeComponent(GraphProcessor::Node const *node)
@@ -922,7 +940,7 @@ private:
         }
     }
     
-    bool OnDropFiles(wxCoord x, wxCoord y, const wxArrayString &filenames) override
+    bool OnDropFiles(wxCoord x, wxCoord y, const wxArrayString &filenames)
     {
         if(filenames.size() == 1 && wxFileName(filenames[0]).GetExt() == ".trproj") {
             CallAfter([path = filenames[0]] {

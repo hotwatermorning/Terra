@@ -306,7 +306,6 @@ Vst3Plugin::Impl::Impl(IPluginFactory *factory,
 	:	factory_info_(factory_info)
     ,   is_single_component_(false)
 	,	is_editor_opened_(false)
-	,	is_processing_started_(false)
 	,	block_size_(2048)
 	,	sampling_rate_(44100)
 	,	has_editor_(false)
@@ -650,7 +649,6 @@ void Vst3Plugin::Impl::Resume()
     ThrowIfNotFound(res, { kResultOk, kNotImplemented });
 
     status_ = Status::kProcessing;
-	is_processing_started_ = true;
 }
 
 void Vst3Plugin::Impl::Suspend()

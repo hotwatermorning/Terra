@@ -247,7 +247,6 @@ private:
 
     Vst::ProcessSetup       applied_process_setup_ = {};
     
-	Flag					is_processing_started_;
     //! represents that this plugin do not split components.
 	Flag					is_single_component_;
 	Flag					has_editor_;

@@ -1096,12 +1096,12 @@ void Vst3Plugin::Impl::Initialize()
     res = audio_processor_->canProcessSampleSize(Vst::SymbolicSampleSizes::kSample32);
     ThrowIfNotOk(res);
 	
-    auto cpoint_component = queryInterface<Vst::IConnectionPoint>(component_);
-    auto cpoint_edit_controller = queryInterface<Vst::IConnectionPoint>(edit_controller_);
+    auto cp_comp = queryInterface<Vst::IConnectionPoint>(component_);
+    auto cp_edit = queryInterface<Vst::IConnectionPoint>(edit_controller_);
 
-    if(cpoint_component.is_right() && cpoint_edit_controller.is_right()) {
-        cpoint_component.right()->connect(cpoint_edit_controller.right().get());
-        cpoint_edit_controller.right()->connect(cpoint_component.right().get());
+    if(cp_comp && cp_edit) {
+        cp_comp.right()->connect(cp_edit.right().get());
+        cp_edit.right()->connect(cp_comp.right().get());
     }
     
     OutputParameterInfo(edit_controller_.get());
@@ -1326,12 +1326,12 @@ void Vst3Plugin::Impl::UnloadPlugin()
 		Suspend();
 	}
     
-    auto cpoint_component = queryInterface<Vst::IConnectionPoint>(component_);
-    auto cpoint_edit_controller = queryInterface<Vst::IConnectionPoint>(edit_controller_);
+    auto cp_comp = queryInterface<Vst::IConnectionPoint>(component_);
+    auto cp_edit = queryInterface<Vst::IConnectionPoint>(edit_controller_);
     
-    if (cpoint_component && cpoint_edit_controller) {
-        cpoint_component.right()->disconnect(cpoint_edit_controller.right().get());
-        cpoint_edit_controller.right()->disconnect(cpoint_component.right().get());
+    if (cp_comp && cp_edit) {
+        cp_comp.right()->disconnect(cp_edit.right().get());
+        cp_edit.right()->disconnect(cp_comp.right().get());
     }
     
     edit_controller_->setComponentHandler(nullptr);

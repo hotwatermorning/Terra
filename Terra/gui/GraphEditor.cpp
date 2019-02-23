@@ -614,7 +614,7 @@ public:
                       return
                       std::tuple<int, std::string const &>(get_category_number(lhs), lhs.name())
                       <
-                      std::tuple<int, std::string const &>(get_category_number(rhs), lhs.name());
+                      std::tuple<int, std::string const &>(get_category_number(rhs), rhs.name());
                   });
         
         for(int i = 0; i < descs.size(); ++i) {

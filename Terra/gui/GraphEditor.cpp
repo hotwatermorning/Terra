@@ -434,9 +434,7 @@ public:
     ~GraphEditorImpl()
     {
         RemoveGraph();
-        slr_change_project_.reset();
-    }
-    
+        slr_change_project_.reset();    
     }
     
     NodeComponent * FindNodeComponent(GraphProcessor::Node const *node)

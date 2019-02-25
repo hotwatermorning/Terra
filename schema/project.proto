@@ -124,6 +124,7 @@ message Sequence
   repeated Note notes = 1;
   int32 channel = 2;
   string name = 3;
+  int64 node_id = 4;
 }
 
 message MusicalParameterSequence {

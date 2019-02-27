@@ -5,11 +5,13 @@
 
 #include "../App.hpp"
 #include "./PluginEditor.hpp"
+#include "./Controls.hpp"
 #include "../plugin/PluginScanner.hpp"
 #include "./Util.hpp"
 #include "../resource/ResourceHelper.hpp"
 #include "../file/ProjectObjectTable.hpp"
 #include "../misc/MathUtil.hpp"
+#include "../misc/Range.hpp"
 
 NS_HWM_BEGIN
 
@@ -25,18 +27,36 @@ BrushPenSet bps_midi_pin_ = {
     { HSVToColour(0.5, 0.6, 0.9), HSVToColour(0.5, 0.6, 0.95)}
 };
 
-wxPen const kAudioLine = wxPen(HSVToColour(0.2, 0.8, 1.0), 2, wxPENSTYLE_SOLID);
-wxPen const kMidiLine = wxPen(HSVToColour(0.5, 0.8, 1.0), 2, wxPENSTYLE_SOLID);
-wxPen const kScissorLine = wxPen(HSVToColour(0.5, 0.0, 0.7), 2, wxPENSTYLE_SHORT_DASH);
+wxPen const kAudioLine = wxPen(HSVToColour(0.2, 0.8, 1.0, 0.7), 2, wxPENSTYLE_SOLID);
+wxPen const kMidiLine = wxPen(HSVToColour(0.5, 0.8, 1.0, 0.7), 2, wxPENSTYLE_SOLID);
+wxPen const kScissorLine = wxPen(HSVToColour(0.5, 0.0, 0.7, 0.7), 2, wxPENSTYLE_SHORT_DASH);
 
 BrushPen const background = BrushPen(HSVToColour(0.0, 0.0, 0.9));
 BrushPen const background_having_focus = BrushPen(HSVToColour(0.0, 0.0, 0.9), HSVToColour(0.7, 1.0, 0.9));
 
+wxColour const kGraphBackground(HSVToColour(0.0, 0.0, 0.1));
+
 wxSize const kDefaultNodeSize = { 200, 60 };
+wxSize const kEditorOpenButtonSize = { 14, 14 };
+wxSize const kLabelSize = { 150, 20 };
 Int32 kNodeAlignmentSize = 10;
 
+bool RenderChild(wxWindow *child, wxDC &dc)
+{
+    if(auto p = dynamic_cast<IRenderableWindowBase *>(child)) {
+        auto saved_pos = dc.GetLogicalOrigin();
+        auto pos = saved_pos - child->GetPosition();
+        dc.SetLogicalOrigin(pos.x, pos.y);
+        p->Render(dc);
+        dc.SetLogicalOrigin(saved_pos.x, saved_pos.y);
+        return true;
+    } else {
+        return false;
+    }
+}
+
 class NodeComponent
-:   public wxPanel
+:   public IRenderableWindow<wxPanel>
 {
 public:
     struct Callback {
@@ -46,6 +66,8 @@ public:
         virtual void OnMouseMove(NodeComponent *nc, wxPoint pt_begin, wxPoint pt_end) = 0;
         //! ptはparent基準
         virtual void OnReleaseMouse(NodeComponent *nc, wxPoint pt_begin, wxPoint pt_end) = 0;
+        
+        virtual void OnRaised(NodeComponent *nc) = 0;
     };
     
     struct Pin
@@ -60,6 +82,9 @@ public:
         Type type_;
         BusDirection dir_;
         int index_;
+        
+        bool IsAudioPin() const { return type_ == Type::kAudio; }
+        bool IsMidiPin() const { return type_ == Type::kMidi; }
         
         bool operator==(Pin const &rhs) const
         {
@@ -78,12 +103,23 @@ public:
     
 public:
     NodeComponent(wxWindow *parent, GraphProcessor::Node *node, Callback *callback)
-    :   wxPanel(parent, wxID_ANY, wxDefaultPosition, kDefaultNodeSize)
+    :   IRenderableWindow<wxPanel>(parent, wxID_ANY, wxDefaultPosition, kDefaultNodeSize)
     ,   node_(node)
     ,   callback_(callback)
     {
-        btn_open_editor_ = new wxButton(this, wxID_ANY, "E", wxDefaultPosition, wxSize(20, 20));
-        btn_open_editor_->Bind(wxEVT_BUTTON, [this](auto &ev) { OnOpenEditor(); });
+        ImageAsset button_images = ImageAsset(GetResourcePath(L"graph/open_editor_buttons.png"), 1, 4);
+        btn_open_editor_ = new ImageButton(this, true, button_images.GetImage(0, 0), button_images.GetImage(0, 1), button_images.GetImage(0, 2), button_images.GetImage(0, 3));
+        btn_open_editor_->UseDefaultPaintMethod(false);
+        btn_open_editor_->SetClientSize(kEditorOpenButtonSize);
+        btn_open_editor_->SetMinSize(kEditorOpenButtonSize);
+        btn_open_editor_->SetMaxSize(kEditorOpenButtonSize);
+        btn_open_editor_->Bind(wxEVT_TOGGLEBUTTON, [this](auto &ev) {
+            if(IsEditorOpened()) {
+                CloseEditor();
+            } else {
+                OpenEditor();
+            }
+        });
         
         bool enable_editor_button = false;
         //! There always be a generic plugin view even if the plugin has no editors.
@@ -92,34 +128,37 @@ public:
         }
         btn_open_editor_->Show(enable_editor_button);
         
-        st_plugin_name_ = new wxStaticText(this, wxID_ANY, node->GetProcessor()->GetName(),
-                                           wxDefaultPosition, wxSize(1, 20), wxALIGN_CENTRE_HORIZONTAL);
+        lbl_plugin_name_ = new Label(this);
+        lbl_plugin_name_->UseDefaultPaintMethod(false);
+        lbl_plugin_name_->SetText(node->GetProcessor()->GetName());
+        lbl_plugin_name_->SetAlignment(wxALIGN_CENTRE_HORIZONTAL);
+        lbl_plugin_name_->SetMinSize(kLabelSize);
         
         auto vbox = new wxBoxSizer(wxVERTICAL);
         auto hbox = new wxBoxSizer(wxHORIZONTAL);
         hbox->AddStretchSpacer();
         hbox->Add(1, btn_open_editor_->GetSize().y);
-        hbox->Add(btn_open_editor_, wxSizerFlags(0).Expand());
+        hbox->Add(btn_open_editor_, wxSizerFlags(0));
         vbox->Add(hbox, wxSizerFlags(0).Expand());
-        vbox->Add(st_plugin_name_, wxSizerFlags(0).Expand());
+        vbox->Add(lbl_plugin_name_, wxSizerFlags(0).Expand());
         vbox->AddStretchSpacer();
         
         SetSizer(vbox);
 
         Layout();
-
-        //! wxStaticText eats mouse down events.
-        //! To pass the events to the parent, call ev.Skip().
-        st_plugin_name_->Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { ev.Skip(); });
         
-        Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(ev); });
+        Bind(wxEVT_PAINT, [this](auto &ev) {
+            int i = 0;
+            i = 100;
+        });
         Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { OnLeftDown(ev); });
         Bind(wxEVT_LEFT_UP, [this](auto &ev) { OnLeftUp(ev); });
         Bind(wxEVT_MOTION, [this](auto &ev) { OnMouseMove(ev); });
         Bind(wxEVT_RIGHT_UP, [this](auto &ev) { OnRightUp(ev); });
-        //Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](auto &ev) { OnCaptureLost(); });
         Bind(wxEVT_KILL_FOCUS, [this](auto &ev) { OnCaptureLost(); });
         Bind(wxEVT_LEAVE_WINDOW, [this](auto &ev) { OnMouseLeave(ev); });
+        Bind(wxEVT_KEY_DOWN, [](auto &ev) { ev.ResumePropagation(100); ev.Skip(); });
+        Bind(wxEVT_KEY_UP, [](auto &ev) { ev.ResumePropagation(100); ev.Skip(); });
     }
     
     ~NodeComponent()
@@ -127,7 +166,20 @@ public:
         if(editor_frame_) { editor_frame_->Destroy(); }
     }
     
-    void OnOpenEditor()
+    void Raise() override
+    {
+        hwm::dout << "Raised: " << lbl_plugin_name_->GetText() << std::endl;
+        callback_->OnRaised(this);
+        IRenderableWindow<wxPanel>::Raise();
+    }
+    
+    void Lower() override
+    {
+        hwm::dout << "Lower: " << lbl_plugin_name_->GetText() << std::endl;
+        IRenderableWindow<wxPanel>::Lower();
+    }
+    
+    void OpenEditor()
     {
         if(editor_frame_) { return; }
         
@@ -138,18 +190,25 @@ public:
                                                 proc->plugin_.get(),
                                                 [this] {
                                                     editor_frame_ = nullptr;
-                                                    btn_open_editor_->Enable();
+                                                    btn_open_editor_->SetPushed(false);
                                                 });
-        btn_open_editor_->Disable();
+        btn_open_editor_->SetPushed(true);
     }
     
-    void OnPaint(wxPaintEvent &)
+    void CloseEditor()
     {
-        wxPaintDC pdc(this);
-        Draw(pdc);
+        if(editor_frame_ == nullptr) { return; }
+        
+        editor_frame_->Destroy();
+        editor_frame_ = nullptr;
     }
     
-    void Draw(wxDC &dc)
+    bool IsEditorOpened() const
+    {
+        return editor_frame_;
+    }
+    
+    void doRender(wxDC &dc) override
     {
         auto const rect = GetClientRect();
         
@@ -193,6 +252,10 @@ public:
         for(int i = 0; i < num_ao; ++i) { draw_pin(Pin::MakeAudioOutput(i), bps_audio_pin_); }
         for(int i = 0; i < num_mi; ++i) { draw_pin(Pin::MakeMidiInput(i), bps_midi_pin_); }
         for(int i = 0; i < num_mo; ++i) { draw_pin(Pin::MakeMidiOutput(i), bps_midi_pin_); }
+        
+        for(auto child: GetChildren()) {
+            RenderChild(child, dc);
+        }
     }
     
     void OnLeftDown(wxMouseEvent& ev)
@@ -351,8 +414,8 @@ public:
     }
     
     GraphProcessor::Node *node_ = nullptr;
-    wxStaticText    *st_plugin_name_ = nullptr;
-    wxButton        *btn_open_editor_ = nullptr;
+    ImageButton     *btn_open_editor_ = nullptr;
+    Label           *lbl_plugin_name_ = nullptr;
     wxFrame         *editor_frame_ = nullptr;
     std::optional<Pin> selected_pin_;
     std::optional<wxPoint> delta_; // window 移動
@@ -419,22 +482,35 @@ public:
         
         scissors_ = wxCursor(img);
         
-        Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(ev); });
+        Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(); });
         Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { OnLeftDown(ev); });
         Bind(wxEVT_LEFT_UP, [this](auto &ev) { OnLeftUp(ev); });
         Bind(wxEVT_MOTION, [this](auto &ev) { OnMouseMove(ev); });
         Bind(wxEVT_RIGHT_UP, [this](auto &ev) { OnRightUp(ev); });
-        Bind(wxEVT_KEY_DOWN, [this](auto &ev) { OnKeyDown(ev); });
-        Bind(wxEVT_KEY_UP, [this](auto &ev) { OnKeyUp(ev); });
+        Bind(wxEVT_KEY_DOWN, [this](auto &ev) { OnKeyDown(ev); ev.ResumePropagation(100); ev.Skip(); });
+        Bind(wxEVT_KEY_UP, [this](auto &ev) { OnKeyUp(ev); ev.ResumePropagation(100); ev.Skip(); });
         Bind(wxEVT_KILL_FOCUS, [this](auto &ev) { OnKillFocus(); });
         Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](auto &ev) { OnReleaseMouse(); });
+        //screen_->Bind(wxEVT_MOVE, [this](auto &ev) { screen_->Raise(); });
         slr_change_project_.reset(MyApp::GetInstance()->GetChangeProjectListeners(), this);
+        
+        SetBackgroundColour(kGraphBackground);
+        SetAutoLayout(true);
+        Layout();
     }
     
     ~GraphEditorImpl()
     {
         RemoveGraph();
-        slr_change_project_.reset();    
+        slr_change_project_.reset();
+    }
+    
+    bool Layout() override
+    {
+        image_ = wxImage(GetClientSize());
+        image_.SetAlpha();
+        bitmap_ = image_;
+        return GraphEditor::Layout();
     }
     
     NodeComponent * FindNodeComponent(GraphProcessor::Node const *node)
@@ -606,6 +682,7 @@ public:
         static auto get_category_number = [](auto const &desc) {
             return IsEffectPlugin(desc) + IsInstrumentPlugin(desc) * 2;
         };
+        
         std::sort(descs.begin(),
                   descs.end(),
                   [](auto const &lhs, auto &rhs) {
@@ -682,10 +759,12 @@ public:
         
         for(auto node: nodes) {
             auto nc = std::make_unique<NodeComponent>(this, node.get(), this);
+            nc->UseDefaultPaintMethod(false);
             node_components_.push_back(std::move(nc));
         }
         
         graph_->GetListeners().AddListener(this);
+        //screen_->Raise();
         Refresh();
     }
     
@@ -727,7 +806,7 @@ public:
         LineSetting ls;
         ls.begin_ = pt_begin;
         ls.end_ = pt_end;
-        ls.pen_ = kAudioLine;
+        ls.pen_ = (pin_begin->IsAudioPin() ? kAudioLine : kMidiLine);
         ls.pen_.SetStyle(wxPENSTYLE_DOT);
         dragging_line_ = ls;
         Refresh();
@@ -783,14 +862,29 @@ public:
         }
     }
     
-    void OnKeyDown(wxKeyEvent const &ev)
+    void OnRaised(NodeComponent *p) override
+    {
+        auto found = find_if(node_components_.begin(),
+                             node_components_.end(),
+                             [p](auto &elem) { return elem.get() == p; });
+        assert(found != node_components_.end());
+        
+        if(found == node_components_.end() - 1) { return; }
+        
+        auto tmp = std::move(*found);
+        node_components_.erase(found);
+        node_components_.push_back(std::move(tmp));
+        Refresh();
+    }
+    
+    void OnKeyDown(wxKeyEvent &ev)
     {
         if(ev.GetModifiers() == wxMOD_SHIFT) {
             SetCursor(scissors_);
         }
     }
     
-    void OnKeyUp(wxKeyEvent const &ev)
+    void OnKeyUp(wxKeyEvent &ev)
     {
         if(!dragging_line_ && ev.GetModifiers() != wxMOD_SHIFT) {
             SetCursor(wxNullCursor);
@@ -860,6 +954,7 @@ private:
     std::vector<NodeComponentPtr> node_components_;
     GraphProcessor *graph_ = nullptr;
     ScopedListenerRegister<MyApp::ChangeProjectListener> slr_change_project_;
+    //ForegroundScreen *screen_;
     
     struct LineSetting {
         wxPoint begin_;
@@ -869,10 +964,31 @@ private:
     
     std::optional<LineSetting> dragging_line_;
     
-    void OnPaint(wxPaintEvent &)
+    wxImage image_;
+    wxBitmap bitmap_;
+    
+    void OnPaint()
     {
-        wxPaintDC pdc(this);
-        Draw(pdc);
+        Render();
+        
+        wxPaintDC dc(this);
+        
+        wxMemoryDC memory_dc(bitmap_);
+        dc.Blit(wxPoint{0, 0}, GetClientSize(), &memory_dc, wxPoint {0, 0});
+    }
+    
+    void Render()
+    {
+        wxMemoryDC memory_dc(bitmap_);
+        memory_dc.SetBackground(wxBrush(kGraphBackground));
+        memory_dc.Clear();
+        
+        for(auto &nc: node_components_) {
+            RenderChild(nc.get(), memory_dc);
+        }
+        
+        PaintOverChildren(memory_dc);
+        Refresh();
     }
     
     static wxPoint GetCenter(wxRect const &rect)
@@ -911,11 +1027,8 @@ private:
         dc.DrawLine(pt_up, pt_down);
     }
     
-    void Draw(wxDC &dc)
+    void PaintOverChildren(wxDC &dc)
     {
-        dc.SetBrush(wxBrush(wxColour(33, 33, 33)));
-        dc.DrawRectangle(GetClientRect());
-
         // draw connection;
         for(auto const &nc_upstream: node_components_) {
             std::for_each(node_components_.begin(), node_components_.end(),
@@ -935,6 +1048,16 @@ private:
             dc.DrawLine(dragging_line_->begin_,
                         dragging_line_->end_
                         );
+        }
+        
+        
+        auto const size = GetClientSize();
+        dc.FloodFill(0, 0, HSVToColour(0, 0, 0.9, 0.1));
+        dc.SetPen(wxPen(HSVToColour(0.0, 0.0, 0.9, 0.2)));
+        for(int x = kNodeAlignmentSize; x < size.x; x += kNodeAlignmentSize) {
+            for(int y = kNodeAlignmentSize; y < size.y; y += kNodeAlignmentSize) {
+                dc.DrawPoint(x, y);
+            }
         }
     }
     
@@ -972,10 +1095,13 @@ private:
     void OnAfterNodeIsAdded(GraphProcessor::Node *node) override
     {
         auto nc = std::make_unique<NodeComponent>(this, node, this);
+        nc->UseDefaultPaintMethod(false);
         node_components_.push_back(std::move(nc));
         
         // open editor automatically.
-        node_components_.back()->OnOpenEditor();
+        node_components_.back()->OpenEditor();
+        
+        //screen_->Raise();
         Refresh();
     }
     

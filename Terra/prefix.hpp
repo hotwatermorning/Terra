@@ -7,6 +7,8 @@
 #include <wx/wx.h>
 #endif
 
+#include <wx/tglbtn.h>
+
 #include <fmt/format.h>
 
 using namespace fmt::literals;

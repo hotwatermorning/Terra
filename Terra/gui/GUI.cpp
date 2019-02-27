@@ -2,10 +2,10 @@
 #include "../App.hpp"
 #include "../project/Project.hpp"
 
-#include <wx/tglbtn.h>
 #include <wx/stdpaths.h>
 #include <wx/display.h>
 #include <wx/dnd.h>
+#include <wx/tglbtn.h>
 
 #include <vector>
 
@@ -14,6 +14,7 @@
 #include "../misc/StrCnv.hpp"
 #include "../misc/MathUtil.hpp"
 #include "../plugin/PluginScanner.hpp"
+#include "./Controls.hpp"
 #include "./PluginEditor.hpp"
 #include "./Keyboard.hpp"
 #include "./UnitData.hpp"
@@ -21,157 +22,6 @@
 #include "../resource/ResourceHelper.hpp"
 
 NS_HWM_BEGIN
-
-bool IsPushed(wxButton const *btn)
-{
-    return false;
-}
-
-bool IsPushed(wxToggleButton const *btn)
-{
-    return btn->GetValue();
-}
-
-class ImageButton
-:   public wxWindow
-{
-public:
-    ImageButton(wxWindow *parent,
-                bool is_3state,
-                wxImage normal,
-                wxImage hover,
-                wxImage pushed,
-                wxImage hover_pushed,
-                wxPoint pos = wxDefaultPosition,
-                wxSize size = wxDefaultSize)
-    :   wxWindow(parent, wxID_ANY, pos, size)
-    ,   normal_(normal)
-    ,   hover_(hover)
-    ,   pushed_(pushed)
-    ,   hover_pushed_(hover_pushed)
-    ,   is_3state_(is_3state)
-    {
-        SetMinSize(normal.GetSize());
-        SetSize(normal.GetSize());
-        Bind(wxEVT_ENTER_WINDOW, [this](auto &ev) {
-            is_hover_ = true;
-            Refresh();
-        });
-        
-        Bind(wxEVT_LEAVE_WINDOW, [this](auto &ev) {
-            is_hover_ = false;
-            is_being_pressed_ = false;
-            Refresh();
-        });
-        
-        Bind(wxEVT_LEFT_DOWN, [this](auto &ev) {
-            is_being_pressed_ = true;
-            Refresh();
-        });
-        
-        Bind(wxEVT_LEFT_DCLICK, [this](auto &ev) {
-            is_being_pressed_ = true;
-            Refresh();
-        });
-        
-        Bind(wxEVT_LEFT_UP, [this](auto &ev) {            
-            if(!is_hover_) { return; }
-            if(is_3state_) {
-                is_pushed_ = !is_pushed_;
-            } else {
-                is_pushed_ = false;
-            }
-            is_being_pressed_ = false;
-            
-            wxEventType type;
-            if(is_3state_) {
-                type = wxEVT_TOGGLEBUTTON;
-            } else {
-                type = wxEVT_BUTTON;
-            }
-            wxCommandEvent new_ev(type);
-            wxPostEvent(this, new_ev);
-            Refresh();
-        });
-        
-        Bind(wxEVT_PAINT, [this](auto &ev) {
-            OnPaint();
-        });
-    }
-    
-    bool IsPushed() const { return is_pushed_; }
-    void SetPushed(bool status) { is_pushed_ = status; }
-    
-    void OnPaint()
-    {
-        wxImage img;
-        if(is_being_pressed_) {
-            img = pushed_;
-        } else if(is_hover_) {
-            if(is_pushed_) {
-                img = hover_pushed_;
-            } else {
-                img = hover_;
-            }
-        } else if(is_pushed_) {
-            img = pushed_;
-        } else {
-            img = normal_;
-        }
-        
-        wxPaintDC dc(this);
-        dc.DrawBitmap(img, 0, 0);
-    }
-    
-private:
-    wxImage normal_;
-    wxImage hover_;
-    wxImage pushed_;
-    wxImage hover_pushed_;
-    bool is_hover_ = false;
-    bool is_3state_ = false;
-    bool is_being_pressed_ = false;
-    bool is_pushed_ = false;
-};
-
-class ImageAsset
-{
-public:
-    ImageAsset()
-    :   num_cols_(0)
-    ,   num_rows_(0)
-    {}
-    
-    ImageAsset(String filepath, int num_cols, int num_rows)
-    :   num_cols_(num_cols)
-    ,   num_rows_(num_rows)
-    {
-        assert(num_cols_ > 1);
-        assert(num_rows_ > 1);
-        
-        image_ = wxImage(filepath);
-        
-        assert(image_.GetWidth() % num_cols_ == 0);
-        assert(image_.GetHeight() % num_rows_ == 0);
-    }
-    
-    wxImage GetImage(int col, int row) const
-    {
-        assert(0 <= col && col < num_cols_);
-        assert(0 <= row && row < num_rows_);
-        
-        auto const w = image_.GetWidth() / num_cols_;
-        auto const h = image_.GetHeight() / num_rows_;
-        
-        wxRect r(wxPoint(w * col, h * row), wxSize(w, h));
-        return image_.GetSubImage(r);
-    }
-    
-private:
-    wxImage image_;
-    int num_cols_;
-    int num_rows_;
-};
 
 class TransportPanel
 :   public wxPanel

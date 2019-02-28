@@ -31,12 +31,17 @@ wxPen const kAudioLine = wxPen(HSVToColour(0.2, 0.8, 1.0, 0.7), 2, wxPENSTYLE_SO
 wxPen const kMidiLine = wxPen(HSVToColour(0.5, 0.8, 1.0, 0.7), 2, wxPENSTYLE_SOLID);
 wxPen const kScissorLine = wxPen(HSVToColour(0.5, 0.0, 0.7, 0.7), 2, wxPENSTYLE_SHORT_DASH);
 
-BrushPen const background = BrushPen(HSVToColour(0.0, 0.0, 0.9));
-BrushPen const background_having_focus = BrushPen(HSVToColour(0.0, 0.0, 0.9), HSVToColour(0.7, 1.0, 0.9));
+auto const kNodeShadow = BrushPen(HSVToColour(0.0, 0.0, 0.0, 0.3));
+int const kShadowRadius = 5;
+int const kNodeRound = 3;
+
+BrushPen const kNodeColor = BrushPen(HSVToColour(0.0, 0.0, 0.9));
+BrushPen const kNodeColorHavingFocus = BrushPen(HSVToColour(0.0, 0.0, 0.9), HSVToColour(0.7, 1.0, 0.9));
 
 wxColour const kGraphBackground(HSVToColour(0.0, 0.0, 0.1));
 
-wxSize const kDefaultNodeSize = { 200, 60 };
+wxSize const kDefaultNodeSize = { 200, 40 };
+
 wxSize const kEditorOpenButtonSize = { 14, 14 };
 wxSize const kLabelSize = { 150, 20 };
 Int32 kNodeAlignmentSize = 10;
@@ -122,7 +127,7 @@ public:
         });
         
         bool enable_editor_button = false;
-        //! There always be a generic plugin view even if the plugin has no editors.
+        //! There's always generic plugin views for each plugins even if the plugin provides no editor ui.
         if(auto p = dynamic_cast<Vst3AudioProcessor *>(node_->GetProcessor().get())) {
             enable_editor_button = true;
         }
@@ -145,20 +150,85 @@ public:
         
         SetSizer(vbox);
 
+        SetAutoLayout(true);
         Layout();
         
-        Bind(wxEVT_PAINT, [this](auto &ev) {
-            int i = 0;
-            i = 100;
+        Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent &ev) {
+            //hwm::dout << "Left Down: " << node_->GetProcessor()->GetName() << std::endl;
+            OnLeftDown(ev);
         });
-        Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { OnLeftDown(ev); });
-        Bind(wxEVT_LEFT_UP, [this](auto &ev) { OnLeftUp(ev); });
-        Bind(wxEVT_MOTION, [this](auto &ev) { OnMouseMove(ev); });
-        Bind(wxEVT_RIGHT_UP, [this](auto &ev) { OnRightUp(ev); });
-        Bind(wxEVT_KILL_FOCUS, [this](auto &ev) { OnCaptureLost(); });
-        Bind(wxEVT_LEAVE_WINDOW, [this](auto &ev) { OnMouseLeave(ev); });
+        
+        Bind(wxEVT_LEFT_UP, [this](auto &ev) {
+            //hwm::dout << "Left Up: " << node_->GetProcessor()->GetName() << std::endl;
+            OnLeftUp(ev);
+        });
+        Bind(wxEVT_MOTION, [this](auto &ev) {
+            //hwm::dout << "Mouse Move: " << node_->GetProcessor()->GetName() << std::endl;
+            OnMouseMove(ev);
+        });
+        Bind(wxEVT_RIGHT_UP, [this](auto &ev) {
+            //hwm::dout << "Right Up: " << node_->GetProcessor()->GetName() << std::endl;
+            OnRightUp(ev);
+        });
+        Bind(wxEVT_SET_FOCUS, [this](auto &ev) {
+            hwm::dout << "Set focus: " << node_->GetProcessor()->GetName() << std::endl;
+            //OnCaptureLost();
+            Refresh();
+        });
+        Bind(wxEVT_KILL_FOCUS, [this](auto &ev) {
+            hwm::dout << "Kill Focus: " << node_->GetProcessor()->GetName() << std::endl;
+            OnCaptureLost();
+            Refresh();
+        });
+        Bind(wxEVT_CHILD_FOCUS, [this](auto &ev) {
+            hwm::dout << "Child Focus: " << node_->GetProcessor()->GetName() << std::endl;
+            SetFocusIgnoringChildren();
+            //Raise();
+        });
+        Bind(wxEVT_LEAVE_WINDOW, [this](auto &ev) {
+            //hwm::dout << "Leave Window: " << node_->GetProcessor()->GetName() << std::endl;
+            OnMouseLeave(ev);
+        });
+        Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](auto &ev) {
+            hwm::dout << "Mouse Capture Lost: " << node_->GetProcessor()->GetName() << std::endl;
+            ev.Skip();
+        });
+        Bind(wxEVT_MOUSE_CAPTURE_CHANGED, [this](auto &ev) {
+            hwm::dout << "Mouse Capture Changed: " << node_->GetProcessor()->GetName() << std::endl;
+            ev.Skip();
+        });
         Bind(wxEVT_KEY_DOWN, [](auto &ev) { ev.ResumePropagation(100); ev.Skip(); });
         Bind(wxEVT_KEY_UP, [](auto &ev) { ev.ResumePropagation(100); ev.Skip(); });
+    }
+    
+    bool Layout() override
+    {
+        auto const client_size = GetClientSize();
+        auto image_size = client_size;
+        image_size.IncBy(kShadowRadius * 2);
+        
+        auto image = wxImage(image_size);
+        image.SetAlpha();
+        image.Clear();
+        auto bitmap = wxBitmap(image);
+        wxMemoryDC dc(bitmap);
+        
+        BrushPen bp { HSVToColour(0, 0.6, 1.0, 0.0) };
+        bp.ApplyTo(dc);
+        dc.SetBackground(bp.brush_);
+        dc.Clear();
+        dc.DrawRoundedRectangle(wxPoint{}, image.GetSize(), kNodeRound);
+        
+        kNodeShadow.ApplyTo(dc);
+
+        dc.DrawRectangle(wxPoint{kShadowRadius, kShadowRadius}, client_size);
+        dc.SelectObject(wxNullBitmap);
+        
+        image = bitmap.ConvertToImage();
+        image = image.Blur(kShadowRadius);
+        shadow_ = image;
+        
+        return IRenderableWindow<wxPanel>::Layout();
     }
     
     ~NodeComponent()
@@ -169,8 +239,11 @@ public:
     void Raise() override
     {
         hwm::dout << "Raised: " << lbl_plugin_name_->GetText() << std::endl;
+        SetFocusIgnoringChildren();
+        assert(HasFocus());
         callback_->OnRaised(this);
         IRenderableWindow<wxPanel>::Raise();
+        Refresh();
     }
     
     void Lower() override
@@ -210,19 +283,17 @@ public:
     
     void doRender(wxDC &dc) override
     {
-        auto const rect = GetClientRect();
+        auto bitmap = wxBitmap(shadow_);
+        dc.DrawBitmap(bitmap, wxPoint{-kShadowRadius, -kShadowRadius});
         
         if(HasFocus()) {
-            background_having_focus.ApplyTo(dc);
+            kNodeColorHavingFocus.ApplyTo(dc);
         } else {
-            background.ApplyTo(dc);
+            kNodeColor.ApplyTo(dc);
         }
         
-        auto rc_bg = rect;
-        //rc_bg.Offset(0, kPinSize);
-        //rc_bg.Deflate(0, kPinSize * 2);
-        
-        dc.DrawRectangle(rc_bg);
+        auto rc_bg = wxRect(wxPoint{}, kDefaultNodeSize);
+        dc.DrawRoundedRectangle(rc_bg, kNodeRound);
         
         auto const p = node_->GetProcessor().get();
         
@@ -324,7 +395,7 @@ public:
         Refresh();
     }
     
-    int const kPinSize = 8;
+    int const kPinSize = 6;
     
     // ptは、ウィンドウ相対座標。
     // 見つからないときはnulloptが返る。
@@ -422,6 +493,7 @@ public:
     std::optional<wxPoint> pin_drag_begin_; // pin選択
     std::function<void()> request_to_unload_;
     Callback *callback_ = nullptr;
+    wxImage shadow_;
 };
 
 bool Intersect(wxPoint a1, wxPoint a2, wxPoint b1, wxPoint b2)
@@ -900,7 +972,7 @@ public:
     void RearrangeNodes() override
     {
         auto node_grid = kDefaultNodeSize;
-        node_grid += wxSize(5, 5);
+        node_grid += wxSize(kNodeAlignmentSize, kNodeAlignmentSize);
         
         auto const rect = GetClientRect();
         int const num_cols = rect.GetWidth() / node_grid.GetWidth();

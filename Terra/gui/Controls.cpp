@@ -112,17 +112,34 @@ void ImageButton::doRender(wxDC &dc)
 
 Label::Label(wxWindow *parent)
 :   IRenderableWindow<>(parent)
-{
-    Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { ev.ResumePropagation(1); ev.Skip(); });
-    Bind(wxEVT_LEFT_UP, [this](auto &ev) { ev.ResumePropagation(1); ev.Skip(); });
-    Bind(wxEVT_LEFT_DCLICK, [this](auto &ev) { ev.ResumePropagation(1); ev.Skip(); });
-    Bind(wxEVT_RIGHT_DOWN, [this](auto &ev) { ev.ResumePropagation(1); ev.Skip(); });
-    Bind(wxEVT_RIGHT_UP, [this](auto &ev) { ev.ResumePropagation(1); ev.Skip(); });
-    Bind(wxEVT_RIGHT_DCLICK, [this](auto &ev) { ev.ResumePropagation(1); ev.Skip(); });
-    Bind(wxEVT_MIDDLE_DOWN, [this](auto &ev) { ev.ResumePropagation(1); ev.Skip(); });
-    Bind(wxEVT_MIDDLE_UP, [this](auto &ev) { ev.ResumePropagation(1); ev.Skip(); });
-    Bind(wxEVT_MIDDLE_DCLICK, [this](auto &ev) { ev.ResumePropagation(1); ev.Skip(); });
-    Bind(wxEVT_MOTION, [this](auto &ev) { ev.ResumePropagation(1); ev.Skip(); });
+{    
+    // treat mouse event for this window as one for the parent event.
+    auto mouse_callback = [this](wxMouseEvent &ev) {
+        auto const parent = GetParent();
+        if(parent == nullptr) { return; }
+        
+        auto pt = ClientToScreen(ev.GetPosition());
+        ev.SetPosition(parent->ScreenToClient(pt));
+        ev.ResumePropagation(1);
+        ev.Skip();
+    };
+    
+    auto generic_callback = [](wxEvent &ev) {
+        ev.ResumePropagation(1);
+        ev.Skip();
+    };
+
+    Bind(wxEVT_LEFT_DOWN,       mouse_callback);
+    Bind(wxEVT_LEFT_UP,         mouse_callback);
+    Bind(wxEVT_LEFT_DCLICK,     mouse_callback);
+    Bind(wxEVT_RIGHT_DOWN,      mouse_callback);
+    Bind(wxEVT_RIGHT_UP,        mouse_callback);
+    Bind(wxEVT_RIGHT_DCLICK,    mouse_callback);
+    Bind(wxEVT_MIDDLE_DOWN,     mouse_callback);
+    Bind(wxEVT_MIDDLE_UP,       mouse_callback);
+    Bind(wxEVT_MIDDLE_DCLICK,   mouse_callback);
+    Bind(wxEVT_MOTION,          mouse_callback);
+    Bind(wxEVT_SET_FOCUS,       generic_callback);
 }
 
 bool Label::AcceptsFocus() const { return false; }

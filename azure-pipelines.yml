@@ -20,18 +20,31 @@ jobs:
     displayName: brew install
   - script: git submodule update --init
   - script: |
-      WXWIDGETS_HASH1=$(cd ./ext/wxWidgets && git rev-parse HEAD)
-      echo "##vso[task.setvariable variable=wxwidgets_hash1]$WXWIDGETS_HASH1"
-      echo "##vso[task.setvariable variable=wxwidgets_hash2]$(cd ./ext/wxWidgets && git rev-parse HEAD)"
+      echo "##vso[task.setvariable variable=wxwidgets_hash]$(cd ./ext/wxWidgets && git rev-parse HEAD)"
+      echo "##vso[task.setvariable variable=vst3sdk_hash]$(cd ./ext/vst3sdk && git rev-parse HEAD)"
+      echo "##vso[task.setvariable variable=protobuf_hash]$(cd ./ext/protobuf && git rev-parse HEAD)"
+      echo "##vso[task.setvariable variable=portaudio_hash]$(cd ./ext/portaudio && git rev-parse HEAD)"
+      echo "##vso[task.setvariable variable=fmtlib_hash]$(cd ./ext/fmt && git rev-parse HEAD)"
+      echo "##vso[task.setvariable variable=rtmidi_hash]$(cd ./ext/rtmidi && git rev-parse HEAD)"
     displayName: listup hashes
-  - script: cd gradle && ./gradlew update_submodules
-    displayName: update submodues
+  - script: printenv
+    displayName: printenv without env setting
+  - script: |
+      echo ${WXWIDGETS_HASH}
+      echo ${VST3SDK_HASH}
+    displayName: show variables without env setting
   - script: printenv
     env: { 
-      WXWIDGETS_HASH1: $WXWIDGETS_HASH1,
-      WXWIDGETS_HASH2: $WXWIDGETS_HASH2
+      WXWIDGETS_HASH: $WXWIDGETS_HASH,
+      VST3SDK_HASH: $VST3SDK_HASH,
+      PROTOBUF_HASH: $PROTOBUF_HASH,
+      PORTAUDIO_HASH: $PORTAUDIO_HASH,
+      FMTLIB_HASH: $FMTLIB_HASH,
+      RTMIDI_HASH: $RTMIDI_HASH,
     }
     displayName: printenv
+  - script: cd gradle && ./gradlew update_submodules
+    displayName: update submodues
   - bash: "cd $(System.DefaultWorkingDirectory)/Terra && echo execute bash script && printenv && pwd"
     displayName: printenv2
   - script: cd gradle && ./gradlew build_all -Pconfig=Release

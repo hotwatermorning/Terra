@@ -13,8 +13,8 @@ jobs:
 # また、FORCE_BUILDが指定されているときは、DLしない
   - script: brew install libtool automake
   - script: echo "##vso[task.setvariable variable=test_var]$(pwd)"
-  - script: echo "$$1 : $1"
-  - script: echo "$$test_var : $TEST_VER"
+  - script: echo '$1 : ' $1
+  - script: echo '$test_var : ' $TEST_VER
   - script: cd gradle && pwd
   - script: cd gradle && pwd
   - script: cd gradle && ./gradlew update_submodules

@@ -18,7 +18,7 @@ jobs:
   - script: cd gradle && pwd
   - script: cd gradle && ./gradlew update_submodules
   - bash: "cd Project && echo execute bash script && printenv && pwd"
-      name: "display name for bash"
+    displayName: "display name for bash"
   - script: cd gradle && ./gradlew build_all -Pconfig=Release
   - task: PublishBuildArtifacts@1
     inputs:

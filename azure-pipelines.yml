@@ -18,13 +18,14 @@ jobs:
 # を指定する
   - script: brew install libtool automake
     displayName: brew install
+  - script: git submodule update --init
+  - script: |
+      WXWIDGETS_HASH1=$(cd ./ext/wxWidgets && git rev-parse HEAD)
+      echo "##vso[task.setvariable variable=wxwidgets_hash1]$WXWIDGETS_HASH1"
+      echo "##vso[task.setvariable variable=wxwidgets_hash2]$(cd ./ext/wxWidgets && git rev-parse HEAD)"
+    displayName: listup hashes
   - script: cd gradle && ./gradlew update_submodules
     displayName: update submodues
-  - script: |
-      WXWIDGETS_HASH1=$(cd $(System.DefaultWorkingDirectory)/ext/wxWigets && git rev-parse HEAD)
-      echo "##vso[task.setvariable variable=wxwidgets_hash1]$WXWIDGETS_HASH1"
-      echo "##vso[task.setvariable variable=wxwidgets_hash2]$(cd $(System.DefaultWorkingDirectory)/ext/wxWigets && git rev-parse HEAD)"
-    displayName: listup hashes
   - script: printenv
     env: { 
       WXWIDGETS_HASH1: $WXWIDGETS_HASH1,

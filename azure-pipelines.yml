@@ -6,16 +6,18 @@ jobs:
     vmImage: 'macOS-10.13'
   timeoutInMinutes: 120
   steps:
-  - script: brew install libtool automake && cd gradle && ./gradlew build_all -Pconfig=Release
+  - script: brew install libtool automake
+    displayName: brew install
+  - script: |
+      cd gradle
+      ./gradlew build_all -Pconfig=Release
+    env:
+      AZURE_STORAGE_ACCOUNT: $(azure.storage.account)
+      AZURE_STORAGE_KEY: $(azure.storage.key)
+      AZURE_STORAGE_CONTAINER_NAME: $(azure.storage.container.name)
+    displayName: build all
   - task: PublishBuildArtifacts@1
     inputs:
       pathtoPublish: '$(System.DefaultWorkingDirectory)/build_release/Release'
-      artifactName: Binary
-- job: deploy
-  steps:
-  - task: DownloadBuildArtifacts@0
-    displayName: "Download Artifacts"
-    inputs:
-      artifactName: Binary
-  dependsOn: build_osx
-  condition: succeeded()
+      artifactName: terra_release_osx
+    displayName: publish

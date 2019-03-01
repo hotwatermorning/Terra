@@ -8,7 +8,18 @@ jobs:
   steps:
   - script: echo multiple script test
   - script: ls -laR ./ext/
-  - script: brew install libtool automake && cd gradle && ./gradlew build_all -Pconfig=Release
+# ここで、各サブモジュールのビルド済みバイナリをDL
+# なければビルド
+# また、FORCE_BUILDが指定されているときは、DLしない
+  - script: brew install libtool automake
+  - script: export ENVVAR_TEST="envvar_test"
+  - script: echo "$ENVVAR_TEST"
+  - script: cd gradle && pwd
+  - script: cd gradle && pwd
+  - script: cd gradle && ./gradlew update_submodules
+  - bash: "cd Project && echo execute bash script && printenv && pwd"
+      displayName: "display name for bash"
+  - script: cd gradle && ./gradlew build_all -Pconfig=Release
   - task: PublishBuildArtifacts@1
     inputs:
       pathtoPublish: '$(System.DefaultWorkingDirectory)/build_release/Release'

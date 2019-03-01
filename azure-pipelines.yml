@@ -21,16 +21,17 @@ jobs:
   - script: brew install libtool automake
     displayName: brew install
   - script: cd gradle && ./gradlew update_submodules
+    displayName: update submodues
   - script: |
       echo '##vso[task.setvariable variable=wxwigets_hash]$(cd ext/wxWigets && git rev-parse HEAD)'
+    displayName: listup hashes
   - script: printenv
     env: { WXWIDGETS_HASH: $WXWIDGETS_HASH }
-  - script: cd gradle && pwd
-  - script: cd gradle && pwd
-  
+    displayName: printenv
   - bash: "cd $(System.DefaultWorkingDirectory)/Terra && echo execute bash script && printenv && pwd"
-    displayName: "display name for bash"
+    displayName: printenv2
   - script: cd gradle && ./gradlew build_all -Pconfig=Release
+    displayName: build_all
   - task: PublishBuildArtifacts@1
     inputs:
       pathtoPublish: '$(System.DefaultWorkingDirectory)/build_release/Release'

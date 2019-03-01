@@ -13,51 +13,63 @@ jobs:
 # 別の script では、ディレクトリ位置や環境変数のexportは保存されない（別のbashが起動される）
 # 環境変数を受け渡すには、先のscriptで
 # `echo '##vso[task.setvariable variable=<varname>]<value>'`
-# を実行し、続くscriptで
-# `env: { varname: $<varname> }`
-# を指定する
+# を実行する。
+# これによって、続くscriptでも環境変数にこの設定が含まれるようになり
+# $varname でその値を参照できるようになる
   - script: brew install libtool automake
     displayName: brew install
-  - script: git submodule update --init
   - script: |
-      echo "##vso[task.setvariable variable=wxwidgets_hash]$(cd ./ext/wxWidgets && git rev-parse HEAD)"
-      echo "##vso[task.setvariable variable=vst3sdk_hash]$(cd ./ext/vst3sdk && git rev-parse HEAD)"
-      echo "##vso[task.setvariable variable=protobuf_hash]$(cd ./ext/protobuf && git rev-parse HEAD)"
-      echo "##vso[task.setvariable variable=portaudio_hash]$(cd ./ext/portaudio && git rev-parse HEAD)"
-      echo "##vso[task.setvariable variable=fmtlib_hash]$(cd ./ext/fmt && git rev-parse HEAD)"
-      echo "##vso[task.setvariable variable=rtmidi_hash]$(cd ./ext/rtmidi && git rev-parse HEAD)"
-    displayName: listup hashes
-  - script: printenv
-    displayName: printenv without env setting
+      cd gradle
+      ./gradlew update_submodules
+    displayName: update submodules
   - script: |
-      echo ${WXWIDGETS_HASH}
-      echo ${VST3SDK_HASH}
-    displayName: show variables without env setting
-  - script: printenv
-    env: { 
-      WXWIDGETS_HASH: $WXWIDGETS_HASH,
-      VST3SDK_HASH: $VST3SDK_HASH,
-      PROTOBUF_HASH: $PROTOBUF_HASH,
-      PORTAUDIO_HASH: $PORTAUDIO_HASH,
-      FMTLIB_HASH: $FMTLIB_HASH,
-      RTMIDI_HASH: $RTMIDI_HASH,
-    }
-    displayName: printenv
-  - script: cd gradle && ./gradlew update_submodules
-    displayName: update submodues
-  - bash: "cd $(System.DefaultWorkingDirectory)/Terra && echo execute bash script && printenv && pwd"
-    displayName: printenv2
-  - script: cd gradle && ./gradlew build_all -Pconfig=Release
-    displayName: build_all
+      echo "##vso[task.setvariable variable=WXWIDGETS_CACHE]wxwigets_cache_$(cd ./ext/wxWidgets/build_release && git rev-parse HEAD)"
+      echo "##vso[task.setvariable variable=VST3SDK_CACHE]vst3sdk_cache_$(cd ./ext/vst3sdk/build_release && git rev-parse HEAD)"
+      echo "##vso[task.setvariable variable=PROTOBUF_CACHE]protobuf_cache_$(cd ./ext/protobuf/build_release && git rev-parse HEAD)"
+      echo "##vso[task.setvariable variable=PORTAUDIO_CACHE]portaudio_cache_$(cd ./ext/portaudio/build_release && git rev-parse HEAD)"
+      echo "##vso[task.setvariable variable=FMTLIB_CACHE]fmtlib_cache_$(cd ./ext/fmt/build_release && git rev-parse HEAD)"
+      echo "##vso[task.setvariable variable=RTMIDI_CACHE]rtmidi_cache_$(cd ./ext/rtmidi/build_release && git rev-parse HEAD)"
+    displayName: collect hashes
+  - task: DownloadBuildArtifacts@0
+    inputs:
+      buildType: specific
+      project: "Terra"
+      pipeline: "Test-CI"
+      buildVersionToDownload: latest
+      artifactName: $WXWIDGETS_CACHE
+      downloadType: specific
+      downloadPath: ./ext/wxWidgets/build_release
+    condition: ne(variables['FORCE_REBUILD'], 'true')
+    continueOnError: true
+    displayName: download cache of wxwigets
+  # キャッシュがないときに限りビルドとアップロードを行う
+  - script: |
+      if [ ! -d "./ext/wxWidgets/build_release" ]; then
+        cd gradle
+        ./gradlew build_wxwidgets
+        echo "##vso[[task.setvariable variable=SHOULD_UPLOAD_WXWIDGETS]true"
+      fi
+    displayName: build wxWidgets
+  - task: PublishBuildArtifacts@1
+    inputs: 
+      PathtoPublish: "./ext/wxWidgets/build_release"
+      artifactName: $WXWIDGETS_CACHE
+    condition: eq(variables['SHOULD_UPLOAD_WXWIDGETS'], 'true')
+    displayName: publish wxWidgets
+  - script: |
+      cd gradle
+      ./gradlew build_all
+    displayName: build all
   - task: PublishBuildArtifacts@1
     inputs:
       pathtoPublish: '$(System.DefaultWorkingDirectory)/build_release/Release'
-      artifactName: Binary
-- job: deploy
+      artifactName: terra_release_osx
+- job: deploy # 公開されたArtifactsをどこかに配置するためのjob. 公開するだけならこれは必要ない
   steps:
-  - task: DownloadBuildArtifacts@0
-    displayName: "Download Artifacts"
-    inputs:
-      artifactName: Binary
+  - script: echo publish to github release.
+#  - task: DownloadBuildArtifacts@0
+#    displayName: "Download Artifacts"
+#    inputs:
+#      artifactName: Binary
   dependsOn: build_osx
   condition: succeeded()

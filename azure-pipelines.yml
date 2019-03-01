@@ -6,6 +6,8 @@ jobs:
     vmImage: 'macOS-10.13'
   timeoutInMinutes: 120
   steps:
+  - script: echo multiple script test
+  - script: ls -laR ./ext/
   - script: brew install libtool automake && cd gradle && ./gradlew build_all -Pconfig=Release
   - task: PublishBuildArtifacts@1
     inputs:

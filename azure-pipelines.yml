@@ -11,14 +11,24 @@ jobs:
 # ここで、各サブモジュールのビルド済みバイナリをDL
 # なければビルド
 # また、FORCE_BUILDが指定されているときは、DLしない
+# ------------------------------------------ 
+# 別の script では、ディレクトリ位置や環境変数のexportは保存されない（別のbashが起動される）
+# 環境変数を受け渡すには、先のscriptで
+# `echo '##vso[task.setvariable variable=<varname>]<value>'`
+# を実行し、続くscriptで
+# `env: { varname: $<varname> }`
+# を指定する
   - script: brew install libtool automake
-  - script: echo '##vso[task.setvariable variable=envvar_test]Env Var Test'
-  - script: echo "$ENVVAR_TEST"
-    env: { ENVVAR_TEST: $ENVVAR_TEST }
-  - script: cd gradle && pwd
-  - script: cd gradle && pwd
+    displayName: brew install
   - script: cd gradle && ./gradlew update_submodules
-  - bash: "cd $(System.DefaultWorkingDirectory)/Project && echo execute bash script && printenv && pwd"
+  - script: |
+      echo '##vso[task.setvariable variable=wxwigets_hash]$(cd ext/wxWigets && git rev-parse HEAD)'
+  - script: printenv
+    env: { WXWIDGETS_HASH: $WXWIDGETS_HASH }
+  - script: cd gradle && pwd
+  - script: cd gradle && pwd
+  
+  - bash: "cd $(System.DefaultWorkingDirectory)/Terra && echo execute bash script && printenv && pwd"
     displayName: "display name for bash"
   - script: cd gradle && ./gradlew build_all -Pconfig=Release
   - task: PublishBuildArtifacts@1

@@ -1,3 +1,10 @@
+import groovy.json.*
+import groovy.transform.Field
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+
+@Field def slurper = new JsonSlurper()
+
 def ensure_property(def obj, String keyname, List candidates, Integer default_value_index = 0)
 {
   if(!obj.hasProperty(keyname)) {
@@ -7,8 +14,10 @@ def ensure_property(def obj, String keyname, List candidates, Integer default_va
   assert(candidates.contains(obj.getProperty(keyname)))
 }
 
-def getenv(String key) { return java.lang.System.getenv()[key] }
-def isWindows() { return System.properties['os.name'].toLowerCase().startsWith("windows") }
+ext {
+  getenv = { String key -> return java.lang.System.getenv()[key] }
+  isWindows = { return System.properties['os.name'].toLowerCase().startsWith("windows") }
+}
 
 // Property about build configuration
 ensure_property(project, "config", ["Debug", "Release"])
@@ -74,21 +83,42 @@ def tokenize(String data)
   return output
 }
 
-//! @param params is executable and the parameters which are passed to the executable.
+class ExecutionResult
+{
+  def ExecutionResult(int exit_value, String text, String error_text)
+  {
+    this.exit_value = exit_value
+    this.text = text
+    this.error_text = error_text
+  }
+
+  int exitValue() { return exit_value }
+  boolean succeeded() { return exit_value == 0 }
+  boolean failed() { return exit_value != 0 }
+
+  String getText() { return text }
+  String getErrorText() { return error_text }
+
+  int exit_value
+  String text
+  String error_text
+}
+
+//! execute specified command and wait for finish the execution.
+//! @param command is a string consists of executable command and its parameters.
 //! @param working_dir is the working directory for the executable.
 //! @param env_vars is environment variables as a list of key:value pair. this parameter may be nil.
-def execute_with_exit_code(def params, String working_dir = ".", def env_vars = [:])
-{
+@Field def execute_may_fail = { String command, def working_dir = ".", Map env_vars = [:] ->
   if(isWindows()) {
-    params = "cmd /c chcp 65001 & " + params.toString()
+    command = "cmd /c chcp 65001 & " + command.toString()
     def java_opts = (env_vars.get("JAVA_OPTS", "") + " -Dfile.encoding=UTF-8")
     env_vars << ["JAVA_OPTS": java_opts.toString()]
   }
 
-  def tmp = tokenize(params)
+  def tmp = tokenize(command)
   println "${tmp} @ '${working_dir}' (${env_vars})"
 
-  def pb = new ProcessBuilder(tokenize(params)).redirectErrorStream(true)
+  def pb = new ProcessBuilder(tokenize(command))
   pb.directory(file(working_dir).getAbsoluteFile())
 
   if(env_vars) {
@@ -97,15 +127,41 @@ def execute_with_exit_code(def params, String working_dir = ".", def env_vars = 
   }
 
   def process = pb.start()
-  process.inputStream.eachLine { println it }
-  return process.waitFor()
+  String text = ""
+  String error_text = ""
+
+  def service = Executors.newCachedThreadPool()
+
+  service.execute {
+    process.in.eachLine { line ->
+      text += line + "\n"
+      System.out.&println line
+    }
+  }
+
+  service.execute {
+    process.err.eachLine { line ->
+      error_text += line + "\n"
+      System.err.&println line
+    }
+  }
+
+  process.waitFor()
+
+  service.shutdown()
+  service.awaitTermination(1, TimeUnit.MINUTES)
+
+  println "Text: ${text}"
+  println "ErrorText: ${error_text}"
+
+  return new ExecutionResult(process.exitValue(), text, error_text)
 }
 
-//! similar to execute_with_exit_code but this function fails if the target command ends with exit code of non zero.
-def execute(def params, String working_dir = ".", def env_vars = [:])
-{
-  def exit_code = execute_with_exit_code(params, working_dir, env_vars)
-  assert (exit_code == 0)
+//! similar to execute_may_fail but this function fails if the command finished with an exit value of non zero.
+@Field def execute = { String params, def working_dir = ".", Map env_vars = [:] ->
+  def result = execute_may_fail(params, working_dir, env_vars)
+  assert (result.exitValue() == 0), "unexpected exit value ${result.exitValue()}"
+  return result
 }
 
 task update_submodules {
@@ -114,42 +170,243 @@ task update_submodules {
   }
 }
 
+// 指定したディレクトリが存在しなければ作成し、成功か失敗かをbooleanで返す
+// 存在する場合は何もせずにtrueを返す
+@Field def mkdirs_if_needed = { def path ->
+  def f = file(path)
+  if(f.exists()) { return true }
+
+  return f.mkdirs()
+}
+
+@Field def createCacheParam = { File cache_dir, String archive_name, String hash ->
+  def getOsName = { return isWindows() ? "win" : "mac" }
+  return [
+    getOsName: getOsName,
+    cache_dir: cache_dir,
+    archive_name: archive_name,
+    hash: hash,
+    getArchiveFileName: { return "${archive_name}_${getOsName()}_${hash}.tar.gz" },
+  ]
+}
+
+// interface CacheStrategy
+// {
+//   boolean fetch(def param)
+//   boolean store(def param)
+// }
+
+@Field def createNullCacheStrategy = {
+  return [
+    fetch: { def param -> return false },
+    store: { def param -> return false },
+  ]
+}
+
+@Field def createAzureCacheStrategy = {
+  def getAzureStorageAccount = {
+    return getenv("AZURE_STORAGE_ACCOUNT").toString()
+  }
+
+  def getAzureStorageKey = {
+    return getenv("AZURE_STORAGE_KEY").toString()
+  }
+
+  def getAzureStorageContainerName = {
+    return getenv("AZURE_STORAGE_CONTAINER_NAME").toString()
+  }
+
+  def getBlobApiParams = {
+    return  " --container-name ${getAzureStorageContainerName()} "
+    +       " --storage-account ${getAzureStorageAccount()} "
+    +       " --storage-key ${getAzureStorageKey()} "
+  }
+
+  def isCached = { def param ->
+    def result = execute_may_fail(
+      " az storage blob exists ${getBlobApiParams()} "
+      + " --name ${param.getArchiveFileName()} "
+      )
+
+    if(result.failed()) {
+      logger.warn("failed to check the blob existence")
+      return false
+    }
+
+    def blob_exists_result = slurper.parseText(result.text)
+    assert blob_exists_result
+
+    if(blob_exists_result.exists == false) {
+      return false
+    }
+  }
+
+  if(execute_may_fail("bash -c \"which az\"").failed()) { return null }
+  if(getAzureStorageAccount().toString() == ""
+     || getAzureStorageKey().toString() == ""
+     || getAzureStorageContainerName().toString() == ""
+   )
+   { return null }
+
+  return [
+    fetch: { def param ->
+      if(isCached(param) == false) {
+        return false
+      }
+
+      if(mkdirs_if_needed(param.cache_dir) == false) {
+        assert false, "failed to create ${param.cache_dir}"
+      }
+
+      def result = execute_may_fail(
+        " az storage blob download ${getBlobApiParams()} "
+        + " --name ${param.getArchiveFileName()} "
+        + " --file ${param.getArchiveFileName()} "
+        , param.cache_dir)
+
+      if(result.failed()) {
+        logger.warn("failed to download the blob")
+        return false
+      }
+
+      // extract archive
+      result = execute_may_fail(
+        "tar xvf ${param.getArchiveFileName()}"
+        , param.cache_dir)
+
+      if(result.failed()) {
+        logger.warn("failed extract ${param.getArchiveFileName()}")
+        return false
+      }
+
+      // remove downloaded archive
+      execute_may_fail(
+        "rm -rf ${param.getArchiveFileName()}"
+        , param.cache_dir)
+
+      return true
+    },
+    store: { def param ->
+      assert(file(param.cache_dir).exists())
+
+      execute(
+        "tar -jcvf ${param.getArchiveFileName()} ./"
+        , param.cache_dir)
+
+      def result = execute_may_fail(
+        " az storage blob upload "
+        + " ${getBlobApiParams()} "
+        + " --name ${param.getArchiveFileName()} "
+        + " --file ${param.getArchiveFileName()} "
+        , param.cache_dir)
+
+      if(result.failed()) {
+        logger.warn("failed to upload cache")
+        return false
+      }
+
+      return true
+    },
+    isCached: isCached,
+  ]
+}
+
+@Field def get_hash = { String submodule_name ->
+  def result = execute("git rev-parse HEAD", file("../ext/${submodule_name}"))
+  return result.text.trim()
+}
+
+@Field def get_cache_strategy = {
+  def st = null
+  if(getenv("FORCE_REBUILD") != "true") {
+    st = createAzureCacheStrategy()
+  }
+
+  if(st == null) {
+    st = createNullCacheStrategy()
+  }
+
+  return st
+}
+
+// 指定したディレクトリのキャッシュが有効なときはそれを使用し、
+// キャッシュがないときはビルドを行う
+@Field def build_if_needed = { String archive_name, File cache_dir, String hash, Closure do_build ->
+  def cache = get_cache_strategy()
+
+  def param = createCacheParam(cache_dir, archive_name, hash)
+
+  // fetchしたデータの正当性は確認しない
+  // （正当性を確認して、内容が不十分なときはdo_buildでビルドし直すような設計も考えられるが、
+  // do_buildの実装側が面倒になるので、そこまではしない）
+  if(cache.fetch(param)) {
+    return
+  }
+
+  do_build()
+  def result = cache.store(param)
+  if(result == false) {
+    logger.warn("Failed to store cache")
+  }
+}
+
 task build_protobuf {
   doLast {
+    println "Build Protocol Buffer"
     def build_dir = file("../ext/protobuf/${build_dir_name}").getAbsolutePath()
 
-    execute("mkdir -p ${build_dir}")
-    execute("./autogen.sh", "${build_dir}/..")
-    execute("../configure --disable-shared --prefix=${build_dir}/install",
-            build_dir,
-            ccache_envvars
-            )
-    execute("make", build_dir)
-    execute("make install", build_dir)
+    build_if_needed(
+      "protobuf",
+      file("${build_dir}/install"),
+      get_hash("protobuf"),
+      {
+        execute("mkdir -p ${build_dir}")
+        execute("./autogen.sh", "${build_dir}/..")
+        execute("../configure --disable-shared --prefix=${build_dir}/install",
+                build_dir,
+                ccache_envvars
+                )
+        execute("make", build_dir)
+        execute("make install", build_dir)
+      })
   }
 }
 build_protobuf.mustRunAfter update_submodules
 
 task build_rtmidi {
   doLast {
+    println "Build RtMidi"
     def build_dir = file("../ext/rtmidi/${build_dir_name}").getAbsolutePath()
 
-    execute("mkdir -p ${build_dir}")
-    execute("cmake -DCMAKE_INSTALL_PREFIX=${build_dir}/install -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-    execute("make -j", build_dir)
-    execute("make install", build_dir)
+    build_if_needed(
+      "rtmidi",
+      file("${build_dir}/install"),
+      get_hash("rtmidi"),
+      {
+        execute("mkdir -p ${build_dir}")
+        execute("cmake -DCMAKE_INSTALL_PREFIX=${build_dir}/install -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+        execute("make -j", build_dir)
+        execute("make install", build_dir)
+      })
   }
 }
 build_rtmidi.mustRunAfter update_submodules
 
 task build_portaudio {
   doLast {
+    println "Build PortAudio"
     def build_dir = file("../ext/portaudio/${build_dir_name}").getAbsolutePath()
 
-    execute("mkdir -p ${build_dir}")
-    execute("cmake -DCMAKE_INSTALL_PREFIX=${build_dir}/install -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-    execute("make -j", build_dir)
-    execute("make install", build_dir)
+    build_if_needed(
+      "portaudio",
+      file("${build_dir}/install"),
+      get_hash("portaudio"),
+      {
+        execute("mkdir -p ${build_dir}")
+        execute("cmake -DCMAKE_INSTALL_PREFIX=${build_dir}/install -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+        execute("make -j", build_dir)
+        execute("make install", build_dir)
+      })
   }
 }
 build_portaudio.mustRunAfter update_submodules
@@ -157,51 +414,78 @@ build_portaudio.mustRunAfter update_submodules
 
 task build_vst3sdk {
   doLast {
+    println "Build VST3 SDK"
     def build_dir = file("../ext/vst3sdk/${build_dir_name}").getAbsolutePath()
 
-    execute("mkdir -p ${build_dir}")
-    // VST3SDKは、makeのinstallターゲットを用意しない
-    execute("cmake -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-    execute("make -j", build_dir)
+    build_if_needed(
+      "vst3sdk",
+      file(build_dir),
+      get_hash("vst3sdk"),
+      {
+        execute("mkdir -p ${build_dir}")
+        // VST3SDKは、makeのinstallターゲットを用意しない
+        execute(
+          " cmake -DCMAKE_BUILD_TYPE=${project.config} "
+          + " -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF "
+          + " -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF "
+          + " -DSMTG_ADD_VSTGUI=OFF "
+          + ".."
+          , build_dir, ccache_envvars)
+        execute("make -j", build_dir)
+      })
   }
 }
 build_vst3sdk.mustRunAfter update_submodules
 
 task build_wxwidgets {
   doLast {
+    println "Build wxWidgets"
     def build_dir = file("../ext/wxWidgets/${build_dir_name}").getAbsolutePath()
 
-    def debug_flags = ""
-    if(project.config == "Debug") {
-      debug_flags = "--enable-debug --enable-debug-info --enable-debug-gdb"
-    }
+    build_if_needed(
+      "wxwidgets",
+      file("${build_dir}/install"),
+      get_hash("wxWidgets"),
+      {
+        def debug_flags = ""
+        if(project.config == "Debug") {
+          debug_flags = "--enable-debug --enable-debug-info --enable-debug-gdb"
+        }
 
-    execute("./autogen.sh", "../ext/wxWidgets")
-    execute("mkdir -p ${build_dir}")
-    execute('../configure CXXFLAGS="-stdlib=libc++ -DHAVE_TYPE_TRAITS" OBJCXXFLAGS="-stdlib=libc++" ' +
-            'CPPFLAGS="-stdlib=libc++" LDFLAGS="-stdlib=libc++" ' +
-            '--with-macosx-version-min=10.7 --with-cocoa ' +
-            '--with-libjpeg=builtin --with-libpng=builtin --with-regex=builtin --with-libtiff=builtin ' +
-            '--with-zlib=builtin --with-expat=builtin ' +
-            '--enable-stl --enable-std_containers --enable-std_iostreams --enable-std_string ' +
-            "--disable-shared --enable-unicode ${debug_flags} --with-cxx=14 --prefix=${build_dir}/install",
-            build_dir,
-            ccache_envvars
-            )
-    execute("make", build_dir)
-    execute("make install", build_dir)
+        execute("./autogen.sh", "../ext/wxWidgets")
+        execute("mkdir -p ${build_dir}")
+        execute('../configure CXXFLAGS="-stdlib=libc++ -DHAVE_TYPE_TRAITS" OBJCXXFLAGS="-stdlib=libc++" ' +
+                'CPPFLAGS="-stdlib=libc++" LDFLAGS="-stdlib=libc++" ' +
+                '--with-macosx-version-min=10.7 --with-cocoa ' +
+                '--with-libjpeg=builtin --with-libpng=builtin --with-regex=builtin --with-libtiff=builtin ' +
+                '--with-zlib=builtin --with-expat=builtin ' +
+                '--enable-stl --enable-std_containers --enable-std_iostreams --enable-std_string ' +
+                "--disable-shared --enable-unicode ${debug_flags} --with-cxx=14 --prefix=${build_dir}/install",
+                build_dir,
+                ccache_envvars
+                )
+        execute("make", build_dir)
+        execute("make install", build_dir)
+      })
   }
 }
 build_wxwidgets.mustRunAfter update_submodules
 
 task build_fmtlib {
   doLast {
+    println "Build fmtlib"
     def build_dir = file("../ext/fmt/${build_dir_name}").getAbsolutePath()
 
-    execute("mkdir -p ${build_dir}")
-    execute("cmake -DCMAKE_INSTALL_PREFIX=${build_dir}/install -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-    execute("make -j", build_dir)
-    execute("make install", build_dir)
+    build_if_needed(
+      "fmtlib",
+      file("${build_dir}/install"),
+      get_hash("fmt"),
+      {
+        execute("mkdir -p ${build_dir}")
+        execute("cmake -DCMAKE_INSTALL_PREFIX=${build_dir}/install -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+        execute("make -j", build_dir)
+        execute("make install", build_dir)
+      })
   }
 }
 build_fmtlib.mustRunAfter update_submodules
@@ -213,7 +497,6 @@ task compile_schemas {
 
     execute("mkdir -p schema/cpp", "..")
     file("../schema").eachFileMatch(~/.*\.proto$/) {
-
       execute("${protoc} -Ischema --cpp_out=schema/cpp ${it.getName()}", "..")
     }
   }

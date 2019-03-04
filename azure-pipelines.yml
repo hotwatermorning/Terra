@@ -11,6 +11,11 @@ jobs:
   - script: |
       cd gradle
       ./gradlew build_all
+    env: {
+      AZURE_STORAGE_ACCOUNT: $(AZURE_STORAGE_ACCOUNT),
+      AZURE_STORAGE_KEY: $(AZURE_STORAGE_KEY),
+      AZURE_STORAGE_CONTAINER_NAME: $(AZURE_STORAGE_CONTAINER_NAME)
+    }
     displayName: build all
   - task: PublishBuildArtifacts@1
     inputs:

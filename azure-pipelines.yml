@@ -6,56 +6,8 @@ jobs:
     vmImage: 'macOS-10.13'
   timeoutInMinutes: 120
   steps:
-# ここで、各サブモジュールのビルド済みバイナリをDL
-# なければビルド
-# また、FORCE_BUILDが指定されているときは、DLしない
-# ------------------------------------------ 
-# 別の script では、ディレクトリ位置や環境変数のexportは保存されない（別のbashが起動される）
-# 環境変数を受け渡すには、先のscriptで
-# `echo '##vso[task.setvariable variable=<varname>]<value>'`
-# を実行する。
-# これによって、続くscriptでも環境変数にこの設定が含まれるようになり
-# $varname でその値を参照できるようになる
   - script: brew install libtool automake
     displayName: brew install
-  - script: |
-      cd gradle
-      ./gradlew update_submodules
-    displayName: update submodules
-  - script: |
-      echo "##vso[task.setvariable variable=WXWIDGETS_CACHE]wxwigets_cache_$(cd ./ext/wxWidgets/build_release && git rev-parse HEAD)"
-      echo "##vso[task.setvariable variable=VST3SDK_CACHE]vst3sdk_cache_$(cd ./ext/vst3sdk/build_release && git rev-parse HEAD)"
-      echo "##vso[task.setvariable variable=PROTOBUF_CACHE]protobuf_cache_$(cd ./ext/protobuf/build_release && git rev-parse HEAD)"
-      echo "##vso[task.setvariable variable=PORTAUDIO_CACHE]portaudio_cache_$(cd ./ext/portaudio/build_release && git rev-parse HEAD)"
-      echo "##vso[task.setvariable variable=FMTLIB_CACHE]fmtlib_cache_$(cd ./ext/fmt/build_release && git rev-parse HEAD)"
-      echo "##vso[task.setvariable variable=RTMIDI_CACHE]rtmidi_cache_$(cd ./ext/rtmidi/build_release && git rev-parse HEAD)"
-    displayName: collect hashes
-  - task: DownloadBuildArtifacts@0
-    inputs:
-      buildType: specific
-      project: "Terra"
-      pipeline: "Test-CI"
-      buildVersionToDownload: latest
-      artifactName: $WXWIDGETS_CACHE
-      downloadType: specific
-      downloadPath: ./ext/wxWidgets/build_release
-    condition: ne(variables['FORCE_REBUILD'], 'true')
-    continueOnError: true
-    displayName: download cache of wxwigets
-  # キャッシュがないときに限りビルドとアップロードを行う
-  - script: |
-      if [ ! -d "./ext/wxWidgets/build_release" ]; then
-        cd gradle
-        ./gradlew build_wxwidgets
-        echo "##vso[[task.setvariable variable=SHOULD_UPLOAD_WXWIDGETS]true"
-      fi
-    displayName: build wxWidgets
-  - task: PublishBuildArtifacts@1
-    inputs: 
-      PathtoPublish: "./ext/wxWidgets/build_release"
-      artifactName: $WXWIDGETS_CACHE
-    condition: eq(variables['SHOULD_UPLOAD_WXWIDGETS'], 'true')
-    displayName: publish wxWidgets
   - script: |
       cd gradle
       ./gradlew build_all
@@ -64,12 +16,4 @@ jobs:
     inputs:
       pathtoPublish: '$(System.DefaultWorkingDirectory)/build_release/Release'
       artifactName: terra_release_osx
-- job: deploy # 公開されたArtifactsをどこかに配置するためのjob. 公開するだけならこれは必要ない
-  steps:
-  - script: echo publish to github release.
-#  - task: DownloadBuildArtifacts@0
-#    displayName: "Download Artifacts"
-#    inputs:
-#      artifactName: Binary
-  dependsOn: build_osx
-  condition: succeeded()
+    displayName: publish

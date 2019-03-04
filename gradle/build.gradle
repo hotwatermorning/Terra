@@ -151,9 +151,6 @@ class ExecutionResult
   service.shutdown()
   service.awaitTermination(1, TimeUnit.MINUTES)
 
-  println "Text: ${text}"
-  println "ErrorText: ${error_text}"
-
   return new ExecutionResult(process.exitValue(), text, error_text)
 }
 

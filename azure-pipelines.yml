@@ -10,7 +10,7 @@ jobs:
     displayName: brew install
   - script: |
       cd gradle
-      ./gradlew build_all
+      ./gradlew build_all -Pconfig=Release
     env:
       AZURE_STORAGE_ACCOUNT: $(azure.storage.account)
       AZURE_STORAGE_KEY: $(azure.storage.key)

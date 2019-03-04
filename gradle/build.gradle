@@ -179,14 +179,15 @@ task update_submodules {
   return f.mkdirs()
 }
 
-@Field def createCacheParam = { File cache_dir, String archive_name, String hash ->
+@Field def createCacheParam = { File cache_dir, String archive_name, String build_config, String hash ->
   def getOsName = { return isWindows() ? "win" : "mac" }
   return [
     getOsName: getOsName,
     cache_dir: cache_dir,
     archive_name: archive_name,
+    build_config: build_config,
     hash: hash,
-    getArchiveFileName: { return "${archive_name}_${getOsName()}_${hash}.tar.gz" },
+    getArchiveFileName: { return "${archive_name}_${getOsName()}_${build_config}_${hash}.tar.gz" },
   ]
 }
 
@@ -334,7 +335,7 @@ task update_submodules {
 @Field def build_if_needed = { String archive_name, File cache_dir, String hash, Closure do_build ->
   def cache = get_cache_strategy()
 
-  def param = createCacheParam(cache_dir, archive_name, hash)
+  def param = createCacheParam(cache_dir, archive_name, project.config, hash)
 
   // fetchしたデータの正当性は確認しない
   // （正当性を確認して、内容が不十分なときはdo_buildでビルドし直すような設計も考えられるが、

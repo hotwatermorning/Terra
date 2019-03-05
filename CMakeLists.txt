@@ -53,7 +53,7 @@ else()
 endif()
 
 find_program(WX_CONFIG "wx-config" HINTS "./ext/wxWidgets/${BUILD_DIR_NAME}/install/bin" NO_DEFAULT_PATH)
-get_filename_component(WX_CONFIG_PREFIX "./ext/wxWidgets/${BUILD_DIR_NAME}/install", ABSOLUTE)
+get_filename_component(WX_CONFIG_PREFIX "./ext/wxWidgets/${BUILD_DIR_NAME}/install" ABSOLUTE)
 
 message("WX_CONFIG_PATH: ${WX_CONFIG}")
 

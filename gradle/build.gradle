@@ -240,9 +240,9 @@ task update_submodules {
   }
 
   if(execute_may_fail("bash -c \"which az\"").failed()) { return null }
-  if(getAzureStorageAccount().toString() == ""
-     || getAzureStorageKey().toString() == ""
-     || getAzureStorageContainerName().toString() == ""
+  if(getAzureStorageAccount()?.trim() == false
+     || getAzureStorageKey()?.trim() == false
+     || getAzureStorageContainerName()?.trim() == false
    )
    { return null }
 

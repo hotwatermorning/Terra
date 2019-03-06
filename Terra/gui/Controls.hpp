@@ -13,6 +13,10 @@ public:
     ~IRenderableWindowBase()
     {}
     
+    //! DC の原点を、親Windowに対するこのWindowの位置に変換してから描画。
+    //! 描画完了後、原点を最初の状態に戻す
+    virtual
+    void SetOriginAndRender(wxDC &dc) = 0;
     void Render(wxDC &dc);
     
 protected:
@@ -40,6 +44,15 @@ public:
                 Render(dc);
             }
         });
+    }
+    
+    void SetOriginAndRender(wxDC &dc) override
+    {
+        auto saved_pos = dc.GetLogicalOrigin();
+        auto pos = saved_pos - this->GetPosition();
+        dc.SetLogicalOrigin(pos.x, pos.y);
+        this->Render(dc);
+        dc.SetLogicalOrigin(saved_pos.x, saved_pos.y);
     }
     
     void UseDefaultPaintMethod(bool flag) { use_default_paint_method_ = flag; }

@@ -14,22 +14,21 @@ def ensure_property(def obj, String keyname, List candidates, Integer default_va
   assert(candidates.contains(obj.getProperty(keyname)))
 }
 
-ext {
-  getenv = { String key -> return java.lang.System.getenv()[key] }
-  isWindows = { return System.properties['os.name'].toLowerCase().startsWith("windows") }
-}
-
 // Property about build configuration
 ensure_property(project, "config", ["Debug", "Release"])
 // Property about ccache.
 // (note: ccache is not used if not installed even if this property is true.)
 ensure_property(project, "use_ccache", ["true", "false"])
+ensure_property(project, "force_rebuild", ["false", "true"])
 
 ext {
+  getenv = { String key -> return java.lang.System.getenv()[key] }
+  isWindows = { return System.properties['os.name'].toLowerCase().startsWith("windows") }
   build_dir_name = "build_${project.config.toLowerCase()}"
   has_ccache = (project.use_ccache == "true" ? "which ccache".execute().waitFor() == 0 : false)
   ccache_path = (has_ccache ? "which ccache".execute().text.trim() : "")
   ccache_envvars = (has_ccache ? [CC: "${ccache_path} clang", CXX: "${ccache_path} clang++"] : [:])
+  should_force_rebuild = (project.force_rebuild == "true")
 }
 
 // 渡された文字列を空白で区切って、単語のリストとして返す。
@@ -157,7 +156,7 @@ class ExecutionResult
 //! similar to execute_may_fail but this function fails if the command finished with an exit value of non zero.
 @Field def execute = { String params, def working_dir = ".", Map env_vars = [:] ->
   def result = execute_may_fail(params, working_dir, env_vars)
-  assert (result.exitValue() == 0), "unexpected exit value ${result.exitValue()}"
+  assert (result.exitValue() == 0), "undesirable exit value ${result.exitValue()}"
   return result
 }
 
@@ -184,7 +183,11 @@ task update_submodules {
     archive_name: archive_name,
     build_config: build_config,
     hash: hash,
-    getArchiveFileName: { return "${archive_name}_${getOsName()}_${build_config}_${hash}.tar.gz" },
+    getArchiveFileName: {
+      def name = "${archive_name}_${getOsName()}_${build_config}_${hash}.tar.gz"
+      assert(name.contains(" ") == false)
+      return name
+    }
   ]
 }
 
@@ -278,9 +281,7 @@ task update_submodules {
       }
 
       // remove downloaded archive
-      execute_may_fail(
-        "rm -rf ${param.getArchiveFileName()}"
-        , param.cache_dir)
+      execute("rm ${param.getArchiveFileName()}", param.cache_dir)
 
       return true
     },
@@ -297,6 +298,8 @@ task update_submodules {
         + " --name ${param.getArchiveFileName()} "
         + " --file ${param.getArchiveFileName()} "
         , param.cache_dir)
+
+      execute("rm ${param.getArchiveFileName()}", param.cache_dir)
 
       if(result.failed()) {
         logger.warn("failed to upload cache")
@@ -315,13 +318,14 @@ task update_submodules {
 }
 
 @Field def get_cache_strategy = {
-  def st = null
-  if(getenv("FORCE_REBUILD") != "true") {
-    st = createAzureCacheStrategy()
+  def st = createAzureCacheStrategy()
+  if(st) {
+    println "Use AzureCacheStrategy"
   }
 
   if(st == null) {
     st = createNullCacheStrategy()
+    println "Use NullCacheStrategy"
   }
 
   return st
@@ -337,7 +341,7 @@ task update_submodules {
   // fetchしたデータの正当性は確認しない
   // （正当性を確認して、内容が不十分なときはdo_buildでビルドし直すような設計も考えられるが、
   // do_buildの実装側が面倒になるので、そこまではしない）
-  if(cache.fetch(param)) {
+  if(should_force_rebuild == false && cache.fetch(param)) {
     return
   }
 

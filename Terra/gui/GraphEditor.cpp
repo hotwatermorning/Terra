@@ -16,16 +16,18 @@
 NS_HWM_BEGIN
 
 BrushPenSet bps_audio_pin_ = {
-    { HSVToColour(0.2, 0.6, 0.7), HSVToColour(0.2, 0.6, 0.8) },
-    { HSVToColour(0.2, 0.6, 0.95), HSVToColour(0.2, 0.6, 1.0) },
-    { HSVToColour(0.2, 0.6, 0.9), HSVToColour(0.2, 0.6, 0.95)}
+    { HSVToColour(0.2, 0.6, 0.7), HSVToColour(0.2, 0.6, 0.6) },
+    { HSVToColour(0.2, 0.6, 0.95), HSVToColour(0.2, 0.6, 0.85) },
+    { HSVToColour(0.2, 0.6, 0.9), HSVToColour(0.2, 0.6, 0.8)}
 };
 
 BrushPenSet bps_midi_pin_ = {
-    { HSVToColour(0.5, 0.6, 0.7), HSVToColour(0.5, 0.6, 0.8) },
-    { HSVToColour(0.5, 0.6, 0.95), HSVToColour(0.5, 0.6, 1.0) },
-    { HSVToColour(0.5, 0.6, 0.9), HSVToColour(0.5, 0.6, 0.95)}
+    { HSVToColour(0.5, 0.6, 0.7), HSVToColour(0.5, 0.6, 0.6) },
+    { HSVToColour(0.5, 0.6, 0.95), HSVToColour(0.5, 0.6, 0.85) },
+    { HSVToColour(0.5, 0.6, 0.9), HSVToColour(0.5, 0.6, 0.8)}
 };
+
+BrushPen const kPinShadow = { HSVToColour(0.0, 0.0, 0.0, 0.5) };
 
 wxPen const kAudioLine = wxPen(HSVToColour(0.2, 0.8, 1.0, 0.7), 2, wxPENSTYLE_SOLID);
 wxPen const kMidiLine = wxPen(HSVToColour(0.5, 0.8, 1.0, 0.7), 2, wxPENSTYLE_SOLID);
@@ -43,22 +45,9 @@ wxColour const kGraphBackground(HSVToColour(0.0, 0.0, 0.1));
 wxSize const kDefaultNodeSize = { 200, 40 };
 
 wxSize const kEditorOpenButtonSize = { 14, 14 };
-wxSize const kLabelSize = { 150, 20 };
 Int32 kNodeAlignmentSize = 10;
-
-bool RenderChild(wxWindow *child, wxDC &dc)
-{
-    if(auto p = dynamic_cast<IRenderableWindowBase *>(child)) {
-        auto saved_pos = dc.GetLogicalOrigin();
-        auto pos = saved_pos - child->GetPosition();
-        dc.SetLogicalOrigin(pos.x, pos.y);
-        p->Render(dc);
-        dc.SetLogicalOrigin(saved_pos.x, saved_pos.y);
-        return true;
-    } else {
-        return false;
-    }
-}
+int const kPinRadius = 6;
+wxSize const kLabelSize = { kDefaultNodeSize.GetWidth(), kDefaultNodeSize.GetHeight() - (kPinRadius * 4) };
 
 class NodeComponent
 :   public IRenderableWindow<wxPanel>
@@ -136,13 +125,13 @@ public:
         lbl_plugin_name_ = new Label(this);
         lbl_plugin_name_->UseDefaultPaintMethod(false);
         lbl_plugin_name_->SetText(node->GetProcessor()->GetName());
-        lbl_plugin_name_->SetAlignment(wxALIGN_CENTRE_HORIZONTAL);
+        lbl_plugin_name_->SetAlignment(wxALIGN_CENTRE);
         lbl_plugin_name_->SetMinSize(kLabelSize);
         
         auto vbox = new wxBoxSizer(wxVERTICAL);
         auto hbox = new wxBoxSizer(wxHORIZONTAL);
         hbox->AddStretchSpacer();
-        hbox->Add(1, btn_open_editor_->GetSize().y);
+        hbox->Add(1, kPinRadius * 2);
         hbox->Add(btn_open_editor_, wxSizerFlags(0));
         vbox->Add(hbox, wxSizerFlags(0).Expand());
         vbox->Add(lbl_plugin_name_, wxSizerFlags(0).Expand());
@@ -307,6 +296,11 @@ public:
         auto hover_pin = GetPin(pt);
 
         auto draw_pin = [&, this](auto pin, auto &brush_pen_set) {
+            auto const center = GetPinCenter(pin);
+            
+            kPinShadow.ApplyTo(dc);
+            dc.DrawCircle(center + wxPoint(1, 1), kPinRadius - 1);
+            
             if(pin == hover_pin) {
                 brush_pen_set.hover_.ApplyTo(dc);
             } else if(pin == selected_pin_) {
@@ -315,8 +309,8 @@ public:
                 brush_pen_set.normal_.ApplyTo(dc);
             }
             
-            auto center = GetPinCenter(pin);
-            dc.DrawCircle(center, kPinSize);
+            
+            dc.DrawCircle(center, kPinRadius-1);
         };
         
         for(int i = 0; i < num_ai; ++i) { draw_pin(Pin::MakeAudioInput(i), bps_audio_pin_); }
@@ -325,7 +319,9 @@ public:
         for(int i = 0; i < num_mo; ++i) { draw_pin(Pin::MakeMidiOutput(i), bps_midi_pin_); }
         
         for(auto child: GetChildren()) {
-            RenderChild(child, dc);
+            if(auto p = dynamic_cast<IRenderableWindowBase *>(child)) {
+                p->SetOriginAndRender(dc);
+            }
         }
     }
     
@@ -395,8 +391,6 @@ public:
         Refresh();
     }
     
-    int const kPinSize = 6;
-    
     // ptは、ウィンドウ相対座標。
     // 見つからないときはnulloptが返る。
     std::optional<Pin> GetPin(wxPoint pt) const
@@ -413,8 +407,8 @@ public:
             for(int i = 0; i < num; ++i) {
                 Pin pin { type, dir, i };
                 auto center = GetPinCenter(pin);
-                auto rc = wxRect(center.x - kPinSize, center.y - kPinSize,
-                                 kPinSize * 2, kPinSize * 2);
+                auto rc = wxRect(center.x - kPinRadius, center.y - kPinRadius,
+                                 kPinRadius * 2, kPinRadius * 2);
                 if(rc.Contains(pt)) {
                     return pin;
                 }
@@ -454,7 +448,7 @@ public:
         }
         
         return wxPoint(width_audio_pin * (index + 0.5),
-                       (pin.dir_ == BusDirection::kInputSide ? kPinSize : rect.GetHeight() - kPinSize)
+                       (pin.dir_ == BusDirection::kInputSide ? kPinRadius : rect.GetHeight() - kPinRadius)
                        );
     }
     
@@ -1056,9 +1050,9 @@ private:
         memory_dc.Clear();
         
         for(auto &nc: node_components_) {
-            RenderChild(nc.get(), memory_dc);
+            nc->SetOriginAndRender(memory_dc);
         }
-        
+
         PaintOverChildren(memory_dc);
         Refresh();
     }

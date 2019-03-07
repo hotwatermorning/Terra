@@ -111,7 +111,7 @@ void ImageButton::doRender(wxDC &dc)
 //------------------------------------------------------------------------------------------------------
 
 Label::Label(wxWindow *parent)
-:   IRenderableWindow<>(parent)
+:   IRenderableWindow<>(parent, wxID_ANY)
 {    
     // treat mouse event for this window as one for the parent event.
     auto mouse_callback = [this](wxMouseEvent &ev) {

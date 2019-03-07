@@ -20,6 +20,7 @@
 #include "./UnitData.hpp"
 #include "./GraphEditor.hpp"
 #include "../resource/ResourceHelper.hpp"
+#include "./PianoRoll.hpp"
 
 NS_HWM_BEGIN
 
@@ -33,6 +34,7 @@ enum
     ID_File_Open,
     ID_File_Save,
     ID_File_SaveAs,
+    ID_View_ShowPianoRoll,
 };
 
 class TransportPanel
@@ -321,8 +323,6 @@ private:
     wxColor col_bg_;
 };
 
-Sequence MakeSequence(std::vector<Int8> pitches);
-
 class MyPanel
 :   public wxPanel
 ,   public SingleInstance<MyPanel>
@@ -341,10 +341,14 @@ public:
         graph_panel_->Show();
         
         keyboard_ = CreateVirtualKeyboard(this);
+        pianoroll_ = CreatePianoRollWindow(this);
+        pianoroll_->SetSize(size);
+        pianoroll_->Hide();
   
         auto vbox = new wxBoxSizer(wxVERTICAL);
         vbox->Add(header_panel_, wxSizerFlags(0).Expand());
         vbox->Add(graph_panel_, wxSizerFlags(1).Expand());
+        vbox->Add(pianoroll_, wxSizerFlags(1).Expand());
         vbox->Add(keyboard_, wxSizerFlags(0).Expand());
         
         SetSizer(vbox);
@@ -352,23 +356,20 @@ public:
         SetSize(size);
         graph_panel_->RearrangeNodes();
         
-        Bind(wxEVT_KEY_DOWN, [this](auto &ev) { keyboard_->HandleWindowEvent(ev); });
-        Bind(wxEVT_KEY_UP, [this](auto &ev) { keyboard_->HandleWindowEvent(ev); });
+        Bind(wxEVT_KEY_DOWN, [this](auto &ev) {
+            hwm::dout << L"Key Down: {}, {}"_format(ev.GetUnicodeKey(), ev.GetRawKeyCode()) << std::endl;
+            ev.Skip();
+            keyboard_->HandleWindowEvent(ev);
+        });
+        Bind(wxEVT_KEY_UP, [this](auto &ev) {
+            hwm::dout << L"Key Up: {}, {}"_format(ev.GetUnicodeKey(), ev.GetRawKeyCode()) << std::endl;
+            ev.Skip();
+            keyboard_->HandleWindowEvent(ev);
+        });
+        
+        IMainFrame::GetInstance()->Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { SwitchPianoRoll(ev); }, ID_View_ShowPianoRoll);
         
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(ev); });
-        
-        timer_.Bind(wxEVT_TIMER, [this, i = 0](auto &ev) mutable {
-            auto pj = Project::GetCurrentProject();
-            if(!pj) { return; }
-//            if(i % 2 == 0) {
-//                pj->GetSequence() = MakeSequence({48, 50, 51, 55, 58});
-//            } else {
-//                pj->GetSequence() = MakeSequence({48 + 24, 50 + 24, 51 + 24, 55 + 24, 58 + 24});
-//            }
-//            pj->CacheSequence();
-            ++i;
-        });
-        //timer_.Start(16000);
     }
     
     ~MyPanel()
@@ -398,9 +399,27 @@ private:
         schema::PluginDescription desc_;
     };
     
+    void SwitchPianoRoll(wxCommandEvent &ev)
+    {
+        if(ev.IsChecked()) {
+            graph_panel_->Hide();
+            pianoroll_->Show();
+            keyboard_->Disable();
+            keyboard_->Hide();
+        } else {
+            graph_panel_->Show();
+            pianoroll_->Hide();
+            keyboard_->Enable();
+            keyboard_->Show();
+        }
+        
+        Layout();
+    }
+    
     wxPanel         *keyboard_ = nullptr;
     wxPanel         *header_panel_ = nullptr;
     GraphEditor     *graph_panel_ = nullptr;
+    wxWindow        *pianoroll_ = nullptr;
     
     wxTimer timer_;
 };
@@ -455,6 +474,11 @@ MainFrame::MainFrame()
     wxMenu *menuEdit = new wxMenu;
     menuEdit->Append(ID_Setting, "&Setting\tCTRL-,", "Open Setting Dialog");
     
+    wxMenu *menuView = new wxMenu;
+    menuView->AppendCheckItem(ID_View_ShowPianoRoll, "Show &Piano Roll\tCTRL-P", "Show Piano Roll");
+    menuView->Append(ID_View_ShowPianoRoll, "Show &Piano Roll\tCTRL-P", "Show Piano Roll");
+    menuView->Append(ID_View_ShowPianoRoll, "Show &Piano Roll\tCTRL-P", "Show Piano Roll");
+    
     wxMenu *menuPlay = new wxMenu;
     menuPlay->Append(ID_Play, "&Play\tSPACE", "Start playback", wxITEM_CHECK);
 
@@ -464,6 +488,7 @@ MainFrame::MainFrame()
     wxMenuBar *menuBar = new wxMenuBar;
     menuBar->Append( menuFile, "&File" );
     menuBar->Append( menuEdit, "&Edit" );
+    menuBar->Append( menuView, "&View" );
     menuBar->Append( menuPlay, "&Play" );
     menuBar->Append( menuHelp, "&Help" );
     SetMenuBar( menuBar );

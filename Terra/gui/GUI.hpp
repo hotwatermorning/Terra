@@ -5,6 +5,14 @@
 
 NS_HWM_BEGIN
 
-wxFrame * CreateMainFrame();
+class IMainFrame
+:   public wxFrame
+,   public SingleInstance<IMainFrame>
+{
+protected:
+    IMainFrame();
+};
+
+IMainFrame * CreateMainFrame();
 
 NS_HWM_END

@@ -23,6 +23,18 @@
 
 NS_HWM_BEGIN
 
+enum
+{
+    ID_Play = 1,
+    ID_RescanPlugin,
+    ID_ForceRescanPlugin,
+    ID_Setting,
+    ID_File_New,
+    ID_File_Open,
+    ID_File_Save,
+    ID_File_SaveAs,
+};
+
 class TransportPanel
 :   public wxPanel
 ,   MyApp::ChangeProjectListener
@@ -395,14 +407,17 @@ private:
 
 class MyPanel;
 
-class MyFrame
-:   public wxFrame
-,   SingleInstance<MyFrame>
+IMainFrame::IMainFrame()
+:   wxFrame(nullptr, wxID_ANY, "", wxDefaultPosition, wxDefaultSize)
+{}
+
+class MainFrame
+:   public IMainFrame
 ,   MyApp::ChangeProjectListener
 {
 public:
-    MyFrame();
-    ~MyFrame();
+    MainFrame();
+    ~MainFrame();
 private:
     bool Destroy() override;
     void OnExit();
@@ -421,21 +436,11 @@ private:
     ScopedListenerRegister<MyApp::ChangeProjectListener> slr_change_project_;
 };
 
-enum
+MainFrame::MainFrame()
+:   IMainFrame()
 {
-    ID_Play = 1,
-    ID_RescanPlugin,
-    ID_ForceRescanPlugin,
-    ID_Setting,
-    ID_File_New,
-    ID_File_Open,
-    ID_File_Save,
-    ID_File_SaveAs,
-};
-
-MyFrame::MyFrame()
-: wxFrame(nullptr, wxID_ANY, "Untitled", wxDefaultPosition, wxDefaultSize)
-{
+    SetTitle("Untitled");
+    
     wxMenu *menuFile = new wxMenu;
     menuFile->Append(ID_File_New, "&New File\tCTRL-N", "New File");
     menuFile->Append(ID_File_Open, "&Open...\tCTRL-O", "Open File");
@@ -485,11 +490,11 @@ MyFrame::MyFrame()
     slr_change_project_.reset(MyApp::GetInstance()->GetChangeProjectListeners(), this);
 }
 
-MyFrame::~MyFrame()
+MainFrame::~MainFrame()
 {
 }
 
-bool MyFrame::Destroy()
+bool MainFrame::Destroy()
 {
     MyApp::GetInstance()->BeforeExit();
     RemoveChild(my_panel_);
@@ -497,7 +502,7 @@ bool MyFrame::Destroy()
     return wxFrame::Destroy();
 }
 
-void MyFrame::OnExit()
+void MainFrame::OnExit()
 {
     auto app = MyApp::GetInstance();
     auto saved = app->OnFileSave(false, true);
@@ -506,23 +511,23 @@ void MyFrame::OnExit()
     Close(false);
 }
 
-void MyFrame::OnAbout(wxCommandEvent& event)
+void MainFrame::OnAbout(wxCommandEvent& event)
 {
     wxMessageBox(kAppName,
                  "created by hotwatermorning@gmail.com", wxOK | wxICON_INFORMATION );
 }
 
-void MyFrame::OnPlay(wxCommandEvent &ev)
+void MainFrame::OnPlay(wxCommandEvent &ev)
 {
     auto &tp = Project::GetCurrentProject()->GetTransporter();
     tp.SetPlaying(ev.IsChecked());
 }
 
-void MyFrame::OnTimer()
+void MainFrame::OnTimer()
 {
 }
 
-void MyFrame::OnBeforeSaveProject(Project *pj, schema::Project &schema)
+void MainFrame::OnBeforeSaveProject(Project *pj, schema::Project &schema)
 {
     auto schema_rect = schema.mutable_frame_rect();
     auto rect = GetScreenRect();
@@ -538,7 +543,7 @@ void MyFrame::OnBeforeSaveProject(Project *pj, schema::Project &schema)
 
 UInt32 GetMenuBarHeight();
 
-void MyFrame::OnAfterLoadProject(Project *pj, schema::Project const &schema)
+void MainFrame::OnAfterLoadProject(Project *pj, schema::Project const &schema)
 {
     wxRect rc;
     if(schema.has_frame_rect()) {
@@ -576,9 +581,9 @@ void MyFrame::OnAfterLoadProject(Project *pj, schema::Project const &schema)
     SetSize(rc);
 }
 
-wxFrame * CreateMainFrame()
+IMainFrame * CreateMainFrame()
 {
-    return new MyFrame();
+    return new MainFrame();
 }
 
 NS_HWM_END

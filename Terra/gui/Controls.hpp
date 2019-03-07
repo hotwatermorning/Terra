@@ -33,11 +33,9 @@ class IRenderableWindow
 public:
     using WindowType::Bind;
     
-    template<class ParentWindowType>
-    IRenderableWindow(ParentWindowType *parent, wxWindowID id = wxID_ANY,
-                      wxPoint pos = wxDefaultPosition,
-                      wxSize size = wxDefaultSize)
-    :   WindowType(parent, id, pos, size)
+    template<class... Args>
+    IRenderableWindow(Args&&... args)
+    :   WindowType(std::forward<Args>(args)...)
     {
         Bind(wxEVT_PAINT, [this](auto &) {
             if(IsUsingDefaultPaintMethod()) {

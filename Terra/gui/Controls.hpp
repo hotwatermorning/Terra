@@ -33,7 +33,8 @@ class IRenderableWindow
 public:
     using WindowType::Bind;
     
-    IRenderableWindow(wxWindow *parent, wxWindowID id = wxID_ANY,
+    template<class ParentWindowType>
+    IRenderableWindow(ParentWindowType *parent, wxWindowID id = wxID_ANY,
                       wxPoint pos = wxDefaultPosition,
                       wxSize size = wxDefaultSize)
     :   WindowType(parent, id, pos, size)

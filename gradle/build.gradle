@@ -294,7 +294,7 @@ task update_submodules {
     }
   }
 
-  if(execute_may_fail("bash -c \"which az\"").failed()) { return null }
+  if(execute_may_fail("bash -c 'which az'").failed()) { return null }
   if(getAzureStorageAccount()?.trim() == false
      || getAzureStorageKey()?.trim() == false
      || getAzureStorageContainerName()?.trim() == false
@@ -414,9 +414,9 @@ task build_protobuf {
       file("${build_dir}/install"),
       get_hash("protobuf"),
       {
-        execute("mkdir -p ${build_dir}")
+        execute("mkdir -p '${build_dir}/install'")
         execute("./autogen.sh", "${build_dir}/..")
-        execute("../configure --disable-shared --prefix=${build_dir}/install",
+        execute("../configure --disable-shared --prefix \"${build_dir}/install\"",
                 build_dir,
                 ccache_envvars
                 )
@@ -437,8 +437,8 @@ task build_rtmidi {
       file("${build_dir}/install"),
       get_hash("rtmidi"),
       {
-        execute("mkdir -p ${build_dir}")
-        execute("cmake -DCMAKE_INSTALL_PREFIX=${build_dir}/install -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+        execute("mkdir -p '${build_dir}'")
+        execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
         execute("make -j", build_dir)
         execute("make install", build_dir)
       })
@@ -456,8 +456,8 @@ task build_portaudio {
       file("${build_dir}/install"),
       get_hash("portaudio"),
       {
-        execute("mkdir -p ${build_dir}")
-        execute("cmake -DCMAKE_INSTALL_PREFIX=${build_dir}/install -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+        execute("mkdir -p '${build_dir}'")
+        execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
         execute("make -j", build_dir)
         execute("make install", build_dir)
       })
@@ -476,7 +476,7 @@ task build_vst3sdk {
       file(build_dir),
       get_hash("vst3sdk"),
       {
-        execute("mkdir -p ${build_dir}")
+        execute("mkdir -p '${build_dir}'")
         // VST3SDKは、makeのinstallターゲットを用意しない
         execute(
           " cmake -DCMAKE_BUILD_TYPE=${project.config} "
@@ -507,14 +507,14 @@ task build_wxwidgets {
         }
 
         execute("./autogen.sh", "../ext/wxWidgets")
-        execute("mkdir -p ${build_dir}")
+        execute("mkdir -p '${build_dir}'")
         execute('../configure CXXFLAGS="-stdlib=libc++ -DHAVE_TYPE_TRAITS" OBJCXXFLAGS="-stdlib=libc++" ' +
                 'CPPFLAGS="-stdlib=libc++" LDFLAGS="-stdlib=libc++" ' +
                 '--with-macosx-version-min=10.7 --with-cocoa ' +
                 '--with-libjpeg=builtin --with-libpng=builtin --with-regex=builtin --with-libtiff=builtin ' +
                 '--with-zlib=builtin --with-expat=builtin ' +
                 '--enable-stl --enable-std_containers --enable-std_iostreams --enable-std_string ' +
-                "--disable-shared --enable-unicode ${debug_flags} --with-cxx=14 --prefix=${build_dir}/install",
+                "--disable-shared --enable-unicode ${debug_flags} --with-cxx=14 --prefix=\"${build_dir}/install\"",
                 build_dir,
                 ccache_envvars
                 )
@@ -535,8 +535,8 @@ task build_fmtlib {
       file("${build_dir}/install"),
       get_hash("fmt"),
       {
-        execute("mkdir -p ${build_dir}")
-        execute("cmake -DCMAKE_INSTALL_PREFIX=${build_dir}/install -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+        execute("mkdir -p '${build_dir}'")
+        execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
         execute("make -j", build_dir)
         execute("make install", build_dir)
       })
@@ -551,7 +551,7 @@ task compile_schemas {
 
     execute("mkdir -p schema/cpp", "..")
     file("../schema").eachFileMatch(~/.*\.proto$/) {
-      execute("${protoc} -Ischema --cpp_out=schema/cpp ${it.getName()}", "..")
+      execute("'${protoc}' -Ischema --cpp_out=schema/cpp '${it.getName()}'", "..")
     }
   }
 }
@@ -564,7 +564,7 @@ task build_submodules {
 task prepare_app {
   doLast {
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
-    execute("mkdir -p ${build_dir}")
+    execute("mkdir -p '${build_dir}'")
     execute("cmake -GXcode -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir)
   }
 }
@@ -584,7 +584,7 @@ build_app.mustRunAfter prepare_app
 def delete_build_dir(def target_dir) {
   file(target_dir).eachDir() {
     if(it.getName() == build_dir_name) {
-      println "dir path to delete: ${it.getAbsolutePath()}"
+      println "dir path to delete: '${it.getAbsolutePath()}'"
       it.deleteDir()
     }
   }

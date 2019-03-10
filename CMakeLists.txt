@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.6)
 
+option(USE_SYSTEM_WXWIDGETS OFF)
+
 ####################################################################
 # general setup
 ####################################################################
@@ -52,13 +54,20 @@ else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_NDEBUG")
 endif()
 
-find_program(WX_CONFIG "wx-config" HINTS "./ext/wxWidgets/${BUILD_DIR_NAME}/install/bin" NO_DEFAULT_PATH)
-get_filename_component(WX_CONFIG_PREFIX "./ext/wxWidgets/${BUILD_DIR_NAME}/install" ABSOLUTE)
-
-message("WX_CONFIG_PATH: ${WX_CONFIG}")
-
-execute_process(COMMAND "${WX_CONFIG}" "--prefix=\"${WX_CONFIG_PREFIX}\"" "--cxxflags" OUTPUT_VARIABLE WX_CXX_FLAGS)
-execute_process(COMMAND "${WX_CONFIG}" "--prefix=\"${WX_CONFIG_PREFIX}\"" "--libs base,core" OUTPUT_VARIABLE WX_LIB_FLAGS)
+find_program(WX_CONFIG "wx-config")
+if(WX_CONFIG AND USE_SYSTEM_WXWIDGETS)
+  message("Use system installed wxWidgets")
+  execute_process(COMMAND "${WX_CONFIG}" "--cxxflags" OUTPUT_VARIABLE WX_CXX_FLAGS)
+  execute_process(COMMAND "${WX_CONFIG}" "--libs base,core" OUTPUT_VARIABLE WX_LIB_FLAGS)
+else()
+  message("Use custom built wxWidgets")
+  get_filename_component(WX_CONFIG_PREFIX "./ext/wxWidgets/${BUILD_DIR_NAME}/install" ABSOLUTE)
+  message("WX_CONFIG_PREFIX: ${WX_CONFIG_PREFIX}")
+  set(WX_CONFIG "${WX_CONFIG_PREFIX}/bin/wx-config")
+  message("WX_CONFIG: ${WX_CONFIG}")
+  execute_process(COMMAND "${WX_CONFIG}" "--prefix=${WX_CONFIG_PREFIX}" "--cxxflags" OUTPUT_VARIABLE WX_CXX_FLAGS)
+  execute_process(COMMAND "${WX_CONFIG}" "--prefix=${WX_CONFIG_PREFIX}" "--libs base,core" OUTPUT_VARIABLE WX_LIB_FLAGS)
+endif()
 
 message("WX_CXX_FLAGS ${WX_CXX_FLAGS}")
 message("WX_LIB_FLAGS ${WX_LIB_FLAGS}")

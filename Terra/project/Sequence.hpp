@@ -21,7 +21,7 @@ struct Sequence
         Note(Tick pos,
              Tick length,
              UInt8 pitch,
-             UInt8 velocity,
+             UInt8 velocity = 64,
              UInt8 off_velocity = 0)
         :   pos_(pos)
         ,   length_(length)

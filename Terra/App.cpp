@@ -36,23 +36,6 @@ std::string GetPluginDescFileName() {
     return "plugin_list.bin";
 }
 
-Sequence MakeInitialSequence(String name, std::vector<Int8> pitches) {
-    auto create_note = [](int tick_pos, int tick_length, UInt8 pitch, UInt8 velocity = 64, UInt8 off_velocity = 0) {
-        return Sequence::Note { tick_pos, tick_length, pitch, velocity, off_velocity };
-    };
-    
-    std::vector<Sequence::Note> notes;
-    
-    for(int i = 0; i < 64; ++i) {
-        notes.push_back(create_note(i * 480, 480, pitches[i % pitches.size()]));
-    }
-    
-    assert(std::is_sorted(notes.begin(), notes.end(), [](auto const &lhs, auto const &rhs) {
-        return lhs.pos_ < rhs.pos_;
-    }));
-    return Sequence(L"Sequencer", notes);
-}
-
 struct MyApp::Impl
 {
     struct PluginListExporter
@@ -378,7 +361,41 @@ std::unique_ptr<Project> MyApp::CreateInitialProject()
     auto pj = std::make_unique<Project>();
     pj->AddSequence(L"Sequence");
     auto &seq = pj->GetSequence(0);
-    seq = MakeInitialSequence(L"Sequencer", {48, 50, 52, 55, 60});
+    seq = Sequence(L"Sequencer", {
+        { 0,   1920, 48 },
+        { 0,   1920, 55 },
+        { 0,    240, 62 },
+        { 0,    240, 64 },
+        { 0,    240, 67 },
+        { 0,    240, 72 },
+        { 720,  240, 62 },
+        { 720,  240, 64 },
+        { 720,  240, 67 },
+        { 720,  240, 72 },
+        { 720,  240, 62 },
+        { 720,  240, 64 },
+        { 720,  240, 67 },
+        { 720,  240, 72 },
+        { 1440, 240, 62 },
+        { 1440, 240, 64 },
+        { 1440, 240, 67 },
+        { 1440, 240, 72 },
+        //-----------------------------
+        { 1920 + 0,   1920, 48 },
+        { 1920 + 0,   1920, 58 },
+        { 1920 + 0,    240, 65 },
+        { 1920 + 0,    240, 69 },
+        { 1920 + 0,    240, 70 },
+        { 1920 + 0,    240, 74 },
+        { 1920 + 720,  240, 65 },
+        { 1920 + 720,  240, 69 },
+        { 1920 + 720,  240, 70 },
+        { 1920 + 720,  240, 74 },
+        { 1920 + 1200, 240, 65 },
+        { 1920 + 1440, 240, 74 },
+        { 1920 + 1680, 240, 72 },
+        { 1920 + 1680, 240, 67 },
+    });
     pj->GetTransporter().SetLoopRange(0, 4 * kSampleRate);
     pj->GetTransporter().SetLoopEnabled(true);
     

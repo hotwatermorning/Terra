@@ -175,10 +175,8 @@ namespace {
         }
         
         //! prepare sequence midi messages before calling of GraphProcessor::Process()
-        void PrepareEvents(TransportInfo const ti, IMusicalTimeService *ts, bool restart)
-        {
-            midi_buffer_.clear();
-            
+        void PrepareEvents(TransportInfo const ti, IMusicalTimeService *ts)
+        {            
             auto cache = cached_sequence_.Borrow();
             if(!cache) {
                 last_cache_token_ = BorrowableCachedSequence::kInvalidToken;
@@ -188,7 +186,7 @@ namespace {
             bool const is_new_cache = cache.GetToken() != last_cache_token_;
             last_cache_token_ = cache.GetToken();
             
-            if(is_new_cache || restart) {
+            if(is_new_cache) {
                 StopAllNotes();
                 
                 assert(std::is_sorted(cache->begin(), cache->end(), [](auto const &left, auto const &right) {
@@ -234,18 +232,32 @@ namespace {
             return midi_buffer_;
         }
         
+        // 送信済みノートに対するノートオフの送信と、キャッシュトークンのリセットを行う
+        void Reset() {
+            StopAllNotes();
+            last_cache_token_ = BorrowableCachedSequence::kInvalidToken;
+        }
+        
+        void OnAfterFrameProcess()
+        {
+            midi_buffer_.clear();
+        }
+        
+    private:
+        // ノートオフ送信の処理のみを行う。
         void StopAllNotes() {
             playing_notes_.Traverse([&](auto ch, auto pi, auto &x) {
                 auto note = x.load();
-                if(note) {
-                    ProcessInfo::MidiMessage msg;
-                    msg.offset_ = 0;
-                    msg.channel_ = ch;
-                    msg.ppq_pos_ = 0;
-                    SetNoteData(msg, false, pi, 0);
-                    midi_buffer_.push_back(msg);
-                    x.store(InternalPlayingNoteInfo());
-                }
+                if(!note) { return; }
+
+                ProcessInfo::MidiMessage msg;
+                msg.offset_ = 0;
+                msg.channel_ = ch;
+                msg.ppq_pos_ = 0;
+                SetNoteData(msg, false, pi, 0);
+                midi_buffer_.push_back(msg);
+
+                x.store(InternalPlayingNoteInfo());
             });
         }
         
@@ -292,6 +304,7 @@ struct Project::Impl
     PlayingNoteList requested_sample_notes_;
     PlayingNoteList playing_sample_notes_;
     SampleCount expected_next_pos_ = 0;
+    bool last_playing_ = false;
     std::unique_ptr<GraphProcessor> graph_;
     
     //! input from device
@@ -1142,24 +1155,32 @@ void Project::Process(SampleCount block_size, float const * const * input, float
         };
 
         bool const need_stop_all_sequence_notes
-        = (ti.playing_ == false)
+        = (pimpl_->last_playing_ && (ti.playing_ == false))
         || (ti.play_.begin_.sample_ != pimpl_->expected_next_pos_)
         ;
         
+        pimpl_->last_playing_ = ti.playing_;
         pimpl_->expected_next_pos_ = (ti.playing_ ? ti.play_.end_ : ti.play_.begin_).sample_;
         
         //hwm::dout << "#2 " << std::this_thread::get_id() << ": " << cache.get() << ", " << pimpl_->cached_sequence_ << std::endl;
-
-        if(ti.playing_) {
-            for(auto &seq_dev: pimpl_->sequence_devices_) {
-                seq_dev->PrepareEvents(ti, this, need_stop_all_sequence_notes);
-                auto entry = pimpl_->midi_processors_.GetEntryOf(seq_dev.get());
-                assert(entry);
-                
-                auto ref = seq_dev->GetEvents();
-                entry->buffer_.clear();
-                std::copy(ref.begin(), ref.end(), std::back_inserter(entry->buffer_));
+        
+        for(auto &seq_dev: pimpl_->sequence_devices_) {
+            if(need_stop_all_sequence_notes) {
+                seq_dev->Reset();
             }
+            
+            if(ti.playing_) {
+                seq_dev->PrepareEvents(ti, this);
+            }
+            
+            auto entry = pimpl_->midi_processors_.GetEntryOf(seq_dev.get());
+            assert(entry);
+            
+            auto ref = seq_dev->GetEvents();
+            entry->buffer_.clear();
+            std::copy(ref.begin(), ref.end(), std::back_inserter(entry->buffer_));
+            
+            seq_dev->OnAfterFrameProcess();
         }
         
         pimpl_->requested_sample_notes_.Traverse([&](auto ch, auto pi, auto &x) {

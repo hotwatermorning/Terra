@@ -19,7 +19,8 @@ ensure_property(project, "config", ["Debug", "Release"])
 // Property about ccache.
 // (note: ccache is not used if not installed even if this property is true.)
 ensure_property(project, "use_ccache", ["true", "false"])
-ensure_property(project, "force_rebuild", ["false", "true"])
+// build libraries even if cache archives are available.
+ensure_property(project, "renew_cache", ["false", "true"])
 
 ext {
   getenv = { String key -> return java.lang.System.getenv()[key] }
@@ -28,7 +29,7 @@ ext {
   has_ccache = (project.use_ccache == "true" ? "which ccache".execute().waitFor() == 0 : false)
   ccache_path = (has_ccache ? "which ccache".execute().text.trim() : "")
   ccache_envvars = (has_ccache ? [CC: "${ccache_path} clang", CXX: "${ccache_path} clang++"] : [:])
-  should_force_rebuild = (project.force_rebuild == "true")
+  should_renew_cache = (project.renew_cache == "true")
 }
 
 // 渡された文字列を空白で区切って、単語のリストとして返す。
@@ -341,7 +342,7 @@ task update_submodules {
   // fetchしたデータの正当性は確認しない
   // （正当性を確認して、内容が不十分なときはdo_buildでビルドし直すような設計も考えられるが、
   // do_buildの実装側が面倒になるので、そこまではしない）
-  if(should_force_rebuild == false && cache.fetch(param)) {
+  if(should_renew_cache == false && cache.fetch(param)) {
     return
   }
 

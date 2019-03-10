@@ -33,39 +33,51 @@ ext {
 }
 
 // 渡された文字列を空白で区切って、単語のリストとして返す。
-// ただし、引用符(`'` or `"`)で囲まれた範囲は空白で区切らずに一つの単語とみなす。
+// ただし、引用符(`'` or `"`)で囲まれた範囲は空白で区切らずに、ひと続きの文字列とみなす
 // 引用符で囲まれた範囲内であっても、`\"`のようにエスケープされているものや、
 // 引用符の種類が異なるものは引用符の終わりとはみなさない。
-// ex) tokenize(/abc def "ghi \"jkl ' mno" pqr/) => [abc, def, ghi "jkl ' mno, pqr]
-def tokenize(String data)
+// ex) tokenize(/abc def "ghi \"jkl ' mno" pqr/) => [abc, def, "ghi \"jkl ' mno", pqr]
+// @return [
+//    tokens: <tokenized string list if succeeded, [] otherwise>,
+//    error: <error msg if something failed, "" otherwise.>
+// ]
+def tokenize_with_error(String src)
 {
+  logger.info("start tokenize: ${src}")
+
   def separator_char = ' '
   def escape_char = '\\'
-  def quote_chars = ['\'', '"']
+  def quote_chars = [/'/, /"/]
 
   String token = ""
   def output = []
-  def in_esc = false
+  def is_escaped = false
   def found_quote = ""
-  def in_string = { found_quote != "" }
+  def quoted = { found_quote != "" }
 
-  data.each {
-    if(in_string()) {
-      if(in_esc) {
-        in_esc = false
+  src.each { it ->
+    logger.debug("it: ${it}")
+
+    if(quoted()) {
+      if(is_escaped) {
+        is_escaped = false
+        logger.debug("\t--1")
       } else if(it == escape_char) {
-        in_esc = true
-        return
+        is_escaped = true
+        logger.debug("\t--2")
       } else if(it == found_quote) {
         found_quote = ""
+        logger.debug("\t--3")
         return
       }
     } else {
       if(quote_chars.contains(it)) {
         found_quote = it
+        logger.debug("\t--4")
         return
       } else if(it == separator_char) {
         if(token != "") {
+          logger.debug("\t--5")
           output << token
           token = ""
         }
@@ -76,12 +88,51 @@ def tokenize(String data)
     token += it
   }
 
-  assert(in_esc == false)
-  assert(in_string() == false)
+  if(quoted()) {
+    return [ tokens: [], error: "quotation is not closed." ]
+  }
 
   if(token != "") { output << token }
-  return output
+  return [ tokens: output, error: "" ]
 }
+
+def tokenize(String str)
+{
+  def result = tokenize_with_error(str)
+  assert(result.error == "")
+  return result.tokens
+}
+
+task test_tokenize {
+  def is_failed = false
+  def fail = { String msg ->
+    logging.error(msg)
+    is_failed = true
+  }
+  def test = { String str, List expected ->
+    def result = tokenize_with_error(str)
+    if(result.tokens != expected) {
+      fail("given:[${str}], expected:${expected}, but:" + result.tokens)
+    }
+  }
+  doLast {
+    test("", [])
+    test("abc", ["abc"])
+    test(/"abc"/, [/"abc"/])
+    test('abc def', ["abc", "def"])
+    test("abc'def", [])            // error: /'/ is not closed.
+    test('abc"def', [])            // error: /"/ is not closed.
+    test($/abc"def\"/$, [])        // error: /"/ is not closed because escaped.
+    test("abc'def'", ["abc'def'"])
+    test("abc 'def ghi'", ["abc", "'def ghi'"])
+    test("abc'def ghi'", ["abc'def ghi'"])
+    test($/abc 'def" ghi'/$, ["abc", $/'def" ghi'/$]) // /"/ can be placed and no need to be closed in /'/ pair
+    test($/abc "def\" 'ghi jkl'"/$, ["abc", $/"def\" 'ghi jkl'"/$])
+
+    if(is_failed) { assert false, "[FAILED]" } else { println "[PASS]" }
+  }
+}
+test_tokenize.description = """test tokenize() function"""
 
 class ExecutionResult
 {

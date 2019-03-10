@@ -290,7 +290,7 @@ task update_submodules {
       assert(file(param.cache_dir).exists())
 
       execute(
-        "tar -jcvf ${param.getArchiveFileName()} ./"
+        "tar -jcvhf ${param.getArchiveFileName()} ./"
         , param.cache_dir)
 
       def result = execute_may_fail(

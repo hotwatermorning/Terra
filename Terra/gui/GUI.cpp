@@ -340,10 +340,11 @@ public:
         graph_panel_ = CreateGraphEditorComponent(this, pj->GetGraph()).release();
         graph_panel_->Show();
         
-        keyboard_ = CreateVirtualKeyboard(this);
         pianoroll_ = CreatePianoRollWindow(this);
         pianoroll_->SetSize(size);
         pianoroll_->Hide();
+        
+        keyboard_ = CreateVirtualKeyboard(this, &pianoroll_view_status_, wxHORIZONTAL);
   
         auto vbox = new wxBoxSizer(wxVERTICAL);
         vbox->Add(header_panel_, wxSizerFlags(0).Expand());
@@ -416,10 +417,36 @@ private:
         Layout();
     }
     
-    wxPanel         *keyboard_ = nullptr;
+    class MainPanelPianoRollViewStatus
+    :   public IPianoRollViewStatus
+    {
+        Int32 GetScrollPosition(wxOrientation ort) const override
+        {
+            return 0;
+        }
+        
+        void SetScrollPosition(wxOrientation ort, Int32 pos) override
+        {}
+        
+        //! Get zoom factor.
+        /*! @return the zoom factor for the orientation.
+         *  a value greater then 1.0 means zoom-in, less then 1.0 means zoom-out.
+         *  the value always greater than 0.0.
+         */
+        float GetZoomFactor(wxOrientation ort) const override
+        {
+            return 1.0;
+        }
+        
+        void SetZoomFactor(wxOrientation ort, float factor, int zooming_pos) override
+        {}
+    };
+    
+    wxWindow        *keyboard_ = nullptr;
     wxPanel         *header_panel_ = nullptr;
     GraphEditor     *graph_panel_ = nullptr;
     wxWindow        *pianoroll_ = nullptr;
+    MainPanelPianoRollViewStatus pianoroll_view_status_;
     
     wxTimer timer_;
 };

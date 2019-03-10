@@ -14,6 +14,11 @@ public:
     , pen_(wxPen(pen))
     {}
     
+    BrushPen(wxColour brush, wxColour pen, int pen_width)
+    : brush_(wxBrush(brush))
+    , pen_(wxPen(pen, pen_width))
+    {}
+    
     wxBrush brush_;
     wxPen pen_;
     

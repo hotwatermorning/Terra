@@ -4,11 +4,19 @@
 
 #include "../App.hpp"
 #include "../resource/ResourceHelper.hpp"
+#include "./Util.hpp"
 
 NS_HWM_BEGIN
 
+IKeyboard::IKeyboard(wxWindow *parent, IPianoRollViewStatus *view_status)
+:   IPianoRollWindowComponent(parent, view_status)
+{}
+
+IKeyboard::~IKeyboard()
+{}
+
 class Keyboard
-:   public wxPanel
+:   public IKeyboard
 {
 public:
     using PlayingNoteList = std::array<bool, 128>;
@@ -19,9 +27,16 @@ public:
         return GetResourceAs<wxImage>({L"keyboard", filename});
     }
     
-    Keyboard(wxWindow *parent)
-    :   wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(0, kWhiteKeyHeight))
+    Keyboard(wxWindow *parent, IPianoRollViewStatus *view_status, wxOrientation ort)
+    :   IKeyboard(parent, view_status)
+    ,   ort_(ort)
     {
+        wxSize min_size(1, kWhiteKeyHeight);
+        if(ort_ == wxVERTICAL) { transpose(min_size); }
+        
+        SetSize(min_size);
+        SetMinSize(min_size);
+        
         playing_notes_.fill(false);
         
         img_white_          = LoadImage(L"pianokey_white.png");
@@ -36,8 +51,15 @@ public:
         img_black_.Rescale(kKeyWidth+1, kBlackKeyHeight);
         img_black_pushed_.Rescale(kKeyWidth+1, kBlackKeyHeight);
         
-        Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(); });
-        
+        if(ort_ == wxVERTICAL) {
+            for(wxImage *img: {
+                &img_white_, &img_white_pushed_, &img_white_pushed_contiguous_,
+                &img_black_, &img_black_pushed_
+            }) {
+                *img = img->Rotate90(false);
+            }
+        }
+                
         timer_.Bind(wxEVT_TIMER, [this](auto &ev) { OnTimer(); });
         timer_.Start(50);
         Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { OnLeftDown(ev); });
@@ -82,20 +104,32 @@ public:
     static
     bool IsBlackKey(Int32 note_number) { return IsFound(note_number % 12, kBlackKeyIndices); }
     
-    void OnPaint()
+    BrushPen const col_background { wxColour(0x26, 0x1E, 0x00) };
+    
+    
+    static
+    void transpose(wxPoint &pt) { std::swap(pt.x, pt.y); }
+    static
+    void transpose(wxSize &size) { std::swap(size.x, size.y); }
+    static
+    void transpose(wxRect &rc) { std::swap(rc.x, rc.y); std::swap(rc.width, rc.height); }
+    
+    template<class T>
+    [[nodiscard]]
+    static
+    T transposed(T const &v) { auto tmp = v; transpose(tmp); return tmp; }
+
+    void doRender(wxDC &dc) override
     {
-        wxPaintDC dc(this);
-        
         auto rect = GetClientRect();
         
-        dc.SetPen(wxPen(wxColor(0x26, 0x1E, 0x00)));
-        dc.SetBrush(wxBrush(wxColor(0x26, 0x1E, 0x00)));
+        col_background.ApplyTo(dc);
         dc.DrawRectangle(rect);
         
-        int const disp_half = rect.GetWidth() / 2;
+        int const disp_half = (ort_ == wxVERTICAL ? rect.GetHeight() : rect.GetWidth()) / 2;
         int const disp_shift = kFullKeysWidth / 2 - disp_half;
         
-        auto draw_key = [&](auto note_num, auto const &prop, auto const &img) {
+        auto draw_key = [&](auto note_num, auto const &prop, auto const &img, wxOrientation ort) {
             int const octave = note_num / 12;
             auto key_rect = prop.rect_;
             key_rect.Offset(octave * kKeyWidth * 7 - disp_shift, 0);
@@ -103,15 +137,8 @@ public:
             if(key_rect.GetLeft() >= rect.GetWidth()) { return; }
             if(key_rect.GetRight() < 0) { return; }
             
+            if(ort == wxVERTICAL) { transpose(key_rect); }
             dc.DrawBitmap(wxBitmap(img), key_rect.GetTopLeft());
-            
-            //            if(is_playing) {
-            //                col_pen = kKeyBorderColorPlaying;
-            //                col_brush = kPlayingNoteColor;
-            //                dc.SetPen(wxPen(col_pen));
-            //                dc.SetBrush(wxBrush(col_brush));
-            //            }
-            //            dc.DrawRoundedRectangle(key_rect, 2);
         };
         
         for(int i = 0; i < kNumKeys; ++i) {
@@ -129,7 +156,7 @@ public:
             ? img_white_pushed_contiguous_
             : (is_playing ? img_white_pushed_ : img_white_);
             
-            draw_key(i, kKeyPropertyList[i % 12], img);
+            draw_key(i, kKeyPropertyList[i % 12], img, ort_);
         }
         
         for(int i = 0; i < kNumKeys; ++i) {
@@ -138,19 +165,18 @@ public:
             bool const is_playing = playing_notes_[i];
             
             auto const &img = (is_playing ? img_black_pushed_ : img_black_);
-            draw_key(i, kKeyPropertyList[i % 12], img);
+            draw_key(i, kKeyPropertyList[i % 12], img, ort_);
         }
         
         auto font = wxFont(wxFontInfo(wxSize(8, 10)).Family(wxFONTFAMILY_DEFAULT));
         dc.SetFont(font);
         for(int i = 0; i < kNumKeys; i += 12) {
             int const octave = i / 12;
-            dc.DrawLabel(wxString::Format("C%d", i / 12 - 2),
-                         wxBitmap(),
-                         wxRect(wxPoint(octave * kKeyWidth * 7 - disp_shift, rect.GetHeight() * 0.8),
-                                wxSize(kKeyWidth, 10)),
-                         wxALIGN_CENTER
-                         );
+            auto rc = wxRect(wxPoint(octave * kKeyWidth * 7 - disp_shift, rect.GetHeight() * 0.8),
+                             wxSize(kKeyWidth, 10));
+            if(ort_ == wxVERTICAL) { transpose(rc); }
+            
+            dc.DrawLabel(wxString::Format("C%d", i / 12 - 2), wxBitmap(), rc, wxALIGN_CENTER);
         }
     }
     
@@ -174,6 +200,8 @@ public:
         if(ev.LeftIsDown() == false) { return; }
         
         auto pt = ev.GetPosition();
+        if(ort_ == wxVERTICAL) { transpose(pt); }
+        
         auto note = PointToNoteNumber(pt);
         
         if(last_dragging_note_ && last_dragging_note_ != note) {
@@ -232,6 +260,7 @@ public:
     
     std::optional<int> PointToNoteNumber(wxPoint pt)
     {
+        if(ort_ == wxVERTICAL) { transpose(pt); }
         auto rect = GetClientRect();
         int const disp_half = rect.GetWidth() / 2;
         int const disp_shift = kFullKeysWidth / 2 - disp_half;
@@ -321,7 +350,7 @@ private:
     }
     
 private:
-    //std::optional<wxPoint> _;
+    wxOrientation ort_;
     std::optional<int> last_dragging_note_;
     std::array<wxChar, 128> key_code_for_sample_note_;
     wxTimer timer_;
@@ -375,9 +404,9 @@ wxColor const Keyboard::kPlayingNoteColor { 0x99, 0xEA, 0xFF };
 std::vector<Int32> Keyboard::kWhiteKeyIndices = { 0, 2, 4, 5, 7, 9, 11 };
 std::vector<Int32> Keyboard::kBlackKeyIndices = { 1, 3, 6, 8, 10 };
 
-wxPanel * CreateVirtualKeyboard(wxWindow *parent)
+IKeyboard * CreateVirtualKeyboard(wxWindow *parent, IPianoRollViewStatus *view_status, wxOrientation ort)
 {
-    return new Keyboard(parent);
+    return new Keyboard(parent, view_status, ort);
 }
 
 NS_HWM_END

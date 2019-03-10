@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Controls.hpp"
+
 NS_HWM_BEGIN
 
 class IPianoRollViewStatus
@@ -11,6 +13,14 @@ public:
     static constexpr Int32 kDefaultKeyHeight = 9;
     static constexpr Int32 kDefaultPPQWidth = 48;
     static constexpr Int32 kNumKeys = 128;
+    
+    struct ZoomFactorRange {
+        double min_;
+        double max_;
+    };
+    
+    static ZoomFactorRange kZoomRangeHorz;
+    static ZoomFactorRange kZoomRangeVert;
     
     virtual
     ~IPianoRollViewStatus();
@@ -30,25 +40,35 @@ public:
     float GetZoomFactor(wxOrientation ort) const = 0;
     
     virtual
-    void SetZoomFactor(wxOrientation ort, float factor) = 0;
+    void SetZoomFactor(wxOrientation ort, float factor, int zooming_pos) = 0;
     
     struct NoteHeight
     {
-        float top_;
-        float bottom_;
+        float top_ = 0;
+        float bottom_ = 0;
+        
+        float GetHeight() const { return bottom_ - top_; }
     };
     //! get bottom y position for the note considering y-zoom factor and y-scroll position.
     NoteHeight GetNoteYRange(Int32 note_number) const;
     
     Int32 GetNoteNumber(float y_position);
-    float GetTotalNoteHeight() const;
+    
+    // 現在のズーム率での、全体の高さ
+    float GetTotalHeight() const;
+    // 現在のズーム率とソング長での、全体の幅
+    float GetTotalWidth() const;
+    
     Int32 GetTpqn() const;
     float GetNoteXPosition(Tick tick) const;
     Tick GetTick(float x_position) const;
+    
+    virtual
+    Tick GetTotalTick() const { return 0; }
 };
 
 class IPianoRollWindowComponent
-:   public wxWindow
+:   public IRenderableWindow<wxWindow>
 {
 protected:
     IPianoRollWindowComponent(wxWindow *parent, IPianoRollViewStatus *view_status,

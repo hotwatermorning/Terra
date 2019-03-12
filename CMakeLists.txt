@@ -50,6 +50,50 @@ endif()
 
 project("Terra")
 
+# set source directories
+set(SOURCE_DIR_LIST
+  "./Terra"
+  "./schema/cpp"
+  )
+
+# set target extension list
+set(TARGET_EXTENSION_LIST "*.c" "*.cc" "*.cpp" "*.h" "*.hpp")
+
+if(IsXcode)
+  list(APPEND TARGET_EXTENSION_LIST "*.mm")
+endif()
+
+# set the root directory of the source file tree in IDE
+set(BASE_DIR "./Terra")
+get_filename_component(BASE_DIR "${BASE_DIR}" ABSOLUTE)
+
+foreach(DIR ${SOURCE_DIR_LIST})
+  set(PATTERNS "")
+  foreach(EXT ${TARGET_EXTENSION_LIST})
+    list(APPEND PATTERNS "${DIR}/${EXT}")
+  endforeach()
+
+  file(GLOB_RECURSE FILES ${PATTERNS})
+
+  # Define SourceGroup reflecting filesystem hierarchy.
+  foreach(FILE_PATH ${FILES})
+    get_filename_component(ABS_PATH "${FILE_PATH}" ABSOLUTE)
+    get_filename_component(DIR "${ABS_PATH}" DIRECTORY)
+    file(RELATIVE_PATH GROUP_NAME "${BASE_DIR}" "${DIR}")
+    string(REPLACE "/" "\\" GROUP_NAME "${GROUP_NAME}")
+    source_group("${GROUP_NAME}" FILES "${ABS_PATH}")
+    list(APPEND SOURCE_FILES "${ABS_PATH}")
+  endforeach()
+endforeach()
+
+message("Files ${SOURCE_FILES}")
+
+if(IsMSVC)
+  add_executable(${PROJECT_NAME} WIN32 ${SOURCE_FILES})
+elseif(IsXcode)
+  add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCE_FILES})
+endif()
+
 get_filename_component(PREFIX_HEADER_PATH "./Terra/prefix.hpp" ABSOLUTE)
 if(IsMSVC)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /nologo /std:c++17 /MP /source-charset:utf-8 \
@@ -108,7 +152,7 @@ else()
   set(CMAKE_CXX_FLAGS "-DHAVE_TYPE_TRAITS=1 ${WX_CXX_FLAGS} ${CMAKE_CXX_FLAGS}")
   set(CMAKE_EXE_LINKER_FLAGS "${WX_LIB_FLAGS} ${CMAKE_EXE_LINKER_FLAGS}")
 
-  set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PREFIX_HEADER '${PREFIX_HEADER_PATH}')
+  set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PREFIX_HEADER "${PREFIX_HEADER_PATH}")
   set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PRECOMPILE_PREFIX_HEADER "YES")
 endif()
 
@@ -140,50 +184,6 @@ list(APPEND LINKLIBS
 
 if(JACK_LIB)
   list(APPEND LINKLIBS ${JACK_LIB})
-endif()
-
-# set source directories
-set(SOURCE_DIR_LIST
-  "./Terra"
-  "./schema/cpp"
-  )
-
-# set target extension list
-set(TARGET_EXTENSION_LIST "*.c" "*.cc" "*.cpp" "*.h" "*.hpp")
-
-if(IsXcode)
-  list(APPEND TARGET_EXTENSION_LIST "*.mm")
-endif()
-
-# set the root directory of the source file tree in IDE
-set(BASE_DIR "./Terra")
-get_filename_component(BASE_DIR "${BASE_DIR}" ABSOLUTE)
-
-foreach(DIR ${SOURCE_DIR_LIST})
-  set(PATTERNS "")
-  foreach(EXT ${TARGET_EXTENSION_LIST})
-    list(APPEND PATTERNS "${DIR}/${EXT}")
-  endforeach()
-
-  file(GLOB_RECURSE FILES ${PATTERNS})
-
-  # Define SourceGroup reflecting filesystem hierarchy.
-  foreach(FILE_PATH ${FILES})
-    get_filename_component(ABS_PATH "${FILE_PATH}" ABSOLUTE)
-    get_filename_component(DIR "${ABS_PATH}" DIRECTORY)
-    file(RELATIVE_PATH GROUP_NAME "${BASE_DIR}" "${DIR}")
-    string(REPLACE "/" "\\" GROUP_NAME "${GROUP_NAME}")
-    source_group("${GROUP_NAME}" FILES "${ABS_PATH}")
-    list(APPEND SOURCE_FILES "${ABS_PATH}")
-  endforeach()
-endforeach()
-
-message("Files ${SOURCE_FILES}")
-
-if(IsMSVC)
-  add_executable(${PROJECT_NAME} WIN32 ${SOURCE_FILES})
-elseif(IsXcode())
-  add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCE_FILES})
 endif()
 
 set(RESOURCE_DIR "./data")
@@ -222,7 +222,7 @@ include_directories(
   )
 
 if(IsXcode)
-  list(APPEND ${LINKLIBS}
+  list(APPEND LINKLIBS
     "-framework CoreServices"
     "-framework CoreFoundation"
     "-framework AudioUnit"

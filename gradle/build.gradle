@@ -42,8 +42,6 @@ ext {
   }
 }
 
-assert(isWindows() || project.platform == "x64")
-
 // 渡された文字列を空白で区切って、単語のリストとして返す。
 // ただし、引用符(`'` or `"`)で囲まれた範囲は空白で区切らずに、ひと続きの文字列とみなす
 // 引用符で囲まれた範囲内であっても、`\"`のようにエスケープされているものや、
@@ -337,13 +335,13 @@ task update_submodules {
         "tar xvf ${param.getArchiveFileName()}"
         , param.cache_dir)
 
+      // remove downloaded archive
+      execute("rm '${param.getArchiveFileName()}'", param.cache_dir)
+
       if(result.failed()) {
         logger.warn("failed extract ${param.getArchiveFileName()}")
         return false
       }
-
-      // remove downloaded archive
-      execute("rm ${param.getArchiveFileName()}", param.cache_dir)
 
       return true
     },
@@ -361,7 +359,7 @@ task update_submodules {
         + " --file ${param.getArchiveFileName()} "
         , param.cache_dir)
 
-      execute("rm ${param.getArchiveFileName()}", param.cache_dir)
+      execute("rm '${param.getArchiveFileName()}'", param.cache_dir)
 
       if(result.failed()) {
         logger.warn("failed to upload cache")

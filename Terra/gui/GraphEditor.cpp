@@ -227,7 +227,7 @@ public:
     
     void Raise() override
     {
-        hwm::dout << "Raised: " << lbl_plugin_name_->GetText() << std::endl;
+        hwm::wdout << L"Raised: " << lbl_plugin_name_->GetText() << std::endl;
         SetFocusIgnoringChildren();
         assert(HasFocus());
         callback_->OnRaised(this);
@@ -1132,7 +1132,7 @@ private:
         if(filenames.size() == 1 && wxFileName(filenames[0]).GetExt() == ".trproj") {
             CallAfter([path = filenames[0]] {
                 auto app = MyApp::GetInstance();
-                app->LoadProject(path);
+                app->LoadProject(path.ToStdWstring());
             });
             
             return true;
@@ -1148,7 +1148,7 @@ private:
             CallAfter([paths = filenames] {
                 auto app = MyApp::GetInstance();
                 for(auto path: paths) {
-                    app->ImportFile(path);
+                    app->ImportFile(path.ToStdWstring());
                 }
             });
             

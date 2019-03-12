@@ -24,7 +24,9 @@ using namespace Steinberg;
 
 NS_HWM_BEGIN
 
+#if !defined(_MSC_VER)
 extern void* GetWindowRef(NSView *view);
+#endif
 
 class Error
 :    public std::runtime_error
@@ -454,10 +456,18 @@ String Vst3Plugin::Impl::ValueToStringByID(ParamID id, ParamValue value)
     return to_wstr(str);
 }
 
+auto to_vst_utf16(String const &str) {
+#if defined(_MSC_VER)
+	return to_wstr(str);
+#else
+	return to_utf16(str);
+#endif
+}
+
 Vst::ParamValue Vst3Plugin::Impl::StringToValueByID(ParamID id, String string)
 {
     Vst::ParamValue value = 0;
-    auto result = edit_controller_->getParamValueByString(id, to_utf16(string).data(), value);
+    auto result = edit_controller_->getParamValueByString(id, to_vst_utf16(string).data(), value);
     if(result != kResultOk) {
         return -1;
     }
@@ -550,7 +560,7 @@ bool Vst3Plugin::Impl::OpenEditor(WindowHandle parent, IPlugFrame *plug_frame)
 #endif
     
     is_editor_opened_ = (res == kResultOk);
-    return is_editor_opened_;
+    return (bool)is_editor_opened_;
 }
 
 void Vst3Plugin::Impl::CloseEditor()

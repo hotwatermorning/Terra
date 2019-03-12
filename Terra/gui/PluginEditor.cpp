@@ -100,7 +100,7 @@ public:
         
         auto apply_text = [id = param_info.id_, this](auto &e) {
             hwm::dout << "EVT TEXT" << std::endl;
-            auto normalized = plugin_->StringToValueByID(id, disp_->GetValue());
+            auto normalized = plugin_->StringToValueByID(id, disp_->GetValue().ToStdWstring());
             if(normalized >= 0) {
                 plugin_->EnqueueParameterChange(id, normalized);
                 slider_->SetValue(ToInteger(normalized));

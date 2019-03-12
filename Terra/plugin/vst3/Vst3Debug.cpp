@@ -188,7 +188,7 @@ String BusUnitInfoToString(int bus_index, Vst::BusInfo const &bus, Vst::IUnitInf
         } else if(result == kResultFalse) {
             return spaces + L"No related unit info for this bus channel.";
         } else {
-            return spaces + L"Failed to get related unit info for this bus channel: " + tresult_to_string(result);
+            return spaces + L"Failed to get related unit info for this bus channel: " + to_wstr(tresult_to_string(result));
         }
         
         Vst::UnitInfo unit_info;

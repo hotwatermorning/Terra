@@ -80,4 +80,16 @@ inline void swap(Flag &lhs, Flag &rhs)
 	lhs.swap(rhs);
 }
 
+inline
+bool operator==(Flag const &f, bool b) { return (bool)f == b; }
+
+inline
+bool operator==(bool b, Flag const &f) { return f == b;  }
+
+inline
+bool operator!=(Flag const &f, bool b) { return (bool)f != b; }
+
+inline
+bool operator!=(bool b, Flag const &f) { return f != b; }
+
 NS_HWM_END

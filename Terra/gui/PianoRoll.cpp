@@ -9,8 +9,8 @@
 
 NS_HWM_BEGIN
 
-auto IPianoRollViewStatus::kZoomRangeHorz = IPianoRollViewStatus::ZoomFactorRange { 0.5, 5 };
-auto IPianoRollViewStatus::kZoomRangeVert = IPianoRollViewStatus::ZoomFactorRange { 0.8, 5 };
+IPianoRollViewStatus::ZoomFactorRange IPianoRollViewStatus::kZoomRangeHorz = { 0.5, 5 };
+IPianoRollViewStatus::ZoomFactorRange IPianoRollViewStatus::kZoomRangeVert = { 0.8, 5 };
 
 IPianoRollViewStatus::IPianoRollViewStatus()
 {}

@@ -10,6 +10,7 @@
 #include "../misc/Borrowable.hpp"
 #include <map>
 #include <thread>
+#include <atomic>
 
 NS_HWM_BEGIN
 
@@ -17,10 +18,10 @@ namespace {
     
     struct InternalPlayingNoteInfo
     {
-        InternalPlayingNoteInfo()
+        InternalPlayingNoteInfo() noexcept
         {}
         
-        InternalPlayingNoteInfo(bool is_note_on, UInt8 velocity)
+        InternalPlayingNoteInfo(bool is_note_on, UInt8 velocity) noexcept
         :   initialized_(true)
         ,   is_note_on_(is_note_on)
         ,   velocity_(velocity)
@@ -52,7 +53,10 @@ namespace {
         using value_type = InternalPlayingNoteInfo;
         using ch_container = std::array<std::atomic<InternalPlayingNoteInfo>, kNumPitches>;
         using container = std::array<ch_container, kNumChannels>;
-        
+
+		PlayingNoteList()
+		{}
+
         //! @tparam F is a functor where its signature is
         //! `void(UInt8 channel, UInt8 pitch, std::atomic<std::optional<InternalPlayingNoteInfo> &)`
         template<class F>

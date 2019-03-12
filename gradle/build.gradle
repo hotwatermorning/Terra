@@ -30,7 +30,19 @@ ext {
   ccache_path = (has_ccache ? "which ccache".execute().text.trim() : "")
   ccache_envvars = (has_ccache ? [CC: "${ccache_path} clang", CXX: "${ccache_path} clang++"] : [:])
   should_renew_cache = (project.renew_cache == "true")
+  getCMakeGenerator = {
+    return isWindows() ? "Visual Studio 15 2017 Win64" : "Xcode"
+  }
+  getBasicCMakeFlags = {
+    if(isWindows()) {
+      return ''
+    } else {
+      return ''
+    }
+  }
 }
+
+assert(isWindows() || project.platform == "x64")
 
 // 渡された文字列を空白で区切って、単語のリストとして返す。
 // ただし、引用符(`'` or `"`)で囲まれた範囲は空白で区切らずに、ひと続きの文字列とみなす
@@ -162,8 +174,6 @@ class ExecutionResult
 @Field def execute_may_fail = { String command, def working_dir = ".", Map env_vars = [:] ->
   if(isWindows()) {
     command = "cmd /c chcp 65001 & " + command.toString()
-    def java_opts = (env_vars.get("JAVA_OPTS", "") + " -Dfile.encoding=UTF-8")
-    env_vars << ["JAVA_OPTS": java_opts.toString()]
   }
 
   def tmp = tokenize(command)
@@ -408,20 +418,28 @@ task build_protobuf {
   doLast {
     println "Build Protocol Buffer"
     def build_dir = file("../ext/protobuf/${build_dir_name}").getAbsolutePath()
+    assert(mkdirs_if_needed(build_dir))
 
     build_if_needed(
       "protobuf",
       file("${build_dir}/install"),
       get_hash("protobuf"),
       {
-        execute("mkdir -p '${build_dir}/install'")
-        execute("./autogen.sh", "${build_dir}/..")
-        execute("../configure --disable-shared --prefix \"${build_dir}/install\"",
-                build_dir,
-                ccache_envvars
-                )
-        execute("make", build_dir)
-        execute("make install", build_dir)
+        if(isWindows()) {
+          execute("cmake -G '${getCMakeGenerator()}' ${getBasicCMakeFlags()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
+                  "-Dprotobuf_BUILD_TESTS=OFF -Dprotobuf_MSVC_STATIC_RUNTIME=OFF -DCMAKE_CONFIGURATION_TYPES=${project.config} ../cmake"
+                  , build_dir)
+          execute("cmake --build . --target ALL_BUILD", build_dir)
+          execute("cmake --build . --target INSTALL", build_dir)
+        } else {
+          execute("./autogen.sh", "${build_dir}/..")
+          execute("../configure --disable-shared --prefix \"${build_dir}/install\"",
+                  build_dir,
+                  ccache_envvars
+                  )
+          execute("make", build_dir)
+          execute("make install", build_dir)
+        }
       })
   }
 }
@@ -431,16 +449,22 @@ task build_rtmidi {
   doLast {
     println "Build RtMidi"
     def build_dir = file("../ext/rtmidi/${build_dir_name}").getAbsolutePath()
+    assert(mkdirs_if_needed(build_dir))
 
     build_if_needed(
       "rtmidi",
       file("${build_dir}/install"),
       get_hash("rtmidi"),
       {
-        execute("mkdir -p '${build_dir}'")
-        execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-        execute("make -j", build_dir)
-        execute("make install", build_dir)
+        if(isWindows()) {
+          execute("cmake -G '${getCMakeGenerator()}' ${getBasicCMakeFlags()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+          execute("cmake --build . --target ALL_BUILD", build_dir)
+          execute("cmake --build . --target INSTALL", build_dir)
+        } else {
+          execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+          execute("make -j", build_dir)
+          execute("make install", build_dir)
+        }
       })
   }
 }
@@ -450,16 +474,22 @@ task build_portaudio {
   doLast {
     println "Build PortAudio"
     def build_dir = file("../ext/portaudio/${build_dir_name}").getAbsolutePath()
+    assert(mkdirs_if_needed(build_dir))
 
     build_if_needed(
       "portaudio",
       file("${build_dir}/install"),
       get_hash("portaudio"),
       {
-        execute("mkdir -p '${build_dir}'")
-        execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-        execute("make -j", build_dir)
-        execute("make install", build_dir)
+        if(isWindows()) {
+          execute("cmake -G '${getCMakeGenerator()}' ${getBasicCMakeFlags()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DPA_BUILD_STATIC=ON -DPA_DLL_LINK_WITH_STATIC_RUNTIME=OFF -DPA_BUILD_SHARED=OFF -DCMAKE_BUILD_TYPE=${project.config} -DPA_USE_WDMKS=OFF ..", build_dir, ccache_envvars)
+          execute("cmake --build . --target ALL_BUILD", build_dir)
+          execute("cmake --build . --target INSTALL", build_dir)
+        } else {
+          execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+          execute("make -j", build_dir)
+          execute("make install", build_dir)
+        }
       })
   }
 }
@@ -470,22 +500,34 @@ task build_vst3sdk {
   doLast {
     println "Build VST3 SDK"
     def build_dir = file("../ext/vst3sdk/${build_dir_name}").getAbsolutePath()
+    assert(mkdirs_if_needed(build_dir))
 
     build_if_needed(
       "vst3sdk",
       file(build_dir),
       get_hash("vst3sdk"),
       {
-        execute("mkdir -p '${build_dir}'")
-        // VST3SDKは、makeのinstallターゲットを用意しない
-        execute(
-          " cmake -DCMAKE_BUILD_TYPE=${project.config} "
-          + " -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF "
-          + " -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF "
-          + " -DSMTG_ADD_VSTGUI=OFF "
-          + ".."
-          , build_dir, ccache_envvars)
-        execute("make -j", build_dir)
+        if(isWindows()) {
+          // VST3SDKは、makeのinstallターゲットを用意しない
+          execute(
+            " cmake -G '${getCMakeGenerator()}' ${getBasicCMakeFlags()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' -DCMAKE_BUILD_TYPE=${project.config} "
+            + " -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF "
+            + " -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF "
+            + " -DSMTG_ADD_VSTGUI=OFF "
+            + ".."
+            , build_dir, ccache_envvars)
+          execute("cmake --build . --target ALL_BUILD", build_dir)
+        } else {
+          // VST3SDKは、makeのinstallターゲットを用意しない
+          execute(
+            " cmake -DCMAKE_BUILD_TYPE=${project.config} "
+            + " -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF "
+            + " -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF "
+            + " -DSMTG_ADD_VSTGUI=OFF "
+            + ".."
+            , build_dir, ccache_envvars)
+          execute("make -j", build_dir)
+        }
       })
   }
 }
@@ -495,31 +537,42 @@ task build_wxwidgets {
   doLast {
     println "Build wxWidgets"
     def build_dir = file("../ext/wxWidgets/${build_dir_name}").getAbsolutePath()
+    assert(mkdirs_if_needed(build_dir))
 
     build_if_needed(
       "wxwidgets",
       file("${build_dir}/install"),
       get_hash("wxWidgets"),
       {
-        def debug_flags = ""
-        if(project.config == "Debug") {
-          debug_flags = "--enable-debug --enable-debug-info --enable-debug-gdb"
-        }
 
-        execute("./autogen.sh", "../ext/wxWidgets")
-        execute("mkdir -p '${build_dir}'")
-        execute('../configure CXXFLAGS="-stdlib=libc++ -DHAVE_TYPE_TRAITS" OBJCXXFLAGS="-stdlib=libc++" ' +
-                'CPPFLAGS="-stdlib=libc++" LDFLAGS="-stdlib=libc++" ' +
-                '--with-macosx-version-min=10.7 --with-cocoa ' +
-                '--with-libjpeg=builtin --with-libpng=builtin --with-regex=builtin --with-libtiff=builtin ' +
-                '--with-zlib=builtin --with-expat=builtin ' +
-                '--enable-stl --enable-std_containers --enable-std_iostreams --enable-std_string ' +
-                "--disable-shared --enable-unicode ${debug_flags} --with-cxx=14 --prefix=\"${build_dir}/install\"",
-                build_dir,
-                ccache_envvars
-                )
-        execute("make", build_dir)
-        execute("make install", build_dir)
+        if(isWindows()) {
+          execute("cmake -G '${getCMakeGenerator()}' ${getBasicCMakeFlags()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
+                  "-DCMAKE_BUILD_TYPE=${project.config} -DwxBUILD_SHARED=OFF -DwxBUILD_MONOLITHIC=OFF " +
+                  "-DwxBUILD_USE_STATIC_RUNTIME=OFF -DwxBUILD_MSVC_MULTIPROC=ON " +
+                  "-DCMAKE_CXX_STANDARD=14 .."
+                  , build_dir)
+          execute("cmake --build . --target ALL_BUILD", build_dir)
+          execute("cmake --build . --target INSTALL", build_dir)
+        } else {
+          def debug_flags = ""
+          if(project.config == "Debug") {
+            debug_flags = "--enable-debug --enable-debug-info --enable-debug-gdb"
+          }
+
+          execute("./autogen.sh", "../ext/wxWidgets")
+          execute('../configure CXXFLAGS="-stdlib=libc++ -DHAVE_TYPE_TRAITS" OBJCXXFLAGS="-stdlib=libc++" ' +
+                  'CPPFLAGS="-stdlib=libc++" LDFLAGS="-stdlib=libc++" ' +
+                  '--with-macosx-version-min=10.7 --with-cocoa ' +
+                  '--with-libjpeg=builtin --with-libpng=builtin --with-regex=builtin --with-libtiff=builtin ' +
+                  '--with-zlib=builtin --with-expat=builtin ' +
+                  '--enable-stl --enable-std_containers --enable-std_iostreams --enable-std_string ' +
+                  "--disable-shared --enable-unicode ${debug_flags} --with-cxx=14 --prefix=\"${build_dir}/install\"",
+                  build_dir,
+                  ccache_envvars
+                  )
+          execute("make", build_dir)
+          execute("make install", build_dir)
+        }
       })
   }
 }
@@ -529,16 +582,23 @@ task build_fmtlib {
   doLast {
     println "Build fmtlib"
     def build_dir = file("../ext/fmt/${build_dir_name}").getAbsolutePath()
+    assert(mkdirs_if_needed(build_dir))
 
     build_if_needed(
       "fmtlib",
       file("${build_dir}/install"),
       get_hash("fmt"),
       {
-        execute("mkdir -p '${build_dir}'")
-        execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-        execute("make -j", build_dir)
-        execute("make install", build_dir)
+        if(isWindows()) {
+          execute("cmake -G '${getCMakeGenerator()}' ${getBasicCMakeFlags()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
+                  "-DFMT_TEST=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+          execute("cmake --build . --target ALL_BUILD", build_dir)
+          execute("cmake --build . --target INSTALL", build_dir)
+        } else {
+          execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+          execute("make -j", build_dir)
+          execute("make install", build_dir)
+        }
       })
   }
 }
@@ -546,10 +606,10 @@ build_fmtlib.mustRunAfter update_submodules
 
 task compile_schemas {
   doLast {
-    def protoc = file("../ext/protobuf/${build_dir_name}/install/bin/protoc").getAbsolutePath()
+    def protoc = file("../ext/protobuf/${build_dir_name}/install/bin/protoc${isWindows() ? '.exe' : ''}").getAbsolutePath()
     assert(file(protoc).exists())
 
-    execute("mkdir -p schema/cpp", "..")
+    assert(mkdirs_if_needed(file("../schema/cpp")))
     file("../schema").eachFileMatch(~/.*\.proto$/) {
       execute("'${protoc}' -Ischema --cpp_out=schema/cpp '${it.getName()}'", "..")
     }
@@ -564,8 +624,8 @@ task build_submodules {
 task prepare_app {
   doLast {
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
-    execute("mkdir -p '${build_dir}'")
-    execute("cmake -GXcode -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir)
+    assert(mkdirs_if_needed(build_dir))
+    execute("cmake -G '${getCMakeGenerator()}' ${getBasicCMakeFlags()} -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir)
   }
 }
 prepare_app.mustRunAfter build_submodules
@@ -574,7 +634,11 @@ prepare_app.mustRunAfter compile_schemas
 task build_app {
   doLast {
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
-    execute("xcodebuild -configuration ${project.config}", build_dir)
+    if(isWindows()) {
+      execute("cmake --build . --target ALL_BUILD --config ${project.config}", build_dir)
+    } else {
+      execute("xcodebuild -configuration ${project.config}", build_dir)
+    }
   }
 }
 build_app.mustRunAfter prepare_app

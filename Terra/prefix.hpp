@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <wx/setup.h>
 #include <wx/wxprec.h>
 
 #ifndef WX_PRECOMP
@@ -21,6 +22,12 @@ using namespace fmt::literals;
 #include <public.sdk/source/vst/hosting/eventlist.h>
 #include <public.sdk/source/vst/hosting/parameterchanges.h>
 
+#if defined(_MSC_VER)
+
+#include <optional>
+
+#else
+
 #include <experimental/optional>
 namespace std {
     template<class... Args>
@@ -28,8 +35,16 @@ namespace std {
     constexpr std::experimental::nullopt_t nullopt{0};
 }
 
+#endif
+
 #if __has_include(<variant>)
     #include <variant>
+
+namespace hwm {
+	template<class U, class... Args>
+	U * get_if(std::variant<Args...> *v) { return std::get_if<U>(v); }
+}
+
 #else
     #include <mpark/variant.hpp>
     namespace std {
@@ -39,6 +54,12 @@ namespace std {
         using mpark::get;
         using mpark::get_if;
     }
+
+	namespace hwm {
+		template<class U, class... Args>
+		U * get_if(std::variant<Args...> *v) { return mpark::get_if<U>(v); }
+	}
+
 #endif
 
 #define NS_HWM_BEGIN namespace hwm {

@@ -321,7 +321,7 @@ public:
     static
     String get_device_label(AudioDeviceInfo const &info)
     {
-        return info.name_ + L" (" + to_string(info.driver_) + L")";
+        return info.name_ + L" (" + to_wstring(info.driver_) + L")";
     }
     
     static

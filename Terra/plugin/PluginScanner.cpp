@@ -221,6 +221,8 @@ void PluginScanner::ScanAsync()
         
         Traverser tr(*this);
         for(auto path: path_to_scan) {
+			if(wxDir::Exists(path) == false) { continue; }
+
             wxDir dir(path);
             
             try {

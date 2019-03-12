@@ -20,6 +20,31 @@ NS_HWM_BEGIN
 Module LoadAndInitializeModule(String path);
 void TerminateAndReleaseModule(Module &mod);
 
+#if defined(_MSC_VER)
+
+Module LoadAndInitializeModule(String path)
+{
+	Module mod(path.c_str());
+	if(mod) {
+		using init_dll = void(*)();
+		auto f = (init_dll)mod.get_proc_address("InitDLL");
+		if(f) { f(); }
+	}
+
+	return mod;
+}
+
+void TerminateAndReleaseModule(Module &mod)
+{
+	using exit_dll = void(*)();
+	auto f = (exit_dll)mod.get_proc_address("ExitDLL");
+	if(f) { f(); }
+	
+	mod.reset();
+}
+
+#endif
+
 extern
 std::unique_ptr<Vst3Plugin>
 	CreatePlugin(IPluginFactory *factory,

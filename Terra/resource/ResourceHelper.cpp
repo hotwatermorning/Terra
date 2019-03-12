@@ -17,7 +17,7 @@ String ResourceHelper::GetTerraDir() const
     auto path = wxFileName(sp.GetDocumentsDir(), "");
     path.AppendDir("diatonic.jp");
     path.AppendDir("Terra");
-    return path.GetFullPath();
+    return path.GetFullPath().ToStdWstring();
 }
 
 String ResourceHelper::GetConfigFilePath() const
@@ -25,7 +25,7 @@ String ResourceHelper::GetConfigFilePath() const
     auto path = wxFileName(GetTerraDir(), "");
     path.AppendDir("Config");
     path.AppendDir("terra.conf");
-    return path.GetFullPath();
+    return path.GetFullPath().ToStdWstring();
 }
 
 //! Get resource file path specified by the path hierarchy.
@@ -37,7 +37,13 @@ String ResourceHelper::GetResourcePath(String path) const
         path = L'/' + path;
     }
     
+#if defined(_MSC_VER)
+	auto exe_path = wxFileName::DirName(wxStandardPaths::Get().GetExecutablePath());
+	exe_path.RemoveLastDir();
+	return exe_path.GetFullPath().ToStdWstring() + L"\\Resource" + path;
+#else
     return wxStandardPaths::Get().GetResourcesDir() + path;
+#endif
 }
 
 //! Get resource file path specified by the path hierarchy.

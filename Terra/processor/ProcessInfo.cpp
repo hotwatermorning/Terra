@@ -13,7 +13,7 @@ ProcessInfo::MidiMessage::MidiMessage(SampleCount offset, UInt8 channel, double 
 ,   ppq_pos_(ppq_pos)
 ,   data_(data)
 {
-    assert(mpark::get_if<std::monostate>(&data) == nullptr);
+    assert(::hwm::get_if<std::monostate>(&data) == nullptr);
 }
 
 NS_HWM_END

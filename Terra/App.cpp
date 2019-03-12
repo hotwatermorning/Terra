@@ -96,9 +96,13 @@ bool MyApp::OnInit()
     pimpl_->splash_screen_->SetFocus();
     
     pimpl_->plugin_scanner_.AddDirectories({
+#if defined(_MSC_VER)
+		L"C:/Program Files/Common Files/VST3",
+#else
         L"/Library/Audio/Plug-Ins/VST3",
         wxStandardPaths::Get().GetDocumentsDir().ToStdWstring() + L"../Library/Audio/Plug-Ins/VST3",
         L"../../ext/vst3sdk/build_debug/VST3/Debug",
+#endif
     });
     
     std::ifstream ifs(GetPluginDescFileName());
@@ -504,7 +508,7 @@ void MyApp::OnFileOpen()
     assert(new_pj);
     
     new_pj->UpdateLastSchema(std::move(schema));
-    new_pj->SetFileName(wxFileName(file).GetFullName());
+    new_pj->SetFileName(wxFileName(file).GetFullName().ToStdWstring());
     new_pj->SetProjectDirectory(wxFileName(wxFileName(file).GetPath(), ""));
 
     ReplaceProject(std::move(new_pj));
@@ -592,7 +596,7 @@ bool MyApp::OnFileSave(bool force_save_as, bool need_to_confirm_for_closing)
         return false;
     }
 
-    pj->SetFileName(path.GetFullName());
+    pj->SetFileName(path.GetFullName().ToStdWstring());
     pj->SetProjectDirectory(wxFileName(path.GetPath(), ""));
     schema->set_name(path.GetFullName());
     
@@ -630,7 +634,7 @@ void MyApp::LoadProject(String path)
     assert(new_pj);
     
     new_pj->UpdateLastSchema(std::move(schema));
-    new_pj->SetFileName(wxFileName(path).GetFullName());
+    new_pj->SetFileName(wxFileName(path).GetFullName().ToStdWstring());
     new_pj->SetProjectDirectory(wxFileName(wxFileName(path).GetPath(), ""));
     
     ReplaceProject(std::move(new_pj));

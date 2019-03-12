@@ -4,6 +4,8 @@
 
 NS_HWM_BEGIN
 
+std::wstring to_wstr(std::wstring const &str) { return str; }
+
 std::wstring to_wstr(std::string const &str)
 {
     return wxString(str.c_str(), wxMBConvUTF8{}).ToStdWstring();

@@ -19,11 +19,19 @@ struct DeviceMidiMessage
     second_t time_stamp_ = 0;
     UInt8 channel_ = 0;
     
+#if defined(_MSC_VER)
+	template<class To>
+	To * As() { return std::get_if<To>(&data_); }
+
+	template<class To>
+	To const * As() const { return std::get_if<To>(&data_); }
+#else
     template<class To>
     To * As() { return mpark::get_if<To>(&data_); }
     
     template<class To>
     To const * As() const { return mpark::get_if<To>(&data_); }
+#endif
     
     static
     DeviceMidiMessage Create(MidiDevice *device,

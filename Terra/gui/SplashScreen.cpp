@@ -1,5 +1,7 @@
 #include "SplashScreen.hpp"
 #include <deque>
+#include <chrono>
+#include <mutex>
 
 NS_HWM_BEGIN
 
@@ -18,7 +20,12 @@ public:
         }
         
         wxSize font_size(15, 15);
-        font_ = wxFont(wxFontInfo(font_size).Family(wxFONTFAMILY_MODERN).FaceName("Geneva"));
+
+#if defined(_MSC_VER)
+		font_ = wxFont(wxFontInfo(font_size).Family(wxFONTFAMILY_MODERN).FaceName("Tahoma"));
+#else
+		font_ = wxFont(wxFontInfo(font_size).Family(wxFONTFAMILY_MODERN).FaceName("Geneva"));
+#endif
         col_msg_ = *wxBLACK;
         SetForegroundColour(col_msg_);
         

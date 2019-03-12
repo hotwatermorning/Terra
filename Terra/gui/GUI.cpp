@@ -205,7 +205,11 @@ public:
         
         // geneva, tahoma
         wxSize font_size(size.GetHeight() - 4, size.GetHeight() - 4);
+#if defined(_MSC_VER)
+		auto font = wxFont(wxFontInfo(font_size).Family(wxFONTFAMILY_MODERN).FaceName("Tahoma"));
+#else
         auto font = wxFont(wxFontInfo(font_size).Family(wxFONTFAMILY_MODERN).FaceName("Geneva"));
+#endif
         text_->SetFont(font);
         text_->SetForegroundColour(wxColour(0xCB, 0xCB, 0xCB));
         UpdateTime(MBT(0, 0, 0));

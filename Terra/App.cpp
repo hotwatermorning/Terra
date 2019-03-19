@@ -61,7 +61,7 @@ struct MyApp::Impl
     PluginScanner plugin_scanner_;
     PluginListExporter plugin_list_exporter_;
     ResourceHelper resource_helper_;
-    SplashScreen *splash_screen_ = nullptr;
+    ISplashScreen *splash_screen_ = nullptr;
     wxFrame *main_frame_ = nullptr;
     std::thread initialization_thread_;
     
@@ -91,9 +91,7 @@ bool MyApp::OnInit()
     
     auto image = GetResourceAs<wxImage>(L"SplashScreen.png");
     assert(image.IsOk());
-    pimpl_->splash_screen_ = new SplashScreen(image);
-    pimpl_->splash_screen_->Show(true);
-    pimpl_->splash_screen_->SetFocus();
+    pimpl_->splash_screen_ = CreateSplashScreen(image);
     
     pimpl_->plugin_scanner_.AddDirectories({
 #if defined(_MSC_VER)
@@ -220,14 +218,14 @@ void MyApp::OnInitImpl()
         pimpl_->splash_screen_->AddMessage(L"Create main window");
         
         wxFrame *frame = CreateMainFrame();
-        frame->Show(true);
-        pimpl_->splash_screen_->Raise();
-        frame->SetFocus();
         frame->SetSize(kDefaultWindowSize);
         frame->SetMinSize(kMinimumWindowSize);
         frame->CentreOnScreen();
         frame->Layout();
-        
+        frame->Show(true);
+        pimpl_->splash_screen_->Raise();
+        frame->SetFocus();
+
         pimpl_->main_frame_ = frame;
     
         pimpl_->splash_screen_->Close();

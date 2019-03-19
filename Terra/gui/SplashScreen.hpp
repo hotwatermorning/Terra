@@ -2,20 +2,23 @@
 
 NS_HWM_BEGIN
 
-class SplashScreen
+class ISplashScreen
 :   public wxFrame
 {
-    class Panel;
-    
+protected:
+	template<class... Args>
+	ISplashScreen(Args&&... args);
+
 public:
-    SplashScreen(wxImage image);
-    ~SplashScreen();
+	virtual
+    ~ISplashScreen() {}
     
-    bool Destroy() override;
-    void AddMessage(String msg);
-    
-private:
-    Panel *panel_;
+	virtual
+    void AddMessage(String msg) = 0;
 };
+
+//! Create the splash screen.
+//! Invoke Destroy() member function to close it.
+ISplashScreen * CreateSplashScreen(wxImage const &img);
 
 NS_HWM_END

@@ -1,4 +1,4 @@
-#include "Vst3PluginFactory.hpp"
+﻿#include "Vst3PluginFactory.hpp"
 
 #include <algorithm>
 #include <memory>
@@ -7,43 +7,15 @@
 #include <map>
 
 #include <pluginterfaces/base/ftypes.h>
+#include <public.sdk/source/vst/hosting/module.h>
 #include "Vst3Utils.hpp"
 #include "Vst3Plugin.hpp"
-#include "../../misc/Module.hpp"
 #include "../../misc/StrCnv.hpp"
 #include "../../misc/LockFactory.hpp"
 
 using namespace Steinberg;
 
 NS_HWM_BEGIN
-
-Module LoadAndInitializeModule(String path);
-void TerminateAndReleaseModule(Module &mod);
-
-#if defined(_MSC_VER)
-
-Module LoadAndInitializeModule(String path)
-{
-	Module mod(path.c_str());
-	if(mod) {
-		using init_dll = void(*)();
-		auto f = (init_dll)mod.get_proc_address("InitDLL");
-		if(f) { f(); }
-	}
-
-	return mod;
-}
-
-void TerminateAndReleaseModule(Module &mod)
-{
-	using exit_dll = void(*)();
-	auto f = (exit_dll)mod.get_proc_address("ExitDLL");
-	if(f) { f(); }
-	
-	mod.reset();
-}
-
-#endif
 
 extern
 std::unique_ptr<Vst3Plugin>
@@ -177,11 +149,12 @@ public:
     }
 
 private:
+	using Module = VST3::Hosting::Module::Ptr;
 	Module module_;
+
 	typedef void (PLUGIN_API *SetupProc)();
 
     using factory_ptr = vstma_unique_ptr<IPluginFactory>;
-
 	factory_ptr				factory_;
 	FactoryInfo				factory_info_;
 	std::vector<ClassInfo>	class_info_list_;
@@ -250,19 +223,15 @@ void OutputFactoryInfo(FactoryInfo const &info)
 
 Vst3PluginFactory::Impl::Impl(String module_path)
 {
-    Module mod = LoadAndInitializeModule(module_path);
+	std::string path = to_utf8(module_path);
+	std::string error;
+
+    Module mod = VST3::Hosting::Module::create(path, error);
 	if(!mod) {
 		throw std::runtime_error("cannot load library");
 	}
 
-	//! GetPluginFactoryという名前でエクスポートされている、
-	//! Factory取得用の関数を探す。
-	GetFactoryProc get_factory = (GetFactoryProc)mod.get_proc_address("GetPluginFactory");
-	if(!get_factory) {
-		throw std::runtime_error("not a vst3 module");
-	}
-
-	auto factory = to_unique(get_factory());
+	auto factory = to_unique<IPluginFactory>(mod->getFactory().get());
 	if(!factory) {
 		throw std::runtime_error("Failed to get factory function");
 	}
@@ -272,16 +241,22 @@ Vst3PluginFactory::Impl::Impl(String module_path)
 
 	std::vector<ClassInfo> class_info_list;
 
-	for(int i = 0; i < factory->countClasses(); ++i) {
-        if(auto f = queryInterface<IPluginFactory3>(factory)) {
+	for(int i = 0; i < factory->countClasses(); ++i) 
+	{
+        if(auto f = queryInterface<IPluginFactory3>(factory)) 
+		{
 			PClassInfoW info;
 			f.right()->getClassInfoUnicode(i, &info);
 			class_info_list.emplace_back(info);
-        } else if(auto f = queryInterface<IPluginFactory2>(factory)) {
+        } 
+		else if(auto f = queryInterface<IPluginFactory2>(factory)) 
+		{
 			PClassInfo2 info;
 			f.right()->getClassInfo2(i, &info);
 			class_info_list.emplace_back(info);
-		} else {
+		} 
+		else 
+		{
 			PClassInfo info;
 			factory->getClassInfo(i, &info);
 			class_info_list.emplace_back(info);
@@ -303,8 +278,7 @@ Vst3PluginFactory::Impl::~Impl()
     
     if(!module_) { return; }
 	factory_.reset();
-
-    TerminateAndReleaseModule(module_);
+	module_.reset();
 }
 
 Vst3PluginFactory::Vst3PluginFactory(String module_path)

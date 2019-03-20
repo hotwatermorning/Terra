@@ -1,4 +1,6 @@
-#pragma once
+﻿#pragma once
+
+#if 0
 
 #if defined(_MSC_VER)
 #include <windows.h>
@@ -117,3 +119,5 @@ private:
 };
 
 NS_HWM_END
+
+#endif

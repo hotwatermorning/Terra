@@ -103,13 +103,17 @@ public:
 
     wxDirTraverseResult OnFile(wxString const &filename) override
     {
+#if SMTG_OS_MACOS == 0
         if(filename.EndsWith(L"vst3")) { LoadFactory(filename); }
+#endif
         return wxDIR_CONTINUE;
     }
     
     wxDirTraverseResult OnDir(wxString const &dirname) override
     {
+#if SMTG_OS_MACOS
         if(dirname.EndsWith(L"vst3")) { LoadFactory(dirname); }
+#endif
         return wxDIR_CONTINUE;
     }
     

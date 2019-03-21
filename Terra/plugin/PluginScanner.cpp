@@ -1,4 +1,4 @@
-﻿#include "PluginScanner.hpp"
+#include "PluginScanner.hpp"
 
 #include <atomic>
 #include <thread>
@@ -53,13 +53,13 @@ public:
     :   owner_(owner)
     {}
     
-	wxDirTraverseResult LoadFactory(wxString const &FileorDirName)
+	void LoadFactory(wxString const &FileorDirName)
 	{
 		auto factory_list = Vst3PluginFactoryList::GetInstance();
 		auto factory = factory_list->FindOrCreateFactory(FileorDirName.ToStdWstring());
 
 		if (!factory) {
-			return wxDIR_CONTINUE;
+            return;
 		}
 
 		auto const num = factory->GetComponentCount();
@@ -99,25 +99,18 @@ public:
 				li->OnScanningProgressUpdated(&owner_);
 			});
 		}
-		return wxDIR_CONTINUE;
 	}
 
     wxDirTraverseResult OnFile(wxString const &filename) override
     {
-		if (filename.EndsWith(L"vst3") == false) {
-			return wxDIR_CONTINUE;
-		}
-
-		LoadFactory(filename);
+        if(filename.EndsWith(L"vst3")) { LoadFactory(filename); }
+        return wxDIR_CONTINUE;
     }
     
     wxDirTraverseResult OnDir(wxString const &dirname) override
     {
-        if(dirname.EndsWith(L"vst3") == false) {
-            return wxDIR_CONTINUE;
-        }
-        
-		LoadFactory(dirname);
+        if(dirname.EndsWith(L"vst3")) { LoadFactory(dirname); }
+        return wxDIR_CONTINUE;
     }
     
 private:

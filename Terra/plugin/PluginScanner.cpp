@@ -53,61 +53,63 @@ public:
     :   owner_(owner)
     {}
     
+	void LoadFactory(wxString const &FileorDirName)
+	{
+		auto factory_list = Vst3PluginFactoryList::GetInstance();
+		auto factory = factory_list->FindOrCreateFactory(FileorDirName.ToStdWstring());
+
+		if (!factory) {
+            return;
+		}
+
+		auto const num = factory->GetComponentCount();
+		for (int i = 0; i < num; ++i) {
+			auto info = factory->GetComponentInfo(i);
+
+			//! カテゴリがkVstAudioEffectClassでないComponentは、オーディオプラグインではないので無視する。
+			if (info.category() != hwm::to_wstr(kVstAudioEffectClass)) {
+				continue;
+			}
+
+			auto lock = owner_.pimpl_->lf_.make_lock();
+			auto &pds = owner_.pimpl_->pds_;
+
+			if (Contains(pds, info.cid())) { continue; }
+
+			schema::PluginDescription desc;
+			desc.set_name(to_utf8(info.name()));
+			auto vi = desc.mutable_vst3info();
+			vi->set_filepath(FileorDirName.ToUTF8());
+			std::string const cid(info.cid().begin(), info.cid().end());
+			vi->set_cid(cid);
+			vi->set_category(to_utf8(info.category()));
+			vi->set_cardinality(info.cardinality());
+
+			if (info.has_classinfo2()) {
+				auto ci2 = vi->mutable_classinfo2();
+				ci2->set_subcategories(to_utf8(info.classinfo2().sub_categories()));
+				ci2->set_vendor(to_utf8(info.classinfo2().vendor()));
+				ci2->set_version(to_utf8(info.classinfo2().version()));
+				ci2->set_sdk_version(to_utf8(info.classinfo2().sdk_version()));
+			}
+
+			pds.push_back(desc);
+
+			owner_.pimpl_->listeners_.Invoke([this](auto *li) {
+				li->OnScanningProgressUpdated(&owner_);
+			});
+		}
+	}
+
     wxDirTraverseResult OnFile(wxString const &filename) override
     {
+        if(filename.EndsWith(L"vst3")) { LoadFactory(filename); }
         return wxDIR_CONTINUE;
     }
     
     wxDirTraverseResult OnDir(wxString const &dirname) override
     {
-        if(dirname.EndsWith(L"vst3") == false) {
-            return wxDIR_CONTINUE;
-        }
-        
-        auto factory_list = Vst3PluginFactoryList::GetInstance();
-        auto factory = factory_list->FindOrCreateFactory(dirname.ToStdWstring());
-        
-        if(!factory) {
-            return wxDIR_CONTINUE;
-        }
-        
-        auto const num = factory->GetComponentCount();
-        for(int i = 0; i < num; ++i) {
-            auto info = factory->GetComponentInfo(i);
-            
-            //! カテゴリがkVstAudioEffectClassでないComponentは、オーディオプラグインではないので無視する。
-            if(info.category() != hwm::to_wstr(kVstAudioEffectClass)) {
-                continue;
-            }
-            
-            auto lock = owner_.pimpl_->lf_.make_lock();
-            auto &pds = owner_.pimpl_->pds_;
-            
-            if(Contains(pds, info.cid())) { continue; }
-            
-            schema::PluginDescription desc;
-            desc.set_name(to_utf8(info.name()));
-            auto vi = desc.mutable_vst3info();
-            vi->set_filepath(dirname.ToUTF8());
-            std::string const cid(info.cid().begin(), info.cid().end());
-            vi->set_cid(cid);
-            vi->set_category(to_utf8(info.category()));
-            vi->set_cardinality(info.cardinality());
-            
-            if(info.has_classinfo2()) {
-                auto ci2 = vi->mutable_classinfo2();
-                ci2->set_subcategories(to_utf8(info.classinfo2().sub_categories()));
-                ci2->set_vendor(to_utf8(info.classinfo2().vendor()));
-                ci2->set_version(to_utf8(info.classinfo2().version()));
-                ci2->set_sdk_version(to_utf8(info.classinfo2().sdk_version()));
-            }
-            
-            pds.push_back(desc);
-        
-            owner_.pimpl_->listeners_.Invoke([this](auto *li) {
-                li->OnScanningProgressUpdated(&owner_);
-            });
-        }
+        if(dirname.EndsWith(L"vst3")) { LoadFactory(dirname); }
         return wxDIR_CONTINUE;
     }
     

@@ -135,7 +135,7 @@ private:
 };
 
 class GenericParameterView
-:   public wxPanel
+:   public wxWindow
 ,   ParameterSlider::Callback
 {
     constexpr static UInt32 kParameterHeight = 20;
@@ -145,7 +145,7 @@ class GenericParameterView
 public:
     GenericParameterView(wxWindow *parent,
                          Vst3Plugin *plugin)
-    :   wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(40, 40))
+    :   wxWindow(parent, wxID_ANY, wxDefaultPosition, wxSize(40, 40))
     {
         UInt32 const num = plugin->GetNumParams();
         
@@ -176,6 +176,7 @@ public:
             sb_->SetThumbPosition(sb_->GetThumbPosition() - ev.GetWheelRotation());
             Layout();
         });
+        SetAutoLayout(true);
         Layout();
     }
     
@@ -191,12 +192,21 @@ public:
         
         tp = sb_->GetThumbPosition();
         
+        auto const h = GetClientSize().GetHeight();
+
         for(UInt32 i = 0; i < sliders_.size(); ++i) {
             auto s = sliders_[i];
-            s->SetSize(0, i * kParameterHeight - tp, rc.GetWidth() - kSBWidth, kParameterHeight);
+            auto rect = wxRect(0, i * kParameterHeight - tp, rc.GetWidth() - kSBWidth, kParameterHeight);
+            if(rect.GetBottom() <= 0 || rect.GetTop() >= h) {
+                s->Show(false);
+                continue;
+            } else {
+                s->Show(true);
+                s->SetSize(rect);
+            }
         }
         
-        return wxPanel::Layout();
+        return wxWindow::Layout();
     }
     
     void UpdateParameters()

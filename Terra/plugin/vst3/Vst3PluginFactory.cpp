@@ -228,13 +228,15 @@ Vst3PluginFactory::Impl::Impl(String module_path)
 
     Module mod = VST3::Hosting::Module::create(path, error);
 	if(!mod) {
-		throw std::runtime_error("cannot load library");
+		throw std::runtime_error("cannot load library: " + error);
 	}
 
-	auto factory = to_unique<IPluginFactory>(mod->getFactory().get());
-	if(!factory) {
-		throw std::runtime_error("Failed to get factory function");
+    auto maybe_factory = queryInterface<IPluginFactory>(mod->getFactory().get());
+    if(!maybe_factory) {
+        throw std::runtime_error("Failed to get factory function");
 	}
+
+    auto factory = std::move(maybe_factory.right());
 	
 	PFactoryInfo loaded_factory_info;
 	factory->getFactoryInfo(&loaded_factory_info);

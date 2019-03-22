@@ -333,7 +333,7 @@ task update_submodules {
 
       // extract archive
       result = execute_may_fail(
-        "tar xvf ${param.getArchiveFileName()}"
+        "tar -xvf ${param.getArchiveFileName()}"
         , param.cache_dir)
 
       // remove downloaded archive
@@ -350,7 +350,7 @@ task update_submodules {
       assert(file(param.cache_dir).exists())
 
       execute(
-        "tar -jcvhf ${param.getArchiveFileName()} ./"
+        "tar -cjvhf ${param.getArchiveFileName()} ./"
         , param.cache_dir)
 
       def result = execute_may_fail(

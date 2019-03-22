@@ -68,6 +68,8 @@ public:
         Bind(wxEVT_MOTION, [this](auto &ev) { OnMotion(ev); });
         Bind(wxEVT_KEY_DOWN, [this](auto &ev) { OnKeyDown(ev); });
         Bind(wxEVT_KEY_UP, [this](auto &ev) { OnKeyUp(ev); });
+        Bind(wxEVT_MOVE, [this](auto &ev) { Refresh(); });
+        Bind(wxEVT_SIZE, [this](auto &ev) { Refresh(); });
         
         key_code_for_sample_note_.fill(0);
     }

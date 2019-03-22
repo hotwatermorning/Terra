@@ -93,11 +93,10 @@ public:
 
         int const k = std::min<int>(255, 256 - 256 * (opaque_));
 
-#if defined(_MSC_VER)
-
         wxMemoryDC memory_dc(back_buffer_.GetBitmap());
         assert(memory_dc.IsOk());
-
+        
+#if defined(_MSC_VER)
         auto hwnd = GetHWND();
         wxClientDC cdc(this);
         POINT pt_src{ 0, 0 };
@@ -115,7 +114,7 @@ public:
         UpdateLayeredWindow(hwnd, dest_hdc, nullptr, &size, src_hdc, &pt_src, 0, &bf, ULW_ALPHA);
 #else
         wxPaintDC pdc(this);
-        pdc.Blit(wxPoint(), GetClientSize(), memory_dc, wxPoint());
+        pdc.Blit(wxPoint(), GetClientSize(), &memory_dc, wxPoint());
         SetTransparent(255 - k);
 #endif
     }

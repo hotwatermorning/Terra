@@ -22,7 +22,7 @@
 #include "../resource/ResourceHelper.hpp"
 #include "./PianoRoll.hpp"
 
-#if defined(_MSC_VER)
+#if !defined(_MSC_VER)
 #include "./OSXMenuBar.h"
 #endif
 

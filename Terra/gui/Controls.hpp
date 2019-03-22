@@ -43,8 +43,8 @@ public:
     IRenderableWindow(Args&&... args)
     :   WindowType(std::forward<Args>(args)...)
     {
-        SetBackgroundStyle(wxBG_STYLE_PAINT);
-		SetDoubleBuffered(true);
+        this->SetBackgroundStyle(wxBG_STYLE_PAINT);
+		this->SetDoubleBuffered(true);
 
         on_paint_ = [this](wxPaintEvent &ev) { OnPaint(ev); };
         UseDefaultPaintMethod(true);
@@ -64,9 +64,9 @@ public:
 
         use_default_paint_method_ = flag;
         if(use_default_paint_method_) {
-            Bind(wxEVT_PAINT, on_paint_);
+            this->Bind(wxEVT_PAINT, on_paint_);
         } else {
-            Unbind(wxEVT_PAINT, on_paint_);
+            this->Unbind(wxEVT_PAINT, on_paint_);
         }
     }
 

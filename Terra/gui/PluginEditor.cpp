@@ -399,12 +399,12 @@ public:
         
         plugin_->OpenEditor(GetHandle(), this);
         
-        Bind(wxEVT_SHOW, [this](auto &ev) {
-            if(IsShown() && plugin_->IsEditorOpened() == false) {
+        Bind(wxEVT_SHOW, [this](wxShowEvent &ev) {
+            if(ev.IsShown() && plugin_->IsEditorOpened() == false) {
                 auto rc = plugin_->GetPreferredRect();
                 OnResizePlugView(rc);
                 plugin_->OpenEditor(GetHandle(), this);
-            } else {
+            } else if(ev.IsShown() == false && plugin_->IsEditorOpened()) {
                 plugin_->CloseEditor();
             }
         });

@@ -1025,7 +1025,7 @@ public:
             return pt;
         };
         
-        auto rearrange_node = [this](auto pred, auto grid_function) {
+        auto rearrange_node = [this](auto pred, auto &grid_function) {
             for(auto &node: node_components_) {
                 if(pred(node->node_->GetProcessor().get())) { node->Move(grid_function()); }
             }

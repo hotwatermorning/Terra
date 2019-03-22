@@ -13,6 +13,6 @@ protected:
     IMainFrame();
 };
 
-IMainFrame * CreateMainFrame();
+IMainFrame * CreateMainFrame(wxSize initial_size);
 
 NS_HWM_END

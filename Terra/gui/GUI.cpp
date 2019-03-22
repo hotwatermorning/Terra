@@ -361,7 +361,7 @@ public:
         
         SetSizer(vbox);
         
-        SetSize(size);
+        SetClientSize(size);
         graph_panel_->RearrangeNodes();
         
         Bind(wxEVT_KEY_DOWN, [this](auto &ev) {
@@ -470,14 +470,13 @@ class MainFrame
 ,   MyApp::ChangeProjectListener
 {
 public:
-    MainFrame();
+    MainFrame(wxSize initial_size);
     ~MainFrame();
 private:
     bool Destroy() override;
     void OnExit();
     void OnAbout(wxCommandEvent& event);
     void OnPlay(wxCommandEvent& event);
-    void OnEnableInputs(wxCommandEvent& event);
     void OnTimer();
     
     void OnBeforeSaveProject(Project *pj, schema::Project &schema) override;
@@ -490,10 +489,10 @@ private:
     ScopedListenerRegister<MyApp::ChangeProjectListener> slr_change_project_;
 };
 
-MainFrame::MainFrame()
+MainFrame::MainFrame(wxSize initial_size)
 :   IMainFrame()
 {
-	SetSize(wxSize(400, 600));
+	SetClientSize(initial_size);
     SetTitle("Untitled");
     
     wxMenu *menuFile = new wxMenu;
@@ -640,9 +639,9 @@ void MainFrame::OnAfterLoadProject(Project *pj, schema::Project const &schema)
     SetSize(rc);
 }
 
-IMainFrame * CreateMainFrame()
+IMainFrame * CreateMainFrame(wxSize initial_size)
 {
-    return new MainFrame();
+    return new MainFrame(initial_size);
 }
 
 NS_HWM_END

@@ -161,11 +161,6 @@ public:
         auto img = wxBitmap(image_, 32);
         dc.DrawBitmap(img, wxPoint());
         dc.DrawBitmap(text_buffer_.GetBitmap(), wxPoint());
-
-        static int pos = 0;
-        BrushPen col(HSVToColour(0.5, 0.6, 0.7, 0.4));
-        col.ApplyTo(dc);
-        dc.DrawCircle(wxPoint(300 + pos++, 100), 50);
     }
 
     void OnTimer()

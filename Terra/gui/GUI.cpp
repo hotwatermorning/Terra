@@ -22,6 +22,10 @@
 #include "../resource/ResourceHelper.hpp"
 #include "./PianoRoll.hpp"
 
+#if defined(_MSC_VER)
+#include "./OSXMenuBar.h"
+#endif
+
 NS_HWM_BEGIN
 
 enum
@@ -198,17 +202,16 @@ public:
     TimeIndicator(wxWindow *parent, wxPoint pos, wxSize size)
     :   wxPanel(parent, wxID_ANY, pos, size)
     {
+        SetDoubleBuffered(true);
         timer_.Bind(wxEVT_TIMER, [this](auto &ev) { OnTimer(); });
         timer_.Start(kIntervalSlow);
 
-        text_ = new wxStaticText(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxALIGN_CENTRE_HORIZONTAL);
+        text_ = new wxStaticText(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxALIGN_CENTRE_HORIZONTAL|wxST_NO_AUTORESIZE);
         
-        // geneva, tahoma
-        wxSize font_size(size.GetHeight() - 4, size.GetHeight() - 4);
 #if defined(_MSC_VER)
-		auto font = wxFont(wxFontInfo(font_size).Family(wxFONTFAMILY_MODERN).FaceName("Tahoma"));
+		auto font = wxFont(wxFontInfo(22).Family(wxFONTFAMILY_MODERN).FaceName("Tahoma"));
 #else
-        auto font = wxFont(wxFontInfo(font_size).Family(wxFONTFAMILY_MODERN).FaceName("Geneva"));
+        auto font = wxFont(wxFontInfo(26).Family(wxFONTFAMILY_MODERN).FaceName("Geneva"));
 #endif
         text_->SetFont(font);
         text_->SetForegroundColour(wxColour(0xCB, 0xCB, 0xCB));
@@ -385,7 +388,8 @@ private:
     void OnPaint(wxPaintEvent &)
     {
         wxPaintDC pdc(this);
-        Draw(pdc);
+		wxGCDC dc(pdc);
+        Draw(dc);
     }
     
     void Draw(wxDC &dc)
@@ -489,6 +493,7 @@ private:
 MainFrame::MainFrame()
 :   IMainFrame()
 {
+	SetSize(wxSize(400, 600));
     SetTitle("Untitled");
     
     wxMenu *menuFile = new wxMenu;
@@ -596,8 +601,6 @@ void MainFrame::OnBeforeSaveProject(Project *pj, schema::Project &schema)
     schema_size->set_width(rect.GetWidth());
     schema_size->set_height(rect.GetHeight());
 }
-
-UInt32 GetMenuBarHeight();
 
 void MainFrame::OnAfterLoadProject(Project *pj, schema::Project const &schema)
 {

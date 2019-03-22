@@ -16,4 +16,12 @@ wxColour HSVToColour(float hue, float saturation, float value, float opaque)
     return col;
 }
 
+void ClearImage(wxImage &img)
+{
+    img.Clear();
+    if (img.HasAlpha()) {
+        std::fill_n(img.GetAlpha(), img.GetWidth() * img.GetHeight(), 0);
+    }
+}
+
 NS_HWM_END

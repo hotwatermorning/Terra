@@ -35,6 +35,75 @@ struct BrushPenSet
     BrushPen selected_;
 };
 
+void ClearImage(wxImage &img);
+
+class GraphicsBuffer
+{
+public:
+    GraphicsBuffer()
+    {}
+
+    GraphicsBuffer(wxSize size)
+        : image_(size)
+    {
+        image_.InitAlpha();
+        Clear();
+    }
+
+    GraphicsBuffer(GraphicsBuffer &&rhs)
+    {
+        image_ = std::move(rhs.image_);
+        bitmap_ = wxBitmap(image_, 32);
+        rhs.image_ = wxImage();
+        rhs.bitmap_ = wxBitmap();
+
+    }
+
+    GraphicsBuffer & operator=(GraphicsBuffer &&rhs)
+    {
+        image_ = std::move(rhs.image_);
+        bitmap_ = wxBitmap(image_, 32);
+        rhs.image_ = wxImage();
+        rhs.bitmap_ = wxBitmap();
+        return *this;
+    }
+
+    GraphicsBuffer(GraphicsBuffer const &) = delete;
+    GraphicsBuffer & operator=(GraphicsBuffer const &) = delete;
+
+    bool IsOk() const { return image_.IsOk(); }
+
+    void Clear()
+    {
+        assert(IsOk());
+        ClearImage(image_);
+        Update();
+    }
+
+    void Update()
+    {
+        bitmap_ = wxBitmap(image_, 32);
+    }
+
+    wxImage & GetImage() { return image_; }
+    wxImage const & GetImage() const { return image_; }
+
+    wxBitmap & GetBitmap()
+    {
+        assert(IsOk());
+        return bitmap_;
+    }
+
+    wxBitmap const & GetBitmap() const
+    {
+        assert(IsOk());
+        return bitmap_;
+    }
+
+private:
+    wxBitmap bitmap_;
+    wxImage image_;
+};
 
 inline
 void transpose(wxPoint &pt) { std::swap(pt.x, pt.y); }

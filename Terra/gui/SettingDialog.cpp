@@ -81,16 +81,21 @@ public:
         cho_buffer_sizes_ = new wxChoice(this, wxID_ANY);
         
         st_audio_inputs_->SetForegroundColour(HSVToColour(0.0, 0.0, 0.9));
+        st_audio_inputs_->SetBackgroundColour(kPanelBackgroundColour.brush_.GetColour());
+
         st_audio_outputs_->SetForegroundColour(HSVToColour(0.0, 0.0, 0.9));
+        st_audio_outputs_->SetBackgroundColour(kPanelBackgroundColour.brush_.GetColour());
+
         st_sample_rates_->SetForegroundColour(HSVToColour(0.0, 0.0, 0.9));
+        st_sample_rates_->SetBackgroundColour(kPanelBackgroundColour.brush_.GetColour());
+
         st_buffer_sizes_->SetForegroundColour(HSVToColour(0.0, 0.0, 0.9));
+        st_buffer_sizes_->SetBackgroundColour(kPanelBackgroundColour.brush_.GetColour());
         
         auto vbox = new wxBoxSizer(wxVERTICAL);
     
         auto add_entry = [&](auto parent_box, auto static_text, auto choice) {
-            //int const kMinHeight = 20;
             auto hbox = new wxBoxSizer(wxHORIZONTAL);
-            //hbox->SetMinSize(1, kMinHeight);
             static_text->SetMinSize(wxSize(150, 1));
             hbox->Add(static_text, wxSizerFlags(0).Expand());
             hbox->Add(choice, wxSizerFlags(1).Expand());
@@ -113,8 +118,10 @@ public:
         cho_sample_rates_->Bind(wxEVT_CHOICE, [this](auto &ev) { OnSelectSampleRate(); });
         cho_buffer_sizes_->Bind(wxEVT_CHOICE, [this](auto &ev) { OnSelectBufferSize(); });
         
+        SetAutoLayout(true);
         SetCanFocus(false);
         InitializeList();
+        Layout();
     }
     
     //! 2つのAudioDeviceInfoが指すデバイスが同じものかどうかを返す。
@@ -394,7 +401,8 @@ public:
     
     void OnPaint()
     {
-        wxPaintDC dc(this);
+        wxPaintDC pdc(this);
+		wxGCDC dc(pdc);
         
         kPanelBackgroundColour.ApplyTo(dc);
         dc.DrawRectangle(GetClientRect());
@@ -423,7 +431,8 @@ public:
     
     void OnPaint()
     {
-        wxPaintDC dc(this);
+		wxPaintDC pdc(this);
+		wxGCDC dc(pdc);
         
         kPanelBackgroundColour.ApplyTo(dc);
         dc.DrawRectangle(GetClientRect());
@@ -442,7 +451,8 @@ public:
     
     void OnPaint()
     {
-        wxPaintDC dc(this);
+        wxPaintDC pdc(this);
+		wxGCDC dc(pdc);
         
         kPanelBackgroundColour.ApplyTo(dc);
         dc.DrawRectangle(GetClientRect());
@@ -461,7 +471,8 @@ public:
     
     void OnPaint()
     {
-        wxPaintDC dc(this);
+		wxPaintDC pdc(this);
+		wxGCDC dc(pdc);
         
         kPanelBackgroundColour.ApplyTo(dc);
         dc.DrawRectangle(GetClientRect());
@@ -480,7 +491,8 @@ public:
     
     void OnPaint()
     {
-        wxPaintDC dc(this);
+		wxPaintDC pdc(this);
+		wxGCDC dc(pdc);
         
         kPanelBackgroundColour.ApplyTo(dc);
         dc.DrawRectangle(GetClientRect());
@@ -583,7 +595,8 @@ public:
     
     void OnPaint()
     {
-        wxPaintDC dc(this);
+		wxPaintDC pdc(this);
+		wxGCDC dc(pdc);
         
         dc.DrawBitmap(background_, 0, 0);
         
@@ -644,11 +657,12 @@ class SettingFrame
 public:
     SettingFrame(wxWindow *parent)
     :   wxDialog(parent, wxID_ANY, "Setting")
-    {        
+    {
+        SetDoubleBuffered(true);
         auto const size = kTabPanelRect.Union(kContentPanelRect).GetSize();
         SetMaxSize(size);
         SetMinSize(size);
-        SetSize(size);
+        SetClientSize(size);
         
         tab_panel_ = new TabPanel(this, this);
         
@@ -671,7 +685,8 @@ public:
         Bind(wxEVT_CHAR_HOOK, [this](wxKeyEvent &ev) {
             OnCharHook(ev);
         });
-        
+
+        Layout();
         Show(true);
     }
     

@@ -9,7 +9,8 @@ class GraphEditor
 :   public wxPanel
 {
 protected:
-    GraphEditor(wxWindow *parent);
+    template<class... Args>
+    GraphEditor(Args&&...);
     
 public:
     virtual

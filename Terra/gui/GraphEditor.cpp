@@ -50,8 +50,9 @@ int const kPinRadius = 6;
 wxSize const kLabelSize = { kDefaultNodeSize.GetWidth(), kDefaultNodeSize.GetHeight() - (kPinRadius * 4) };
 
 class NodeComponent
-:   public IRenderableWindow<wxPanel>
+:   public IRenderableWindow<wxWindow>
 {
+    using base_type = IRenderableWindow<wxWindow>;
 public:
     struct Callback {
         virtual ~Callback() {}
@@ -97,10 +98,14 @@ public:
     
 public:
     NodeComponent(wxWindow *parent, GraphProcessor::Node *node, Callback *callback)
-    :   IRenderableWindow<wxPanel>(parent, wxID_ANY, wxDefaultPosition, kDefaultNodeSize)
+    :   base_type()
     ,   node_(node)
     ,   callback_(callback)
     {
+        SetBackgroundStyle(wxBG_STYLE_PAINT);
+        Create(parent, wxID_ANY, wxDefaultPosition, kDefaultNodeSize, wxTRANSPARENT_WINDOW);
+
+        UseDefaultPaintMethod(false);
         ImageAsset button_images = ImageAsset(GetResourcePath(L"graph/open_editor_buttons.png"), 1, 4);
         btn_open_editor_ = new ImageButton(this, true, button_images.GetImage(0, 0), button_images.GetImage(0, 1), button_images.GetImage(0, 2), button_images.GetImage(0, 3));
         btn_open_editor_->UseDefaultPaintMethod(false);
@@ -114,7 +119,7 @@ public:
                 OpenEditor();
             }
         });
-        
+
         bool enable_editor_button = false;
         //! There's always generic plugin views for each plugins even if the plugin provides no editor ui.
         if(auto p = dynamic_cast<Vst3AudioProcessor *>(node_->GetProcessor().get())) {
@@ -142,11 +147,13 @@ public:
         SetAutoLayout(true);
         Layout();
         
+        Bind(wxEVT_MOVE, [this](auto &ev) {
+            GetParent()->Refresh();
+        });
         Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent &ev) {
             //hwm::dout << "Left Down: " << node_->GetProcessor()->GetName() << std::endl;
             OnLeftDown(ev);
-        });
-        
+        });        
         Bind(wxEVT_LEFT_UP, [this](auto &ev) {
             //hwm::dout << "Left Up: " << node_->GetProcessor()->GetName() << std::endl;
             OnLeftUp(ev);
@@ -171,7 +178,7 @@ public:
         });
         Bind(wxEVT_CHILD_FOCUS, [this](auto &ev) {
             hwm::dout << "Child Focus: " << node_->GetProcessor()->GetName() << std::endl;
-            SetFocusIgnoringChildren();
+            //SetFocus();
             //Raise();
         });
         Bind(wxEVT_LEAVE_WINDOW, [this](auto &ev) {
@@ -198,9 +205,11 @@ public:
         
         auto image = wxImage(image_size);
         image.SetAlpha();
-        image.Clear();
-        auto bitmap = wxBitmap(image);
-        wxMemoryDC dc(bitmap);
+        ClearImage(image);
+
+        auto bitmap = wxBitmap(image, 32);
+        wxMemoryDC memory_dc(bitmap);
+		wxGCDC dc(memory_dc);
         
         BrushPen bp { HSVToColour(0, 0.6, 1.0, 0.0) };
         bp.ApplyTo(dc);
@@ -211,13 +220,13 @@ public:
         kNodeShadow.ApplyTo(dc);
 
         dc.DrawRectangle(wxPoint{kShadowRadius, kShadowRadius}, client_size);
-        dc.SelectObject(wxNullBitmap);
+        memory_dc.SelectObject(wxNullBitmap);
         
         image = bitmap.ConvertToImage();
         image = image.Blur(kShadowRadius);
         shadow_ = image;
         
-        return IRenderableWindow<wxPanel>::Layout();
+        return base_type::Layout();
     }
     
     ~NodeComponent()
@@ -228,17 +237,17 @@ public:
     void Raise() override
     {
         hwm::wdout << L"Raised: " << lbl_plugin_name_->GetText() << std::endl;
-        SetFocusIgnoringChildren();
+        SetFocus();
         assert(HasFocus());
         callback_->OnRaised(this);
-        IRenderableWindow<wxPanel>::Raise();
+        base_type::Raise();
         Refresh();
     }
     
     void Lower() override
     {
         hwm::dout << "Lower: " << lbl_plugin_name_->GetText() << std::endl;
-        IRenderableWindow<wxPanel>::Lower();
+        base_type::Lower();
     }
     
     void OpenEditor()
@@ -272,7 +281,12 @@ public:
     
     void doRender(wxDC &dc) override
     {
-        auto bitmap = wxBitmap(shadow_);
+        dc.SetBrush(*wxBLUE_BRUSH);
+        dc.SetPen(*wxGREEN_PEN);
+        dc.SetBackground(*wxRED_BRUSH);
+        dc.DrawRectangle(GetClientRect().Deflate(20));
+
+        auto bitmap = wxBitmap(shadow_, 32);
         dc.DrawBitmap(bitmap, wxPoint{-kShadowRadius, -kShadowRadius});
         
         if(HasFocus()) {
@@ -502,8 +516,9 @@ bool Intersect(wxPoint a1, wxPoint a2, wxPoint b1, wxPoint b2)
     return !is_same_sign(a, b) && !is_same_sign(c, d);
 }
 
-GraphEditor::GraphEditor(wxWindow *parent)
-:   wxPanel(parent)
+template<class... Args>
+GraphEditor::GraphEditor(Args&&... args)
+:   wxPanel(std::forward<Args>(args)...)
 {}
 
 GraphEditor::~GraphEditor()
@@ -533,11 +548,14 @@ class GraphEditorImpl
 public:
     wxCursor scissors_;
     GraphEditorImpl(wxWindow *parent)
-    :   GraphEditor(parent)
+        : GraphEditor()
     {
+        SetBackgroundStyle(wxBG_STYLE_PAINT);
+        Create(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize);
+        SetDoubleBuffered(true);
         SetDropTarget(new DropTarget(this));
         wxImage img;
-        
+
         img.LoadFile(GetResourcePath(L"/cursor/scissors.png"));
         int const cursor_x = 24;
         int const cursor_y = 24;
@@ -545,9 +563,9 @@ public:
         img = img.Scale(cursor_x, cursor_y, wxIMAGE_QUALITY_HIGH);
         img.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_X, cursor_x / 2);
         img.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_Y, cursor_y / 2);
-        
+
         scissors_ = wxCursor(img);
-        
+
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(); });
         Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { OnLeftDown(ev); });
         Bind(wxEVT_LEFT_UP, [this](auto &ev) { OnLeftUp(ev); });
@@ -557,13 +575,22 @@ public:
         Bind(wxEVT_KEY_UP, [this](auto &ev) { OnKeyUp(ev); ev.ResumePropagation(100); ev.Skip(); });
         Bind(wxEVT_KILL_FOCUS, [this](auto &ev) { OnKillFocus(); });
         Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](auto &ev) { OnReleaseMouse(); });
-        //screen_->Bind(wxEVT_MOVE, [this](auto &ev) { screen_->Raise(); });
         slr_change_project_.reset(MyApp::GetInstance()->GetChangeProjectListeners(), this);
-        
+
         SetBackgroundColour(kGraphBackground);
         SetAutoLayout(true);
         Layout();
+
+        timer_.Bind(wxEVT_TIMER, [this](auto &ev) {
+            std::for_each(node_components_.begin(),
+                          node_components_.end(),
+                          [](auto &nc) { nc->Refresh(); }
+                          );
+        });
+        timer_.Start(100);
     }
+
+    wxTimer timer_;
     
     ~GraphEditorImpl()
     {
@@ -573,9 +600,7 @@ public:
     
     bool Layout() override
     {
-        image_ = wxImage(GetClientSize());
-        image_.SetAlpha();
-        bitmap_ = image_;
+        back_buffer_ = GraphicsBuffer(GetClientSize());
         return GraphEditor::Layout();
     }
     
@@ -801,7 +826,9 @@ public:
         auto &back = node_components_.back();
         
         assert(back->node_ == node.get());
+        back->Show(true);
         back->MoveConstrained(pt);
+        back->Raise();
     }
 
     //! return true if removed.
@@ -1030,31 +1057,36 @@ private:
     
     std::optional<LineSetting> dragging_line_;
     
-    wxImage image_;
-    wxBitmap bitmap_;
+    GraphicsBuffer back_buffer_;
     
     void OnPaint()
     {
+        wxPaintDC pdc(this);
+        wxGCDC dc(pdc);
+        dc.Clear();
+
+        back_buffer_.Clear();
         Render();
-        
-        wxPaintDC dc(this);
-        
-        wxMemoryDC memory_dc(bitmap_);
+                
+        wxMemoryDC memory_dc(back_buffer_.GetBitmap());
+
         dc.Blit(wxPoint{0, 0}, GetClientSize(), &memory_dc, wxPoint {0, 0});
     }
     
     void Render()
     {
-        wxMemoryDC memory_dc(bitmap_);
-        memory_dc.SetBackground(wxBrush(kGraphBackground));
-        memory_dc.Clear();
-        
-        for(auto &nc: node_components_) {
-            nc->SetOriginAndRender(memory_dc);
+        wxMemoryDC memory_dc(back_buffer_.GetBitmap());
+        wxGCDC dc(memory_dc);
+        {
+            dc.SetBackground(wxBrush(kGraphBackground));
+            dc.Clear();
         }
 
-        PaintOverChildren(memory_dc);
-        Refresh();
+        for(auto &nc: node_components_) {
+            nc->SetOriginAndRender(dc);
+        }
+
+        PaintOverChildren(dc); 
     }
     
     static wxPoint GetCenter(wxRect const &rect)
@@ -1118,7 +1150,9 @@ private:
         
         
         auto const size = GetClientSize();
-        dc.FloodFill(0, 0, HSVToColour(0, 0, 0.9, 0.1));
+        BrushPen bg(HSVToColour(0, 0, 0.9, 0.1));
+        bg.ApplyTo(dc);
+        dc.DrawRectangle(GetClientRect());
         dc.SetPen(wxPen(HSVToColour(0.0, 0.0, 0.9, 0.2)));
         for(int x = kNodeAlignmentSize; x < size.x; x += kNodeAlignmentSize) {
             for(int y = kNodeAlignmentSize; y < size.y; y += kNodeAlignmentSize) {

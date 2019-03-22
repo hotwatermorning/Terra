@@ -412,6 +412,7 @@ public:
     :   base_window_type(parent, id, pos, size)
     ,   IPianoRollViewStatus()
     {
+		SetDoubleBuffered(true);
         keyboard_ = new PianoRollKeyboard(this, this);
         editor_ = new PianoRollEditor(this, this);
         envelope_header_ = new PianoRollEnvelopeHeader(this, this);
@@ -449,7 +450,9 @@ public:
     void OnPaint()
     {
         wxMemoryDC memory_dc(bitmap_);
-        Render(memory_dc);
+
+		wxGCDC dc(memory_dc);
+        Render(dc);
         
         wxPaintDC paint_dc(this);
         paint_dc.Blit(wxPoint{0, 0}, GetClientSize(), &memory_dc, wxPoint {0, 0});

@@ -126,7 +126,9 @@ PluginScanner::PluginScanner()
 {}
 
 PluginScanner::~PluginScanner()
-{}
+{
+    Wait();
+}
 
 std::vector<String> const & PluginScanner::GetDirectories() const
 {

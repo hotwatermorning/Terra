@@ -22,19 +22,12 @@ struct ProcessInfo
         MidiMessage();
         MidiMessage(SampleCount offset, UInt8 channel, double ppq_pos, DataType data);
         
-#if __has_include(<optional>)
 		template<class To>
-		To * As() { return std::get_if<To>(&data_); }
+		To * As() { return hwm::get_if<To>(&data_); }
 
 		template<class To>
-		To const * As() const { return std::get_if<To>(&data_); }
-#else
-        template<class To>
-        To * As() { return mpark::get_if<To>(&data_); }
+		To const * As() const { return hwm::get_if<To>(&data_); }
         
-        template<class To>
-        To const * As() const { return mpark::get_if<To>(&data_); }
-#endif        
         DataType data_;
     };
 

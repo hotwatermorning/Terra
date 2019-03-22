@@ -105,19 +105,6 @@ public:
     bool IsBlackKey(Int32 note_number) { return IsFound(note_number % 12, kBlackKeyIndices); }
     
     BrushPen const col_background { wxColour(0x26, 0x1E, 0x00) };
-    
-    
-    static
-    void transpose(wxPoint &pt) { std::swap(pt.x, pt.y); }
-    static
-    void transpose(wxSize &size) { std::swap(size.x, size.y); }
-    static
-    void transpose(wxRect &rc) { std::swap(rc.x, rc.y); std::swap(rc.width, rc.height); }
-    
-    template<class T>
-    [[nodiscard]]
-    static
-    T transposed(T const &v) { auto tmp = v; transpose(tmp); return tmp; }
 
     void doRender(wxDC &dc) override
     {

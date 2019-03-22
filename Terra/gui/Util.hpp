@@ -35,5 +35,19 @@ struct BrushPenSet
     BrushPen selected_;
 };
 
+
+inline
+void transpose(wxPoint &pt) { std::swap(pt.x, pt.y); }
+
+inline
+void transpose(wxSize &size) { std::swap(size.x, size.y); }
+
+inline
+void transpose(wxRect &rc) { std::swap(rc.x, rc.y); std::swap(rc.width, rc.height); }
+
+template<class T>
+[[nodiscard]]
+T transposed(T const &v) { auto tmp = v; transpose(tmp); return tmp; }
+
 NS_HWM_END
 

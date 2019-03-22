@@ -222,12 +222,12 @@ void MyApp::OnInitImpl()
         frame->CentreOnScreen();
         frame->Layout();
         frame->Show(true);
-        pimpl_->splash_screen_->Raise();
         frame->SetFocus();
 
         pimpl_->main_frame_ = frame;
     
         pimpl_->splash_screen_->Close();
+        pimpl_->splash_screen_->Raise();
         pimpl_->splash_screen_ = nullptr;
         if(pimpl_->initialization_thread_.joinable()) {
             pimpl_->initialization_thread_.join();

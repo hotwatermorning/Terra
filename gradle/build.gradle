@@ -544,6 +544,11 @@ task build_wxwidgets {
       {
 
         if(isWindows()) {
+          copy {
+            from file("../ext/wxWidgets/include/wx/msw/setup0.h")
+            into file("../ext/wxWidgets/include/wx/msw")
+            rename "setup0\\.h", "setup.h"
+          }
           execute("cmake -G '${getCMakeGenerator()}' ${getBasicCMakeFlags()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
                   "-DCMAKE_BUILD_TYPE=${project.config} -DwxBUILD_SHARED=OFF -DwxBUILD_MONOLITHIC=OFF " +
                   "-DwxBUILD_USE_STATIC_RUNTIME=OFF -DwxBUILD_MSVC_MULTIPROC=ON " +

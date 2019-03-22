@@ -15,6 +15,7 @@ jobs:
       AZURE_STORAGE_ACCOUNT: $(azure.storage.account)
       AZURE_STORAGE_KEY: $(azure.storage.key)
       AZURE_STORAGE_CONTAINER_NAME: $(azure.storage.container.name)
+      ORG_GRADLE_PROJECT_renew_cache: $(cache.renew)
     displayName: build all
   - task: PublishBuildArtifacts@1
     inputs:

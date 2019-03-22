@@ -9,8 +9,18 @@
 #endif
 
 #include <wx/tglbtn.h>
+#include <wx/dcgraph.h>
 
 #include <fmt/format.h>
+
+#if defined(_MSC_VER)
+namespace Gdiplus {
+    using std::min;
+    using std::max;
+}
+
+#include <gdiplus.h>
+#endif
 
 using namespace fmt::literals;
 

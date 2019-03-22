@@ -13,12 +13,18 @@ public:
     ~IRenderableWindowBase()
     {}
     
-    //! DC の原点を、親Windowに対するこのWindowの位置に変換してから描画。
-    //! 描画完了後、原点を最初の状態に戻す
+    //! DC の原点をこのWindowの左上位置に変換してから描画。
+    //! 描画完了後、原点を元の状態に戻す
     virtual
     void SetOriginAndRender(wxDC &dc) = 0;
     void Render(wxDC &dc);
-    
+
+    virtual
+    void UseDefaultPaintMethod(bool flag) = 0;
+
+    virtual
+    bool IsUsingDefaultPaintMethod() const = 0;
+
 protected:
     bool is_shown_ = true;
     virtual
@@ -37,25 +43,34 @@ public:
     IRenderableWindow(Args&&... args)
     :   WindowType(std::forward<Args>(args)...)
     {
-        Bind(wxEVT_PAINT, [this](auto &) {
-            if(IsUsingDefaultPaintMethod()) {
-                wxPaintDC dc(this);
-                Render(dc);
-            }
-        });
+        SetBackgroundStyle(wxBG_STYLE_PAINT);
+		SetDoubleBuffered(true);
+
+        on_paint_ = [this](wxPaintEvent &ev) { OnPaint(ev); };
+        UseDefaultPaintMethod(true);
     }
     
     void SetOriginAndRender(wxDC &dc) override
     {
-        auto saved_pos = dc.GetLogicalOrigin();
-        auto pos = saved_pos - this->GetPosition();
+        auto const saved_pos = dc.GetLogicalOrigin();
+        auto const pos = saved_pos - this->GetPosition();  
         dc.SetLogicalOrigin(pos.x, pos.y);
         this->Render(dc);
         dc.SetLogicalOrigin(saved_pos.x, saved_pos.y);
     }
     
-    void UseDefaultPaintMethod(bool flag) { use_default_paint_method_ = flag; }
-    bool IsUsingDefaultPaintMethod() const { return use_default_paint_method_; }
+    void UseDefaultPaintMethod(bool flag) override {
+        if(use_default_paint_method_ == flag) { return; }
+
+        use_default_paint_method_ = flag;
+        if(use_default_paint_method_) {
+            Bind(wxEVT_PAINT, on_paint_);
+        } else {
+            Unbind(wxEVT_PAINT, on_paint_);
+        }
+    }
+
+    bool IsUsingDefaultPaintMethod() const override { return use_default_paint_method_; }
     
     virtual bool Show(bool show = true) override
     {
@@ -64,7 +79,15 @@ public:
     }
     
 private:
-    bool use_default_paint_method_ = true;
+    bool use_default_paint_method_ = false;
+    std::function<void(wxPaintEvent &ev)> on_paint_;
+
+    void OnPaint(wxPaintEvent &ev)
+    {
+        wxPaintDC pdc(this);
+        wxGCDC dc(pdc);
+        Render(dc);
+    }
 };
 
 class ImageButton
@@ -154,13 +177,21 @@ public:
     
     void SetText(wxString new_text);
     wxString GetText() const;
+
+    void SetFont(wxFont font);
+    wxFont GetFont() const;
+
+    void SetTextColour(wxColour col);
+    wxColour GetTextColour() const;
     
     void SetAlignment(int align);
     int GetAlignment() const;
     
 private:
+    wxFont font_;
     wxString text_;
     int align_ = 0;
+    wxColour col_;
 };
 
 NS_HWM_END

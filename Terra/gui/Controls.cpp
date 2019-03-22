@@ -1,4 +1,5 @@
 #include "Controls.hpp"
+#include "Util.hpp"
 
 NS_HWM_BEGIN
 
@@ -112,7 +113,12 @@ void ImageButton::doRender(wxDC &dc)
 
 Label::Label(wxWindow *parent)
 :   IRenderableWindow<>(parent, wxID_ANY)
-{    
+{
+    font_ = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
+    font_.SetPixelSize(wxSize(12, 12));
+
+    col_ = HSVToColour(0.0, 0.0, 0.2, 1.0);
+
     // treat mouse event for this window as one for the parent event.
     auto mouse_callback = [this](wxMouseEvent &ev) {
         auto const parent = GetParent();
@@ -146,6 +152,16 @@ bool Label::AcceptsFocus() const { return false; }
 
 void Label::doRender(wxDC &dc)
 {
+    dc.SetTextForeground(col_);
+    dc.SetFont(font_);
+
+#if defined(_MSC_VER)
+    {
+        auto gdip = (Gdiplus::Graphics *)(dc.GetGraphicsContext()->GetNativeContext());
+        gdip->SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
+    }
+#endif
+
     dc.DrawLabel(text_, GetClientRect(), align_);
 }
 
@@ -163,6 +179,26 @@ wxString Label::GetText() const
 void Label::SetAlignment(int align)
 {
     align_ = align;
+}
+
+void Label::SetFont(wxFont font)
+{
+    font_ = font;
+}
+
+wxFont Label::GetFont() const
+{
+    return font_;
+}
+
+void Label::SetTextColour(wxColour col)
+{
+    col_ = col;
+}
+
+wxColour Label::GetTextColour() const
+{
+    return col_;
 }
 
 int Label::GetAlignment() const

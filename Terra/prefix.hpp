@@ -47,30 +47,7 @@ namespace std {
 
 #endif
 
-#if __has_include(<variant>)
-    #include <variant>
-
-namespace hwm {
-	template<class U, class... Args>
-	U * get_if(std::variant<Args...> *v) { return std::get_if<U>(v); }
-}
-
-#else
-    #include <mpark/variant.hpp>
-    namespace std {
-        template<class... Args>
-        using variant = mpark::variant<Args...>;
-        using monostate = mpark::monostate;
-        using mpark::get;
-        using mpark::get_if;
-    }
-
-	namespace hwm {
-		template<class U, class... Args>
-		U * get_if(std::variant<Args...> *v) { return mpark::get_if<U>(v); }
-	}
-
-#endif
+#include <mpark/variant.hpp>
 
 #define NS_HWM_BEGIN namespace hwm {
 #define NS_HWM_END }

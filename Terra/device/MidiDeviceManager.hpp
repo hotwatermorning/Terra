@@ -20,10 +20,10 @@ struct DeviceMidiMessage
     UInt8 channel_ = 0;
     
     template<class To>
-    To * As() { return hwm::get_if<To>(&data_); }
+    To * As() { return mpark::get_if<To>(&data_); }
     
     template<class To>
-    To const * As() const { return hwm::get_if<To>(&data_); }
+    To const * As() const { return mpark::get_if<To>(&data_); }
     
     static
     DeviceMidiMessage Create(MidiDevice *device,

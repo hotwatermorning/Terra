@@ -54,8 +54,8 @@ namespace MidiDataType
         UInt8 value_msb_ = 0;
     };
     
-    using VariantType = std::variant<
-        std::monostate,
+    using VariantType = mpark::variant<
+        mpark::monostate,
         NoteOff, NoteOn,
         PolyphonicKeyPressure, ControlChange,
         ProgramChange, ChannelPressure,

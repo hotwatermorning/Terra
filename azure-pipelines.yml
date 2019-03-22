@@ -1,16 +1,55 @@
-variables:
-  DEVELOPER_DIR: "/Applications/Xcode_9.3.1.app"
 jobs:
-- job: build_osx
+- job: build_osx_10_13_xcode9_3
   pool:
     vmImage: 'macOS-10.13'
-  timeoutInMinutes: 120
+  variables:
+    DEVELOPER_DIR: "/Applications/Xcode_9.3.1.app"
   steps:
   - script: brew install libtool automake
     displayName: brew install
   - script: |
       cd gradle
       ./gradlew build_all -Pconfig=Release
+    env:
+      AZURE_STORAGE_ACCOUNT: $(azure.storage.account)
+      AZURE_STORAGE_KEY: $(azure.storage.key)
+      AZURE_STORAGE_CONTAINER_NAME: $(azure.storage.container.name)
+      ORG_GRADLE_PROJECT_renew_cache: $(cache.renew)
+    displayName: build all
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathtoPublish: '$(System.DefaultWorkingDirectory)/build_release/Release'
+      artifactName: terra_release_osx
+    displayName: publish
+- job: build_osx_10_13_xcode10_1
+  pool:
+    vmImage: 'macOS-10.13'
+  variables:
+    DEVELOPER_DIR: "/Applications/Xcode_10.1.app"
+  steps:
+  - script: brew install libtool automake
+    displayName: brew install
+  - script: |
+      cd gradle
+      ./gradlew build_all -Pconfig=Release
+    env:
+      AZURE_STORAGE_ACCOUNT: $(azure.storage.account)
+      AZURE_STORAGE_KEY: $(azure.storage.key)
+      AZURE_STORAGE_CONTAINER_NAME: $(azure.storage.container.name)
+      ORG_GRADLE_PROJECT_renew_cache: $(cache.renew)
+    displayName: build all
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathtoPublish: '$(System.DefaultWorkingDirectory)/build_release/Release'
+      artifactName: terra_release_osx
+    displayName: publish
+- job: build_win_msvc_2017
+  pool:
+    vmImage: 'vs2017-win2016'
+  steps:
+  - script: |
+      cd gradle
+      gradlew build_all -Pconfig=Release
     env:
       AZURE_STORAGE_ACCOUNT: $(azure.storage.account)
       AZURE_STORAGE_KEY: $(azure.storage.key)

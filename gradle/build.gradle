@@ -141,8 +141,9 @@ task test_tokenize {
 
     if(is_failed) { assert false, "[FAILED]" } else { println "[PASS]" }
   }
+
+  description = """test tokenize() function"""
 }
-test_tokenize.description = """test tokenize() function"""
 
 class ExecutionResult
 {
@@ -624,6 +625,26 @@ task build_submodules {
   dependsOn { [build_protobuf, compile_schemas, build_rtmidi, build_portaudio, build_vst3sdk, build_wxwidgets, build_fmtlib] }
 }
 
+task copy_resources {
+  doLast {
+    // there is no need to copy resources with this task on macOS,
+    // because the resources are copied into a bundle directory by cmake script.
+    if(isWindows() == false) { return; }
+
+    def output_dir = file("../${build_dir_name}/${project.config}").getAbsolutePath()
+
+    def src = file("../data")
+    def dest = new File(output_dir, "Resource")
+    assert(mkdirs_if_needed(output_dir))
+    copy {
+      from src
+      into dest
+    }
+  }
+
+  description = """copy resource data into the output directory."""
+}
+
 task prepare_app {
   doLast {
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
@@ -644,6 +665,7 @@ task build_app {
     }
   }
 }
+build_app.mustRunAfter copy_resources
 build_app.mustRunAfter prepare_app
 
 //! 指定したディレクトリの直下にあるディレクトリのうち、
@@ -676,6 +698,6 @@ task clean_all {
 }
 
 task build_all {
-  dependsOn { [update_submodules, build_submodules, prepare_app, build_app] }
+  dependsOn { [update_submodules, build_submodules, prepare_app, copy_resources, build_app] }
 }
 

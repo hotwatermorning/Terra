@@ -31,7 +31,7 @@ ext {
   ccache_envvars = (has_ccache ? [CC: "${ccache_path} clang", CXX: "${ccache_path} clang++"] : [:])
   should_renew_cache = (project.renew_cache == "true")
   getCMakeGenerator = {
-    return isWindows() ? "-G \"Visual Studio 15 2017\" -A x64 -T v141,host=x64" : "-G Xcode"
+    return isWindows() ? "-G \"Visual Studio 15 2017\" -Ax64 -Tv141,host=x64" : "-G Xcode"
   }
 }
 

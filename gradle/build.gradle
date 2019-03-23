@@ -31,14 +31,7 @@ ext {
   ccache_envvars = (has_ccache ? [CC: "${ccache_path} clang", CXX: "${ccache_path} clang++"] : [:])
   should_renew_cache = (project.renew_cache == "true")
   getCMakeGenerator = {
-    return isWindows() ? "Visual Studio 15 2017 Win64" : "Xcode"
-  }
-  getBasicCMakeFlags = {
-    if(isWindows()) {
-      return ''
-    } else {
-      return ''
-    }
+    return isWindows() ? "-G \"Visual Studio 15 2017\" -A x64 -T v141,host=x64" : "-G Xcode"
   }
 }
 
@@ -425,11 +418,11 @@ task build_protobuf {
       get_hash("protobuf"),
       {
         if(isWindows()) {
-          execute("cmake -G '${getCMakeGenerator()}' ${getBasicCMakeFlags()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
+          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
                   "-Dprotobuf_BUILD_TESTS=OFF -Dprotobuf_MSVC_STATIC_RUNTIME=OFF -DCMAKE_CONFIGURATION_TYPES=${project.config} ../cmake"
                   , build_dir)
-          execute("cmake --build . --target ALL_BUILD", build_dir)
-          execute("cmake --build . --target INSTALL", build_dir)
+          execute("cmake --build . -j --target ALL_BUILD", build_dir)
+          execute("cmake --build . -j --target INSTALL", build_dir)
         } else {
           execute("./autogen.sh", "${build_dir}/..")
           execute("../configure --disable-shared --prefix \"${build_dir}/install\"",
@@ -456,9 +449,9 @@ task build_rtmidi {
       get_hash("rtmidi"),
       {
         if(isWindows()) {
-          execute("cmake -G '${getCMakeGenerator()}' ${getBasicCMakeFlags()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-          execute("cmake --build . --target ALL_BUILD", build_dir)
-          execute("cmake --build . --target INSTALL", build_dir)
+          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+          execute("cmake --build . -j --target ALL_BUILD", build_dir)
+          execute("cmake --build . -j --target INSTALL", build_dir)
         } else {
           execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
           execute("make -j", build_dir)
@@ -481,9 +474,9 @@ task build_portaudio {
       get_hash("portaudio"),
       {
         if(isWindows()) {
-          execute("cmake -G '${getCMakeGenerator()}' ${getBasicCMakeFlags()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DPA_BUILD_STATIC=ON -DPA_DLL_LINK_WITH_STATIC_RUNTIME=OFF -DPA_BUILD_SHARED=OFF -DCMAKE_BUILD_TYPE=${project.config} -DPA_USE_WDMKS=OFF ..", build_dir, ccache_envvars)
-          execute("cmake --build . --target ALL_BUILD", build_dir)
-          execute("cmake --build . --target INSTALL", build_dir)
+          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DPA_BUILD_STATIC=ON -DPA_DLL_LINK_WITH_STATIC_RUNTIME=OFF -DPA_BUILD_SHARED=OFF -DCMAKE_BUILD_TYPE=${project.config} -DPA_USE_WDMKS=OFF ..", build_dir, ccache_envvars)
+          execute("cmake --build . -j --target ALL_BUILD", build_dir)
+          execute("cmake --build . -j --target INSTALL", build_dir)
         } else {
           execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
           execute("make -j", build_dir)
@@ -509,13 +502,13 @@ task build_vst3sdk {
         if(isWindows()) {
           // VST3SDKは、makeのinstallターゲットを用意しない
           execute(
-            " cmake -G '${getCMakeGenerator()}' ${getBasicCMakeFlags()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' -DCMAKE_BUILD_TYPE=${project.config} "
+            " cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' -DCMAKE_BUILD_TYPE=${project.config} "
             + " -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF "
             + " -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF "
             + " -DSMTG_ADD_VSTGUI=OFF "
             + ".."
             , build_dir, ccache_envvars)
-          execute("cmake --build . --target ALL_BUILD", build_dir)
+          execute("cmake --build . -j --target ALL_BUILD", build_dir)
         } else {
           // VST3SDKは、makeのinstallターゲットを用意しない
           execute(
@@ -550,13 +543,13 @@ task build_wxwidgets {
             into file("../ext/wxWidgets/include/wx/msw")
             rename "setup0\\.h", "setup.h"
           }
-          execute("cmake -G '${getCMakeGenerator()}' ${getBasicCMakeFlags()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
+          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
                   "-DCMAKE_BUILD_TYPE=${project.config} -DwxBUILD_SHARED=OFF -DwxBUILD_MONOLITHIC=OFF " +
                   "-DwxBUILD_USE_STATIC_RUNTIME=OFF -DwxBUILD_MSVC_MULTIPROC=ON " +
                   "-DCMAKE_CXX_STANDARD=14 .."
                   , build_dir)
-          execute("cmake --build . --target ALL_BUILD", build_dir)
-          execute("cmake --build . --target INSTALL", build_dir)
+          execute("cmake --build . -j --target ALL_BUILD", build_dir)
+          execute("cmake --build . -j --target INSTALL", build_dir)
         } else {
           def debug_flags = ""
           if(project.config == "Debug") {
@@ -594,10 +587,10 @@ task build_fmtlib {
       get_hash("fmt"),
       {
         if(isWindows()) {
-          execute("cmake -G '${getCMakeGenerator()}' ${getBasicCMakeFlags()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
+          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
                   "-DFMT_TEST=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-          execute("cmake --build . --target ALL_BUILD", build_dir)
-          execute("cmake --build . --target INSTALL", build_dir)
+          execute("cmake --build . -j --target ALL_BUILD", build_dir)
+          execute("cmake --build . -j --target INSTALL", build_dir)
         } else {
           execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
           execute("make -j", build_dir)
@@ -649,7 +642,7 @@ task prepare_app {
   doLast {
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
     assert(mkdirs_if_needed(build_dir))
-    execute("cmake -G '${getCMakeGenerator()}' ${getBasicCMakeFlags()} -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir)
+    execute("cmake ${getCMakeGenerator()} -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir)
   }
 }
 prepare_app.mustRunAfter build_submodules
@@ -659,7 +652,7 @@ task build_app {
   doLast {
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
     if(isWindows()) {
-      execute("cmake --build . --target ALL_BUILD --config ${project.config}", build_dir)
+      execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
     } else {
       execute("xcodebuild -configuration ${project.config}", build_dir)
     }

@@ -421,10 +421,10 @@ task build_protobuf {
           execute("echo %VS2017INSTALLDIR%")
           execute("setx VS2017INSTALLDIR \"C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\"")
           execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
-                  "-Dprotobuf_BUILD_TESTS=OFF -Dprotobuf_MSVC_STATIC_RUNTIME=OFF -DCMAKE_BUILD_TYPE=${project.config} ../cmake"
+                  "-Dprotobuf_BUILD_TESTS=OFF -Dprotobuf_MSVC_STATIC_RUNTIME=OFF ../cmake"
                   , build_dir)
-          execute("cmake --build . -j --target ALL_BUILD", build_dir)
-          execute("cmake --build . -j --target INSTALL", build_dir)
+          execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
+          execute("cmake --build . -j --target INSTALL --config ${project.config}", build_dir)
         } else {
           execute("./autogen.sh", "${build_dir}/..")
           execute("../configure --disable-shared --prefix \"${build_dir}/install\"",
@@ -451,9 +451,9 @@ task build_rtmidi {
       get_hash("rtmidi"),
       {
         if(isWindows()) {
-          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-          execute("cmake --build . -j --target ALL_BUILD", build_dir)
-          execute("cmake --build . -j --target INSTALL", build_dir)
+          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF ..", build_dir, ccache_envvars)
+          execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
+          execute("cmake --build . -j --target INSTALL --config ${project.config}", build_dir)
         } else {
           execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
           execute("make -j", build_dir)
@@ -476,9 +476,9 @@ task build_portaudio {
       get_hash("portaudio"),
       {
         if(isWindows()) {
-          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DPA_BUILD_STATIC=ON -DPA_DLL_LINK_WITH_STATIC_RUNTIME=OFF -DPA_BUILD_SHARED=OFF -DCMAKE_BUILD_TYPE=${project.config} -DPA_USE_WDMKS=OFF ..", build_dir, ccache_envvars)
-          execute("cmake --build . -j --target ALL_BUILD", build_dir)
-          execute("cmake --build . -j --target INSTALL", build_dir)
+          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DPA_BUILD_STATIC=ON -DPA_DLL_LINK_WITH_STATIC_RUNTIME=OFF -DPA_BUILD_SHARED=OFF -DPA_USE_WDMKS=OFF ..", build_dir, ccache_envvars)
+          execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
+          execute("cmake --build . -j --target INSTALL --config ${project.config}", build_dir)
         } else {
           execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
           execute("make -j", build_dir)
@@ -546,12 +546,12 @@ task build_wxwidgets {
             rename "setup0\\.h", "setup.h"
           }
           execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
-                  "-DCMAKE_BUILD_TYPE=${project.config} -DwxBUILD_SHARED=OFF -DwxBUILD_MONOLITHIC=OFF " +
+                  " -DwxBUILD_SHARED=OFF -DwxBUILD_MONOLITHIC=OFF " +
                   "-DwxBUILD_USE_STATIC_RUNTIME=OFF -DwxBUILD_MSVC_MULTIPROC=ON " +
                   "-DCMAKE_CXX_STANDARD=14 .."
                   , build_dir)
-          execute("cmake --build . -j --target ALL_BUILD", build_dir)
-          execute("cmake --build . -j --target INSTALL", build_dir)
+          execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
+          execute("cmake --build . -j --target INSTALL --config ${project.config}", build_dir)
         } else {
           def debug_flags = ""
           if(project.config == "Debug") {
@@ -590,9 +590,9 @@ task build_fmtlib {
       {
         if(isWindows()) {
           execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
-                  "-DFMT_TEST=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-          execute("cmake --build . -j --target ALL_BUILD", build_dir)
-          execute("cmake --build . -j --target INSTALL", build_dir)
+                  "-DFMT_TEST=OFF ..", build_dir, ccache_envvars)
+          execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
+          execute("cmake --build . -j --target INSTALL --config ${project.config}", build_dir)
         } else {
           execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
           execute("make -j", build_dir)
@@ -644,7 +644,7 @@ task prepare_app {
   doLast {
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
     assert(mkdirs_if_needed(build_dir))
-    execute("cmake ${getCMakeGenerator()} -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir)
+    execute("cmake ${getCMakeGenerator()} ..", build_dir)
   }
 }
 prepare_app.mustRunAfter build_submodules
@@ -653,11 +653,7 @@ prepare_app.mustRunAfter compile_schemas
 task build_app {
   doLast {
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
-    if(isWindows()) {
-      execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
-    } else {
-      execute("xcodebuild -configuration ${project.config}", build_dir)
-    }
+    execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
   }
 }
 build_app.mustRunAfter copy_resources

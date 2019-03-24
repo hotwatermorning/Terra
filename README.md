@@ -34,11 +34,11 @@ open ../build_debug/Debug/Terra.app
 ```
 
 ```bat
-# on Windows
+: on Windows
 cd .\gradle
 
 gradlew build_all -Pconfig=Debug # or Release.
-# For non-English locales, add `-Dfile.encoding=UTF-8` option to prevent Mojibake.
+: For non-English locales, add `-Dfile.encoding=UTF-8` option to prevent Mojibake.
 
 start ..\build_debug\Debug\Terra.exe
 ```

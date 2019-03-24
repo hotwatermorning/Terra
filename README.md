@@ -20,13 +20,28 @@ The yet another audio plugin hosting application. (alpha version)
 
 ## How to build
 
+Currently Terra can be built on these platforms:
+
+* macOS 10.13.4 & Xcode 9.3.1
+* macOS 10.13.4 & Xcode 10.1
+* Windows 10 & Visual Studio 2017
+
 ```sh
+# on macOS
 cd ./gradle
 ./gradlew build_all -Pconfig=Debug # or Release
 open ../build_debug/Debug/Terra.app
 ```
 
-Currently Terra can be built on macOS 10.13.4 & Xcode 9.3.1.
+```bat
+# on Windows
+cd .\gradle
+
+gradlew build_all -Pconfig=Debug # or Release.
+# For non-English locales, add `-Dfile.encoding=UTF-8` option to prevent Mojibake.
+
+start ..\build_debug\Debug\Terra.exe
+```
 
 ## License and dependencies.
 

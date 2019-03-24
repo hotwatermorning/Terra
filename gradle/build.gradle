@@ -421,7 +421,7 @@ task build_protobuf {
           execute("echo %VS2017INSTALLDIR%")
           execute("setx VS2017INSTALLDIR \"C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\"")
           execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
-                  "-Dprotobuf_BUILD_TESTS=OFF -Dprotobuf_MSVC_STATIC_RUNTIME=OFF -DCMAKE_BUILD_TYPE=${project.config} -DCMAKE_CONFIGURATION_TYPES=${project.config} ../cmake"
+                  "-Dprotobuf_BUILD_TESTS=OFF -Dprotobuf_MSVC_STATIC_RUNTIME=OFF -DCMAKE_BUILD_TYPE=${project.config} ../cmake"
                   , build_dir)
           execute("cmake --build . -j --target ALL_BUILD", build_dir)
           execute("cmake --build . -j --target INSTALL", build_dir)

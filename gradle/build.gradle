@@ -504,13 +504,13 @@ task build_vst3sdk {
         if(isWindows()) {
           // VST3SDKは、makeのinstallターゲットを用意しない
           execute(
-            " cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' -DCMAKE_BUILD_TYPE=${project.config} "
+            " cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' "
             + " -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF "
             + " -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF "
             + " -DSMTG_ADD_VSTGUI=OFF "
             + ".."
             , build_dir, ccache_envvars)
-          execute("cmake --build . -j --target ALL_BUILD", build_dir)
+          execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
         } else {
           // VST3SDKは、makeのinstallターゲットを用意しない
           execute(

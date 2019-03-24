@@ -644,7 +644,7 @@ task prepare_app {
   doLast {
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
     assert(mkdirs_if_needed(build_dir))
-    execute("cmake ${getCMakeGenerator()} ..", build_dir)
+    execute("cmake ${getCMakeGenerator()} -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir)
   }
 }
 prepare_app.mustRunAfter build_submodules

@@ -653,7 +653,10 @@ prepare_app.mustRunAfter compile_schemas
 task build_app {
   doLast {
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
-    execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
+    // for macOS, Xcode build performs parallel builds by default and
+    // requires a number of concurrency for this option.
+    def parallel_option = isWindows() ? "-j" : ""
+    execute("cmake --build . ${parallel_option} --target ALL_BUILD --config ${project.config}", build_dir)
   }
 }
 build_app.mustRunAfter copy_resources

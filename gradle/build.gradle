@@ -165,7 +165,7 @@ class ExecutionResult
 //! @param env_vars is environment variables as a list of key:value pair. this parameter may be nil.
 @Field def execute_may_fail = { String command, def working_dir = ".", Map env_vars = [:] ->
   if(isWindows()) {
-    command = "cmd /c chcp 65001 & " + command.toString()
+    command = "cmd /c chcp 65001 > nul & " + command.toString()
   }
 
   def tmp = tokenize(command)
@@ -296,7 +296,11 @@ task update_submodules {
     }
   }
 
-  if(execute_may_fail("bash -c 'which az'").failed()) { return null }
+  if(isWindows()) {
+    if(execute_may_fail("where az").failed()) { return null }
+  } else {
+    if(execute_may_fail("which az").failed()) { return null }
+  }
   if(getAzureStorageAccount()?.trim() == false
      || getAzureStorageKey()?.trim() == false
      || getAzureStorageContainerName()?.trim() == false
@@ -342,9 +346,14 @@ task update_submodules {
     store: { def param ->
       assert(file(param.cache_dir).exists())
 
-      execute(
-        "tar -cjvhf ${param.getArchiveFileName()} ./"
+      def tar_result = execute_may_fail(
+        "tar --warning=no-file-changed -cjvhf ${param.getArchiveFileName()} ./"
         , param.cache_dir)
+
+      if(tar_result.exitValue() >= 2) {
+        logger.warn("failed to create archive.")
+        return false
+      }
 
       def result = execute_may_fail(
         " az storage blob upload "

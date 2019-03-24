@@ -104,25 +104,30 @@ if(IsMSVC)
   set(CMAKE_CXX_FLAGS "-DHAVE_TYPE_TRAITS=1 ${CMAKE_CXX_FLAGS}")
   get_filename_component(WX_INCLUDE_DIR "./ext/wxWidgets/${BUILD_DIR_NAME}/install/include" ABSOLUTE)
   get_filename_component(WX_LIB_DIR "./ext/wxWidgets/${BUILD_DIR_NAME}/install/lib/vc_x64_lib" ABSOLUTE)
+  if(IsDebug)
+    set(DP "d")
+  else()
+    set(DP "")
+  endif()
   set(CMAKE_EXE_LINKER_FLAGS
-    "\"${WX_LIB_DIR}/wxbase31ud.lib\" \
-    \"${WX_LIB_DIR}/wxbase31ud_net.lib\" \
-    \"${WX_LIB_DIR}/wxbase31ud_xml.lib\" \
-    \"${WX_LIB_DIR}/wxmsw31ud_core.lib\" \
-    \"${WX_LIB_DIR}/wxmsw31ud_xrc.lib\" \
-    \"${WX_LIB_DIR}/wxmsw31ud_webview.lib\" \
-    \"${WX_LIB_DIR}/wxmsw31ud_stc.lib\" \
-    \"${WX_LIB_DIR}/wxmsw31ud_richtext.lib\" \
-    \"${WX_LIB_DIR}/wxmsw31ud_ribbon.lib\" \
-    \"${WX_LIB_DIR}/wxmsw31ud_qa.lib\" \
-    \"${WX_LIB_DIR}/wxmsw31ud_propgrid.lib\" \
-    \"${WX_LIB_DIR}/wxmsw31ud_media.lib\" \
-    \"${WX_LIB_DIR}/wxmsw31ud_html.lib\" \
-    \"${WX_LIB_DIR}/wxmsw31ud_gl.lib\" \
-    \"${WX_LIB_DIR}/wxmsw31ud_aui.lib\" \
-    \"${WX_LIB_DIR}/wxmsw31ud_adv.lib\" \
-    \"${WX_LIB_DIR}/wxjpegd.lib\" \"${WX_LIB_DIR}/wxpngd.lib\" \"${WX_LIB_DIR}/wxtiffd.lib\" \
-    \"${WX_LIB_DIR}/wxzlibd.lib\" \"${WX_LIB_DIR}/wxregexud.lib\" \"${WX_LIB_DIR}/wxexpatd.lib\" \"${WX_LIB_DIR}/wxscintillad.lib\" \
+    "\"${WX_LIB_DIR}/wxbase31u${DP}.lib\" \
+    \"${WX_LIB_DIR}/wxbase31u${DP}_net.lib\" \
+    \"${WX_LIB_DIR}/wxbase31u${DP}_xml.lib\" \
+    \"${WX_LIB_DIR}/wxmsw31u${DP}_core.lib\" \
+    \"${WX_LIB_DIR}/wxmsw31u${DP}_xrc.lib\" \
+    \"${WX_LIB_DIR}/wxmsw31u${DP}_webview.lib\" \
+    \"${WX_LIB_DIR}/wxmsw31u${DP}_stc.lib\" \
+    \"${WX_LIB_DIR}/wxmsw31u${DP}_richtext.lib\" \
+    \"${WX_LIB_DIR}/wxmsw31u${DP}_ribbon.lib\" \
+    \"${WX_LIB_DIR}/wxmsw31u${DP}_qa.lib\" \
+    \"${WX_LIB_DIR}/wxmsw31u${DP}_propgrid.lib\" \
+    \"${WX_LIB_DIR}/wxmsw31u${DP}_media.lib\" \
+    \"${WX_LIB_DIR}/wxmsw31u${DP}_html.lib\" \
+    \"${WX_LIB_DIR}/wxmsw31u${DP}_gl.lib\" \
+    \"${WX_LIB_DIR}/wxmsw31u${DP}_aui.lib\" \
+    \"${WX_LIB_DIR}/wxmsw31u${DP}_adv.lib\" \
+    \"${WX_LIB_DIR}/wxjpeg${DP}.lib\" \"${WX_LIB_DIR}/wxpng${DP}.lib\" \"${WX_LIB_DIR}/wxtiff${DP}.lib\" \
+    \"${WX_LIB_DIR}/wxzlib${DP}.lib\" \"${WX_LIB_DIR}/wxregexu${DP}.lib\" \"${WX_LIB_DIR}/wxexpat${DP}.lib\" \"${WX_LIB_DIR}/wxscintilla${DP}.lib\" \
     ${CMAKE_EXE_LINKER_FLAGS}"
     )
   set(CMAKE_CXX_FLAGS "/I\"${WX_INCLUDE_DIR}\" /I\"${WX_INCLUDE_DIR}/msvc\" ${CMAKE_CXX_FLAGS}")

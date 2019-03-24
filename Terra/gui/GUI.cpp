@@ -511,8 +511,6 @@ MainFrame::MainFrame(wxSize initial_size)
     
     wxMenu *menuView = new wxMenu;
     menuView->AppendCheckItem(ID_View_ShowPianoRoll, "Show &Piano Roll\tCTRL-P", "Show Piano Roll");
-    menuView->Append(ID_View_ShowPianoRoll, "Show &Piano Roll\tCTRL-P", "Show Piano Roll");
-    menuView->Append(ID_View_ShowPianoRoll, "Show &Piano Roll\tCTRL-P", "Show Piano Roll");
     
     wxMenu *menuPlay = new wxMenu;
     menuPlay->Append(ID_Play, "&Play\tSPACE", "Start playback", wxITEM_CHECK);

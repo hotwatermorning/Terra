@@ -29,7 +29,10 @@ Currently Terra can be built on these platforms:
 ```sh
 # on macOS
 cd ./gradle
-./gradlew build_all -Pconfig=Debug # or Release
+
+./gradlew build_all -Pconfig=Debug
+# For release build, use `-Pconfig=Release` instead.
+
 open ../build_debug/Debug/Terra.app
 ```
 
@@ -37,7 +40,8 @@ open ../build_debug/Debug/Terra.app
 : on Windows
 cd .\gradle
 
-gradlew build_all -Pconfig=Debug # or Release.
+gradlew build_all -Pconfig=Debug
+: For release build, use `-Pconfig=Release` instead.
 : For non-English locales, add `-Dfile.encoding=UTF-8` option to prevent Mojibake.
 
 start ..\build_debug\Debug\Terra.exe

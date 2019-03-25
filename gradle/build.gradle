@@ -346,13 +346,17 @@ task update_submodules {
     store: { def param ->
       assert(file(param.cache_dir).exists())
 
-      def tar_result = execute_may_fail(
-        "tar --warning=no-file-changed -cjvhf ${param.getArchiveFileName()} ./"
-        , param.cache_dir)
+      if(isWindows()) {
+        def tar_result = execute_may_fail(
+            "tar --warning=no-file-changed -cjvhf ${param.getArchiveFileName()} ./"
+            , param.cache_dir)
 
-      if(tar_result.exitValue() >= 2) {
-        logger.warn("failed to create archive.")
-        return false
+        if(tar_result.exitValue() >= 2) {
+          logger.warn("failed to create archive.")
+          return false
+        }
+      } else {
+        execute("tar -cjvhf ${param.getArchiveFileName()} ./", param.cache_dir)
       }
 
       def result = execute_may_fail(

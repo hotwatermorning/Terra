@@ -155,10 +155,10 @@ public:
     struct BusInfo
     {
         //!< Media type - has to be a value of @ref Steinberg::Vst::MediaTypes
-        Steinberg::Vst::MediaType media_type_;
+        Steinberg::Vst::MediaTypes media_type_;
         
         //!< input or output @ref Steinberg::Vst::BusDirections
-        Steinberg::Vst::BusDirection direction_;
+        Steinberg::Vst::BusDirections direction_;
         
         //! number of channels
         //! For a bus of type MediaTypes::kEvent the channelCount corresponds
@@ -169,7 +169,7 @@ public:
         String name_;
         
         //! main or aux - has to be a value of @ref Steinerg::Vst::BusTypes
-        Steinberg::Vst::BusType bus_type_;
+        Steinberg::Vst::BusTypes bus_type_;
         
         bool is_default_active_ = false;
         

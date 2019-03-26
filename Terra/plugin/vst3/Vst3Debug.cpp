@@ -219,8 +219,8 @@ String BusUnitInfoToString(int bus_index, Vst::BusInfo const &bus, Vst::IUnitInf
 
 void OutputBusInfoImpl(Vst::IComponent *component,
                        Vst::IUnitInfo *unit_handler,
-                       Vst::MediaType media_type,
-                       Vst::BusDirection bus_direction)
+                       Vst::MediaTypes media_type,
+                       Vst::BusDirections bus_direction)
 {
     int const kNumSpaces = 4;
     

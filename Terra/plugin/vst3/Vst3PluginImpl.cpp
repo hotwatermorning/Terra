@@ -77,11 +77,11 @@ std::vector<Vst3Plugin::BusInfo> CreateBusInfoList(Vst::IComponent *comp,
         if(ret != kResultTrue) { throw std::runtime_error("Failed to get BusInfo"); }
         
         Vst3Plugin::BusInfo bi;
-        bi.bus_type_ = vbi.busType;
+        bi.bus_type_ = static_cast<Vst::BusTypes>(vbi.busType);
         bi.channel_count_ = vbi.channelCount;
-        bi.direction_ = vbi.direction;
+        bi.direction_ = static_cast<Vst::BusDirections>(vbi.direction);
         bi.is_default_active_ = (vbi.flags & Vst::BusInfo::kDefaultActive) != 0;
-        bi.media_type_ = vbi.mediaType;
+        bi.media_type_ = static_cast<Vst::MediaTypes>(vbi.mediaType);
         bi.name_ = to_wstr(vbi.name);
         bi.is_active_ = bi.is_default_active_;
         

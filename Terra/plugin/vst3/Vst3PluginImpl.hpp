@@ -78,7 +78,7 @@ public:
     private:
         Impl *owner_ = nullptr;
         std::vector<BusInfo> bus_infos_;
-        Vst::BusDirection dir_;
+        Vst::BusDirections dir_;
         std::unordered_map<UInt32, UInt32> bus_index_to_active_bus_index_;
         std::unordered_map<UInt32, UInt32> active_bus_index_to_bus_index_;
         

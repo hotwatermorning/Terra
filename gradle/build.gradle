@@ -582,7 +582,7 @@ task build_wxwidgets {
                   build_dir,
                   ccache_envvars
                   )
-          execute("make", build_dir)
+          execute("make -j4", build_dir)
           execute("make install", build_dir)
         }
       })

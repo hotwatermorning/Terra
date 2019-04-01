@@ -47,6 +47,11 @@ gradlew build_all -Pconfig=Debug
 start ..\build_debug\Debug\Terra.exe
 ```
 
+Building submodules may fail after checking out new commit which refers another submodule commits.
+If it occured, run the `gradlew` command again with `clean_all` task followed by the `build_all` task.
+
+To cleanup the build directory of a specific submodule, remove `/path/to/Terra/ext/<submodule-name>/build_<config-name>` directory manually.
+
 ## License and dependencies.
 
 Terra is licensed under MIT License.

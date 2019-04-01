@@ -66,7 +66,7 @@ If it occured, run the `gradlew` command again with `clean_all` task followed by
 ```
 
 * To cleanup the build directory of a specific submodule, remove `/path/to/Terra/ext/<submodule-name>/build_<config-name>` directory manually.
-* If submodules are up-to-date and only Terra need to be built, run the `gradlew` command with `prepare_app` and `build_app` tasks to skip rebuilding submodules:
+* If submodules are already built and only Terra need to be built, you can run the `gradlew` command with `prepare_app` and `build_app` tasks to skip rebuilding submodules:
 
 ```sh
 ./gradlew prepare_app build_app [-Pconfig=Debug]

@@ -29,13 +29,11 @@ public:
     ,   image_(image)
     {
 #if defined(_MSC_VER)
-        SetBackgroundStyle(wxBG_STYLE_PAINT);
         Create(nullptr, wxID_ANY, kAppName, wxDefaultPosition, wxDefaultSize,
             wxFRAME_NO_TASKBAR | wxBORDER_NONE);
         SetWindowLong(GetHWND(), GWL_EXSTYLE, GetWindowLong(GetHWND(), GWL_EXSTYLE) | WS_EX_LAYERED);
         wxSize font_size(12, 12);
         font_ = wxFont(wxFontInfo(font_size).Family(wxFONTFAMILY_TELETYPE).AntiAliased(true));
-
 #else
         SetBackgroundStyle(wxBG_STYLE_TRANSPARENT);
         Create(nullptr, wxID_ANY, kAppName, wxDefaultPosition, wxDefaultSize,

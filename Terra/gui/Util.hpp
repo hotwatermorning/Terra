@@ -44,26 +44,22 @@ public:
     {}
 
     GraphicsBuffer(wxSize size)
-        : image_(size)
     {
-        image_.InitAlpha();
+        wxImage image(size);
+        image.InitAlpha();
+        bitmap_ = wxBitmap(image, 32);
         Clear();
     }
 
     GraphicsBuffer(GraphicsBuffer &&rhs)
     {
-        image_ = std::move(rhs.image_);
-        bitmap_ = wxBitmap(image_, 32);
-        rhs.image_ = wxImage();
+        bitmap_ = rhs.bitmap_;
         rhs.bitmap_ = wxBitmap();
-
     }
 
     GraphicsBuffer & operator=(GraphicsBuffer &&rhs)
     {
-        image_ = std::move(rhs.image_);
-        bitmap_ = wxBitmap(image_, 32);
-        rhs.image_ = wxImage();
+        bitmap_ = rhs.bitmap_;
         rhs.bitmap_ = wxBitmap();
         return *this;
     }
@@ -71,22 +67,17 @@ public:
     GraphicsBuffer(GraphicsBuffer const &) = delete;
     GraphicsBuffer & operator=(GraphicsBuffer const &) = delete;
 
-    bool IsOk() const { return image_.IsOk(); }
+    bool IsOk() const { return bitmap_.IsOk(); }
 
     void Clear()
     {
         assert(IsOk());
-        ClearImage(image_);
-        Update();
+        
+        wxMemoryDC memory_dc(bitmap_);
+        wxGCDC dc(memory_dc);
+        dc.SetBackground(wxBrush(wxTransparentColour));
+        dc.Clear();
     }
-
-    void Update()
-    {
-        bitmap_ = wxBitmap(image_, 32);
-    }
-
-    wxImage & GetImage() { return image_; }
-    wxImage const & GetImage() const { return image_; }
 
     wxBitmap & GetBitmap()
     {
@@ -102,7 +93,6 @@ public:
 
 private:
     wxBitmap bitmap_;
-    wxImage image_;
 };
 
 inline

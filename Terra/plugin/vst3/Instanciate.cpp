@@ -4,6 +4,7 @@
 #include "public.sdk/source/vst/hosting/eventlist.cpp"
 #include "public.sdk/source/vst/hosting/hostclasses.cpp"
 #include "public.sdk/source/vst/hosting/parameterchanges.cpp"
+#include "public.sdk/source/vst/hosting/pluginterfacesupport.cpp"
 
 #include "public.sdk/source/vst/hosting/stringconvert.cpp"
 #include "public.sdk/source/vst/hosting/module.cpp"

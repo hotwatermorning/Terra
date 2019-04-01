@@ -26,31 +26,51 @@ Currently Terra can be built on these platforms:
 * macOS 10.13.4 & Xcode 10.1
 * Windows 10 & Visual Studio 2017
 
+### Prerequisites
+
+* Git 2.8.1 or later
+* CMake 3.13.1 or later
+* Xcode 9.3.1 or later
+* Visual Studio 2017
+
+### macOS
+
 ```sh
-# on macOS
 cd ./gradle
 
-./gradlew build_all -Pconfig=Debug
-# For release build, use `-Pconfig=Release` instead.
+./gradlew build_all [-Pconfig=Debug]
+# The `config` property is optional. For release build, use `-Pconfig=Release` instead.
 
 open ../build_debug/Debug/Terra.app
 ```
 
+### Windows
+
 ```bat
-: on Windows
 cd .\gradle
 
-gradlew build_all -Pconfig=Debug
-: For release build, use `-Pconfig=Release` instead.
+gradlew build_all [-Pconfig=Debug]
+: The `config` property is optional. For release build, use `-Pconfig=Release` instead.
 : For non-English locales, add `-Dfile.encoding=UTF-8` option to prevent Mojibake.
 
 start ..\build_debug\Debug\Terra.exe
 ```
 
-Building submodules may fail after checking out new commit which refers another submodule commits.
-If it occured, run the `gradlew` command again with `clean_all` task followed by the `build_all` task.
+### TIPS
 
-To cleanup the build directory of a specific submodule, remove `/path/to/Terra/ext/<submodule-name>/build_<config-name>` directory manually.
+* Building submodules may fail after checking out new commit which refers another submodule commits.
+If it occured, run the `gradlew` command again with `clean_all` task followed by the `build_all` task like this:
+
+```sh
+./gradlew clean_all build_all [-Pconfig=Debug]
+```
+
+* To cleanup the build directory of a specific submodule, remove `/path/to/Terra/ext/<submodule-name>/build_<config-name>` directory manually.
+* If submodules are up-to-date and only Terra need to be built, run the `gradlew` command with `prepare_app` and `build_app` tasks to skip rebuilding submodules:
+
+```sh
+./gradlew prepare_app build_app [-Pconfig=Debug]
+```
 
 ## License and dependencies.
 

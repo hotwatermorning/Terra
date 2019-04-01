@@ -1,6 +1,7 @@
 #pragma once
 
 #include <pluginterfaces/vst/ivsteditcontroller.h>
+#include <pluginterfaces/vst/ivstpluginterfacesupport.h>
 #include <public.sdk/source/vst/hosting/hostclasses.h>
 #include <public.sdk/source/vst/hosting/parameterchanges.h>
 #include <pluginterfaces/gui/iplugview.h>
@@ -19,6 +20,7 @@ class Vst3Plugin::HostContext
 ,   public Vst::IUnitHandler
 ,   public Vst::IUnitHandler2
 ,   public IPlugFrame
+,   public Vst::IPlugInterfaceSupport
 {
 public:
     typedef Impl this_type;
@@ -100,6 +102,11 @@ protected:
     //! @name IPlugFrame
     //! @{
     tresult PLUGIN_API resizeView (IPlugView* view, ViewRect* newSize) override;
+    //! @}
+    
+    //! @name IPlugInterfaceSupport
+    //! @{
+    tresult isPlugInterfaceSupported(const TUID iid) override;
     //! @}
 };
 

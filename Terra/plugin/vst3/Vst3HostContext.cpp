@@ -169,5 +169,26 @@ tresult PLUGIN_API Vst3Plugin::HostContext::resizeView (IPlugView* view, ViewRec
     return 0;
 }
 
+tresult Vst3Plugin::HostContext::isPlugInterfaceSupported(const TUID iid)
+{
+    std::vector<FUID> supported {
+        Vst::IComponent::iid,
+        Vst::IAudioProcessor::iid,
+        Vst::IEditController::iid,
+        Vst::IEditController2::iid,
+        Vst::IConnectionPoint::iid,
+        Vst::IUnitInfo::iid,
+        Vst::IProgramListData::iid,
+        Vst::IMidiMapping::iid
+    };
+    
+    auto const pred = [y = FUID::fromTUID(iid)](auto const &x) { return x == y; };
+    
+    if(std::any_of(supported.begin(), supported.end(), pred)) {
+        return kResultTrue;
+    } else {
+        return kResultFalse;
+    }
+}
 
 NS_HWM_END

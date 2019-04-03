@@ -43,7 +43,7 @@ struct MyApp::Impl
     {
         void OnScanningFinished(PluginScanner *ps)
         {
-            std::ofstream ofs(GetPluginDescFileName());
+            std::ofstream ofs(GetPluginDescFileName(), std::ios::out|std::ios::binary);
             auto str = ps->Export();
             ofs.write(str.data(), str.length());
         }
@@ -103,13 +103,14 @@ bool MyApp::OnInit()
 #endif
     });
     
-    std::ifstream ifs(GetPluginDescFileName());
+    std::ifstream ifs(GetPluginDescFileName(), std::ios::in|std::ios::binary);
     if(ifs) {
+        ifs.seekg(0, std::ios::end);
+        auto const end = ifs.tellg();
+        ifs.seekg(0, std::ios::beg);
+
         std::string dump_data;
-        std::copy(std::istreambuf_iterator<char>(ifs),
-                  std::istreambuf_iterator<char>(),
-                  std::back_inserter(dump_data)
-                  );
+        std::copy_n(std::istreambuf_iterator<char>(ifs), end, std::back_inserter(dump_data));
         
         pimpl_->plugin_scanner_.Import(dump_data);
         

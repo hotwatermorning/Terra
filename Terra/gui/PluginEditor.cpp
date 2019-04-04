@@ -232,6 +232,14 @@ class PluginEditorControl
 :   public wxPanel
 {
 public:
+    static constexpr Int32 kUnitChoiceWidth = 100;
+    static constexpr Int32 kProgramChoiceWidth = 100;
+    static constexpr Int32 kPrevProgramWidth = 40;
+    static constexpr Int32 kNextProgramWidth = 40;
+    static constexpr Int32 kGenericEditorCheckWidth = 120; 
+    static constexpr Int32 kTotalWidth
+        = kUnitChoiceWidth + kProgramChoiceWidth + kPrevProgramWidth + kNextProgramWidth + kGenericEditorCheckWidth;
+
     class Listener : public IListenerBase
     {
     protected:
@@ -248,11 +256,11 @@ public:
     :   wxPanel(parent, wxID_ANY, pos, size)
     ,   plugin_(plugin)
     {
-        cho_select_unit_ = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxSize(100, size.GetHeight()));
-        cho_select_program_ = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxSize(100, size.GetHeight()));
-        btn_prev_program_ = new wxButton(this, wxID_ANY, L"<<", wxDefaultPosition, wxSize(40, size.GetHeight()));
-        btn_next_program_ = new wxButton(this, wxID_ANY, L">>", wxDefaultPosition, wxSize(40, size.GetHeight()));
-        chk_gen_editor_ = new wxCheckBox(this, wxID_ANY, L"Generic Editor", wxDefaultPosition, wxSize(120, size.GetHeight()));
+        cho_select_unit_ = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxSize(kUnitChoiceWidth, size.GetHeight()));
+        cho_select_program_ = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxSize(kProgramChoiceWidth, size.GetHeight()));
+        btn_prev_program_ = new wxButton(this, wxID_ANY, L"<<", wxDefaultPosition, wxSize(kPrevProgramWidth, size.GetHeight()));
+        btn_next_program_ = new wxButton(this, wxID_ANY, L">>", wxDefaultPosition, wxSize(kNextProgramWidth, size.GetHeight()));
+        chk_gen_editor_ = new wxCheckBox(this, wxID_ANY, L"Generic Editor", wxDefaultPosition, wxSize(kGenericEditorCheckWidth, size.GetHeight()));
         
         auto list = GetSelectableUnitInfos(plugin);
         for(auto const &info: list) {
@@ -380,134 +388,139 @@ private:
     }
 };
 
+class IPluginEditorFrame
+:   public wxFrame
+{
+protected:
+    template <class... Args>
+    IPluginEditorFrame(Args&&... args)
+        : wxFrame(std::forward<Args>(args)...)
+    {}
+
+public:
+    virtual void OnResizePlugView() = 0;
+};
+
 class PluginEditorContents
 :   public wxWindow
 ,   public Vst3Plugin::PlugFrameListener
 {
 public:
-    PluginEditorContents(wxWindow *parent,
+    PluginEditorContents(IPluginEditorFrame *parent,
                          Vst3Plugin *target_plugin)
     :   wxWindow(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize)
     {
         plugin_ = target_plugin;
-        
-        // いくつかのプラグイン (Arturia SEM V2やOszillos Mega Scopeなど) では、
-        // IPlugViewに実際のウィンドウハンドルをattachするまえに、IPlugViewのサイズでウィンドウのサイズを設定しておかなければ、
-        // 正しくプラグインウィンドウが表示されなかった。
-        auto rc = plugin_->GetPreferredRect();
-        OnResizePlugView(rc);
-        
+        Show(false);
+
         plugin_->OpenEditor(GetHandle(), this);
-        
-        Bind(wxEVT_SHOW, [this](wxShowEvent &ev) {
-            if(ev.IsShown() && plugin_->IsEditorOpened() == false) {
-                auto rc = plugin_->GetPreferredRect();
-                OnResizePlugView(rc);
-                plugin_->OpenEditor(GetHandle(), this);
-            } else if(ev.IsShown() == false && plugin_->IsEditorOpened()) {
-                plugin_->CloseEditor();
-            }
-        });
-        
-        Show(true);
+
+        auto rc = plugin_->GetPreferredRect();
+        auto csize = wxSize(rc.getWidth(), rc.getHeight());
+        SetClientSize(csize);
     }
-    
-    ~PluginEditorContents() {
+
+    bool Destroy() override
+    {
+        plugin_->CloseEditor();
+        return wxWindow::Destroy();
+    }
+
+    bool Show(bool show = true) override
+    {
+        auto rc = plugin_->GetPreferredRect();
+        auto csize = wxSize(rc.getWidth(), rc.getHeight());
+        SetClientSize(csize);
+
+        return wxWindow::Show(show);
+    }
+
+    ~PluginEditorContents()
+    {
         int x = 0;
         x = 1;
     }
-    
-    void CloseEditor()
-    {
-        plugin_->CloseEditor();
-    }
-    
+
 private:
     Vst3Plugin *plugin_ = nullptr;
-    
-    void OnResizePlugView(Steinberg::ViewRect const &rc) override
+
+    IPluginEditorFrame* GetFrame() {
+        return dynamic_cast<IPluginEditorFrame*>(GetParent());
+    }
+
+    void OnResizePlugView(Steinberg::ViewRect const& rc) override
     {
         hwm::dout << "New view size: {}"_format(rc) << std::endl;
-        
-        wxSize size(rc.getWidth(), rc.getHeight());
-        SetSize(size);
-        SetMinSize(size);
-        SetMaxSize(size);
-        GetParent()->Layout();
+
+        wxSize csize(rc.getWidth(), rc.getHeight());
+        SetClientSize(csize);
+        GetFrame()->OnResizePlugView();
     }
 };
 
 class PluginEditorFrame
-:   public wxFrame
+:   public IPluginEditorFrame
 ,   public PluginEditorControl::Listener
 {
+
     static constexpr UInt32 kControlHeight = 20;
+    wxSize const kMinFrameSize = wxSize(PluginEditorControl::kTotalWidth, kControlHeight);
+    wxSize const kMaxFrameSize = wxSize(4000, 4000);
+
 public:
     PluginEditorFrame(wxWindow *parent,
                       Vst3Plugin *target_plugin,
                       std::function<void()> on_destroy)
-    :   wxFrame(parent,
-                wxID_ANY,
-                target_plugin->GetEffectName(),
-                wxDefaultPosition,
-                wxDefaultSize,
-                wxDEFAULT_FRAME_STYLE & ~(wxMAXIMIZE_BOX)
-                )
+    :   IPluginEditorFrame(parent, wxID_ANY,
+                           target_plugin->GetEffectName(),
+                           wxDefaultPosition,
+                           wxDefaultSize,
+                           wxDEFAULT_FRAME_STYLE & ~(wxMAXIMIZE_BOX))
     {
         on_destroy_ = on_destroy;
-        
+
+        auto sizer = new wxBoxSizer(wxVERTICAL);
+
         control_ = new PluginEditorControl(this, target_plugin);
         control_->GetListeners().AddListener(this);
-        
-        genedit_ = new GenericParameterView(this, target_plugin);
-        
+        control_->SetSize(kMinFrameSize);
+
+        sizer->Add(control_, wxSizerFlags(0).FixedMinSize().Expand());
+
         if(target_plugin->HasEditor()) {
             contents_ = new PluginEditorContents(this, target_plugin);
+            genedit_ = new GenericParameterView(this, target_plugin);
+
+            sizer->Add(contents_, wxSizerFlags(1).Expand());
+            sizer->Add(genedit_, wxSizerFlags(1).Expand());
+            contents_->Show();
             genedit_->Hide();
         } else {
+            genedit_ = new GenericParameterView(this, target_plugin);
+            sizer->Add(genedit_, wxSizerFlags(1).Expand());
             genedit_->Show();
         }
-        
-        SetMaxSize(wxSize(1000, 1000));
-        SetMinSize(wxSize(10, 10));
-        
+
+        SetSizer(sizer);
         SetAutoLayout(true);
+
+        OnResizePlugView();
         Show(true);
     }
-    
+
     ~PluginEditorFrame() {
         control_->GetListeners().RemoveListener(this);
     }
-    
+
     bool Destroy() override
     {
-        if(contents_) {
-            contents_->CloseEditor();
-        }
-        
+        contents_->Destroy();
+        contents_ = nullptr;
+
         on_destroy_();
         return wxFrame::Destroy();
     }
-    
-    bool Layout() override
-    {
-        if(contents_ && contents_->IsShown()) {
-            auto rc = contents_->GetSize();
-            rc.IncBy(0, kControlHeight);
-            SetClientSize(rc);
-            
-            control_->SetSize(0, 0, rc.GetWidth(), kControlHeight);
-            contents_->SetSize(0, kControlHeight, rc.GetWidth(), rc.GetHeight() - kControlHeight);
-        } else if(genedit_ && genedit_->IsShown()) {
-            auto rc = GetClientSize();
-            
-            control_->SetSize(0, 0, rc.GetWidth(), kControlHeight);
-            genedit_->SetSize(0, kControlHeight, rc.GetWidth(), rc.GetHeight() - kControlHeight);
-            genedit_->Layout();
-        }
-        return true;
-    }
-    
+
 private:
     void OnChangeEditorType(bool use_generic_editor) override
     {
@@ -515,10 +528,9 @@ private:
             genedit_->UpdateParameters();
             genedit_->Show();
             contents_->Hide();
-            contents_->SetSize(1, 1);
+            SetMinSize(ClientToWindowSize(kMinFrameSize));
+            SetMaxSize(ClientToWindowSize(kMaxFrameSize));
             SetSize(500, 500);
-            SetMinSize(wxSize(10, 10));
-            SetMaxSize(wxSize(2000, 2000));
             auto style = (GetWindowStyle() | wxRESIZE_BORDER);
             SetWindowStyle(style);
         } else {
@@ -526,23 +538,42 @@ private:
             contents_->Show();
             auto style = (GetWindowStyle() & (~wxRESIZE_BORDER));
             SetWindowStyle(style);
+            OnResizePlugView();
         }
         Layout();
     }
-    
+
     void OnChangeProgram() override
     {
         if(genedit_->IsShown()) {
             genedit_->UpdateParameters();
         }
     }
-    
+
 private:
     std::function<void()> on_destroy_;
     Vst3Plugin *plugin_ = nullptr;
     PluginEditorContents *contents_ = nullptr;
     PluginEditorControl *control_ = nullptr;
     GenericParameterView *genedit_ = nullptr;
+
+    void OnResizePlugView() override
+    {
+        if (!contents_) {
+            return;
+        }
+        auto sz = contents_->GetClientSize();
+
+        sz.IncBy(0, kControlHeight);
+        sz.SetWidth(std::max<Int32>(sz.x, kMinFrameSize.x));
+
+        auto winsize = ClientToWindowSize(sz);
+        SetMaxSize(winsize);
+        SetMinSize(winsize);
+        SetSize(winsize);
+        
+        Layout();
+    }
 };
 
 wxFrame * CreatePluginEditorFrame(wxWindow *parent,

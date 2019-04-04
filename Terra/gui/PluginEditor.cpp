@@ -39,7 +39,7 @@ public:
     enum { kDefaultValueMax = 1'000'000 };
     
     UInt32 ToInteger(double normalized) const {
-        return std::min<UInt32>(value_max_-1, std::round(normalized * value_max_));
+        return std::min<UInt32>(value_max_, std::floor(normalized * (value_max_ + 1)));
     }
     
     double ToNormalized(UInt32 value) const {
@@ -48,37 +48,25 @@ public:
     
     ParameterSlider(wxWindow *parent,
                     Vst3Plugin *plugin,
-                    UInt32 param_index,
                     wxPoint pos = wxDefaultPosition,
                     wxSize size = wxDefaultSize)
     :   wxPanel(parent, wxID_ANY, pos, size)
     ,   plugin_(plugin)
-    ,   param_index_(param_index)
     {
-        auto param_info = plugin->GetParameterInfoByIndex(param_index);
-        auto value = plugin->GetParameterValueByIndex(param_index);
-        
         UInt32 const kTitleWidth = 150;
         UInt32 const kSliderWidth = size.GetWidth();
         UInt32 const kDispWidth = 100;
-        
-        if(param_info.step_count_ >= 1) {
-            value_max_ = param_info.step_count_;
-        }
-        
-        name_ = new wxStaticText(this, wxID_ANY, param_info.title_,
+           
+        name_ = new wxStaticText(this, wxID_ANY, "",
                                  wxPoint(0, 0), wxSize(kTitleWidth, size.GetHeight())
                                  );
-        name_->SetToolTip(param_info.title_);
         
-        slider_ = new wxSlider(this, wxID_ANY, ToInteger(value), 0, value_max_,
+        slider_ = new wxSlider(this, wxID_ANY, 0, 0, 1,
                                wxPoint(0, 0), wxSize(kSliderWidth, size.GetHeight()),
                                wxSL_HORIZONTAL
                                );
-        
-        auto init_text = plugin_->ValueToStringByIndex(param_index,
-                                                       plugin_->GetParameterValueByIndex(param_index));
-        disp_ = new wxTextCtrl(this, wxID_ANY, init_text, wxDefaultPosition, wxSize(kDispWidth, size.GetHeight()), wxTE_PROCESS_ENTER);
+
+        disp_ = new wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxSize(kDispWidth, size.GetHeight()), wxTE_PROCESS_ENTER);
         
         auto hbox = new wxBoxSizer(wxHORIZONTAL);
         hbox->Add(name_, wxSizerFlags(0).Expand());
@@ -87,9 +75,12 @@ public:
         
         SetSizer(hbox);
         
-        slider_->Bind(wxEVT_SLIDER, [id = param_info.id_, this](auto &) {
+        slider_->Bind(wxEVT_SLIDER, [this](auto &) {
+            if(GetParameterIndex() == -1) { return; }
+
             auto const normalized = ToNormalized(slider_->GetValue());
-            
+            auto const id = info_.id_;
+
             plugin_->EnqueueParameterChange(id, normalized);
             plugin_->SetParameterValueByID(id, normalized);
             
@@ -98,7 +89,10 @@ public:
             if(callback_) { callback_->OnChangeParameter(this); }
         });
         
-        auto apply_text = [id = param_info.id_, this](auto &e) {
+        auto apply_text = [this](auto &e) {
+            if(GetParameterIndex() == -1) { return; }
+            auto const id = info_.id_;
+
             hwm::dout << "EVT TEXT" << std::endl;
             auto normalized = plugin_->StringToValueByID(id, disp_->GetValue().ToStdWstring());
             if(normalized >= 0) {
@@ -110,9 +104,40 @@ public:
         disp_->Bind(wxEVT_TEXT_ENTER, apply_text);
         disp_->Bind(wxEVT_KILL_FOCUS, apply_text);
     }
+
+    Int32 GetParameterIndex() const
+    {
+        return param_index_;
+    }
+
+    void SetParameterIndex(Int32 index)
+    {
+        if(param_index_ == index) { return; }
+
+        param_index_ = index;
+        if(param_index_ == -1) { return; }
+
+        info_ = plugin_->GetParameterInfoByIndex(param_index_); 
+
+        auto value = plugin_->GetParameterValueByIndex(param_index_);
+        if(info_.step_count_ >= 1) {
+            value_max_ = info_.step_count_;
+        }
+
+        name_->SetLabel(info_.title_);
+        name_->SetToolTip(info_.title_);
+        slider_->SetMax(value_max_);
+        slider_->SetMin(0);
+        slider_->SetValue(ToInteger(value));
+
+        auto init_text = plugin_->ValueToStringByIndex(param_index_, value);
+        disp_->SetLabel(init_text);        
+    }
     
     void UpdateSliderValue()
     {
+        if(GetParameterIndex() == -1) { return; }
+
         auto const normalized = plugin_->GetParameterValueByIndex(param_index_);
         slider_->SetValue(ToInteger(normalized));
         auto str = plugin_->ValueToStringByIndex(param_index_, normalized);
@@ -129,7 +154,8 @@ private:
     wxSlider *slider_ = nullptr;
     wxTextCtrl *disp_ = nullptr;
     Vst3Plugin *plugin_ = nullptr;
-    UInt32 param_index_ = -1;
+    Vst3Plugin::ParameterInfo info_;
+    Int32 param_index_ = -1;
     UInt32 value_max_ = kDefaultValueMax;
     Callback *callback_ = nullptr;
 };
@@ -143,23 +169,15 @@ class GenericParameterView
     constexpr static UInt32 kSBWidth = 20;
     
 public:
-    GenericParameterView(wxWindow *parent,
-                         Vst3Plugin *plugin)
-    :   wxWindow(parent, wxID_ANY, wxDefaultPosition, wxSize(40, 40))
+    GenericParameterView(wxWindow *parent, Vst3Plugin *plugin)
+    :   wxWindow(parent, wxID_ANY, wxDefaultPosition, wxSize(40, 40), wxCLIP_CHILDREN)
+    ,   plugin_(plugin)
     {
-        UInt32 const num = plugin->GetNumParams();
+        SetDoubleBuffered(true);
+        UInt32 const num_params = plugin->GetNumParams();
         
         sb_ = new wxScrollBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxSB_VERTICAL);
-        sb_->SetScrollbar(0, 1, num * kParameterHeight, 1);
-        
-        for(UInt32 i = 0; i < num; ++i) {
-            auto const &info = plugin->GetParameterInfoByIndex(i);
-            auto slider = new ParameterSlider(this, plugin, i);
-            if(info.is_program_change_) {
-                slider->SetCallback(this);
-            }
-            sliders_.push_back(slider);
-        }
+        sb_->SetScrollbar(0, 1, num_params * kParameterHeight, 1);
         
         sb_->Bind(wxEVT_SCROLL_PAGEUP, [this](auto &ev) { Layout(); });
         sb_->Bind(wxEVT_SCROLL_PAGEDOWN, [this](auto &ev) { Layout(); });
@@ -179,30 +197,82 @@ public:
         SetAutoLayout(true);
         Layout();
     }
+
+    bool Show(bool show = true) override
+    {
+        if(!show) {
+            for(auto *s: sliders_) {
+                RemoveChild(s);
+                delete s;
+            }
+            sliders_.clear();
+        }
+
+        return wxWindow::Show(show);
+    }
     
     bool Layout() override
     {
         auto const rc = GetClientRect();
         
         sb_->SetSize(rc.GetWidth() - kSBWidth, 0, kSBWidth, rc.GetHeight());
+        auto const num_params = plugin_->GetNumParams();
         
         auto tp = sb_->GetThumbPosition();
-        tp = std::min<UInt32>(tp, sliders_.size() * kParameterHeight - rc.GetHeight());
-        sb_->SetScrollbar(tp, rc.GetHeight(), sliders_.size() * kParameterHeight, kPageSize);
+        tp = std::min<UInt32>(tp, num_params * kParameterHeight - rc.GetHeight());
+        sb_->SetScrollbar(tp, rc.GetHeight(), num_params * kParameterHeight, kPageSize);
         
         tp = sb_->GetThumbPosition();
-        
         auto const h = GetClientSize().GetHeight();
 
-        for(UInt32 i = 0; i < sliders_.size(); ++i) {
-            auto s = sliders_[i];
+        auto const visible = [h](wxRect const &rect) { 
+            return rect.GetBottom() > 0 && rect.GetTop() < h;
+        };
+
+        auto find_slider = [this](auto pred) {
+            return std::find_if(sliders_.begin(), sliders_.end(), pred);
+        };
+         
+        //! at first, cleanup all disappeared sliders.
+        for(int i = 0; i < num_params; ++i) {
             auto rect = wxRect(0, i * kParameterHeight - tp, rc.GetWidth() - kSBWidth, kParameterHeight);
-            if(rect.GetBottom() <= 0 || rect.GetTop() >= h) {
-                s->Show(false);
-                continue;
-            } else {
-                s->Show(true);
+            if(visible(rect) == false) {
+                auto found = find_slider([i](auto *s) { return s->GetParameterIndex() == i; });
+                if(found != sliders_.end()) {
+                    auto *s = *found;
+                    s->SetParameterIndex(-1);
+                    s->SetCallback(nullptr);
+                    s->Hide();
+                }
+            }
+        }
+
+        //! and then, move existing sliders or create if needed.
+        for(int i = 0; i < plugin_->GetNumParams(); ++i) {
+            auto rect = wxRect(0, i * kParameterHeight - tp, rc.GetWidth() - kSBWidth, kParameterHeight);
+            if(visible(rect)) {
+                auto found = find_slider([i](auto *s) { return s->GetParameterIndex() == i; });
+                if(found == sliders_.end()) {
+                    found = find_slider([i](auto *s) { return s->GetParameterIndex() == -1; });
+                }
+                if(found == sliders_.end()) {
+                    sliders_.push_back(new ParameterSlider(this, plugin_));
+                    found = sliders_.end() - 1;
+                }
+
+                assert(found != sliders_.end());
+
+                auto *s = *found;
+                auto info = plugin_->GetParameterInfoByIndex(i);
+
+                s->SetParameterIndex(i);
+                if(info.is_program_change_) {
+                    s->SetCallback(this);
+                }
+     
                 s->SetSize(rect);
+                s->Refresh();
+                s->Show();
             }
         }
         
@@ -211,21 +281,26 @@ public:
     
     void UpdateParameters()
     {
-        for(auto slider: sliders_) {
-            slider->UpdateSliderValue();
+        for(auto *slider: sliders_) {
+            if(slider) {
+                slider->UpdateSliderValue();
+            }
         }
     }
     
     void OnChangeParameter(ParameterSlider *slider) override
     {
-        for(auto slider: sliders_) {
-            slider->UpdateSliderValue();
+        for(auto *slider: sliders_) {
+            if(slider) {
+               slider->UpdateSliderValue();
+            }
         }
     }
     
 private:
     std::vector<ParameterSlider *> sliders_;
     wxScrollBar *sb_;
+    Vst3Plugin *plugin_ = nullptr;
 };
 
 class PluginEditorControl
@@ -236,7 +311,7 @@ public:
     static constexpr Int32 kProgramChoiceWidth = 100;
     static constexpr Int32 kPrevProgramWidth = 40;
     static constexpr Int32 kNextProgramWidth = 40;
-    static constexpr Int32 kGenericEditorCheckWidth = 120; 
+    static constexpr Int32 kGenericEditorCheckWidth = 120;
     static constexpr Int32 kTotalWidth
         = kUnitChoiceWidth + kProgramChoiceWidth + kPrevProgramWidth + kNextProgramWidth + kGenericEditorCheckWidth;
 
@@ -568,6 +643,7 @@ private:
         sz.SetWidth(std::max<Int32>(sz.x, kMinFrameSize.x));
 
         auto winsize = ClientToWindowSize(sz);
+        SetMinSize(wxSize(1, 1));
         SetMaxSize(winsize);
         SetMinSize(winsize);
         SetSize(winsize);

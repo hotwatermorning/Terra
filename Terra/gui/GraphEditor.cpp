@@ -102,6 +102,7 @@ public:
     ,   node_(node)
     ,   callback_(callback)
     {
+        SetLabel(node->GetProcessor()->GetName());
         SetBackgroundStyle(wxBG_STYLE_PAINT);
         Create(parent, wxID_ANY, wxDefaultPosition, kDefaultNodeSize, wxTRANSPARENT_WINDOW);
 
@@ -238,7 +239,9 @@ public:
     {
         hwm::wdout << L"Raised: " << lbl_plugin_name_->GetText() << std::endl;
         SetFocus();
-        assert(HasFocus());
+        if(HasFocus() == false) {
+            hwm::wdout << L"Failed to focus this window: " << this->GetLabel() << std::endl;
+        }
         callback_->OnRaised(this);
         base_type::Raise();
         Refresh();

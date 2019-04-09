@@ -45,16 +45,41 @@ if(${LOWER_CONFIG_NAME} STREQUAL "debug")
 endif()
 
 ####################################################################
+# optoins
+####################################################################
+option(TERRA_BUILD_TEST "Build test project" OFF)
+
+####################################################################
 # configure project
 ####################################################################
 
-project("Terra")
+if(TERRA_BUILD_TEST)
+  project("Terra-Test")
+else()
+  project("Terra")
+endif()
 
 # set source directories
 set(SOURCE_DIR_LIST
   "./Terra"
   "./schema/cpp"
   )
+
+if(NOT TERRA_BUILD_TEST)
+  set(EXCLUDE_PATTERN_LIST "./Terra/test")
+endif()
+
+# check that the target_path should be excluded
+# if the path is excluded, IS_EXCLUDED will be TRUE
+function(EXCLUDED TARGET_PATH IS_EXCLUDED)
+  set(IS_EXCLUDED FALSE PARENT_SCOPE)
+  foreach(PAT ${EXCLUDE_PATTERN_LIST})
+    if(TARGET_PATH MATCHES ${PAT})
+      set(IS_EXCLUDED TRUE PARENT_SCOPE)
+      break()
+    endif()
+  endforeach()
+endfunction()
 
 # set target extension list
 set(TARGET_EXTENSION_LIST "*.c" "*.cc" "*.cpp" "*.h" "*.hpp")
@@ -77,6 +102,11 @@ foreach(DIR ${SOURCE_DIR_LIST})
 
   # Define SourceGroup reflecting filesystem hierarchy.
   foreach(FILE_PATH ${FILES})
+    EXCLUDED(${FILE_PATH} IS_EXCLUDED)
+    if(IS_EXCLUDED)
+      continue()
+    endif()
+
     get_filename_component(ABS_PATH "${FILE_PATH}" ABSOLUTE)
     get_filename_component(DIR "${ABS_PATH}" DIRECTORY)
     file(RELATIVE_PATH GROUP_NAME "${BASE_DIR}" "${DIR}")
@@ -88,10 +118,18 @@ endforeach()
 
 message("Files ${SOURCE_FILES}")
 
-if(IsMSVC)
-  add_executable(${PROJECT_NAME} WIN32 ${SOURCE_FILES})
-elseif(IsXcode)
-  add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCE_FILES})
+if(TERRA_BUILD_TEST)
+  if(IsMSVC)
+    add_executable(${PROJECT_NAME} ${SOURCE_FILES})
+  elseif(IsXcode)
+    add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCE_FILES})
+  endif()
+else()
+  if(IsMSVC)
+    add_executable(${PROJECT_NAME} WIN32 ${SOURCE_FILES})
+  elseif(IsXcode)
+    add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCE_FILES})
+  endif()
 endif()
 
 get_filename_component(PREFIX_HEADER_PATH "./Terra/prefix.hpp" ABSOLUTE)
@@ -161,6 +199,10 @@ else()
   set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_GCC_PRECOMPILE_PREFIX_HEADER "YES")
 endif()
 
+if(TERRA_BUILD_TEST)
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DTERRA_BUILD_TEST")
+endif()
+
 if(IsMSVC)
   find_library(PORTAUDIO_LIB "portaudio_static_x64" PATHS "./ext/portaudio/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)
   find_library(PROTOBUF_LIB "libprotobuf" "libprotobufd" PATHS "./ext/protobuf/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)
@@ -226,6 +268,10 @@ include_directories(
   "./ext/midifile/src-library"
   )
 
+if(TERRA_BUILD_TEST)
+  include_directories("./ext/Catch2/single_include")
+endif()
+
 if(IsXcode)
   list(APPEND LINKLIBS
     "-framework CoreServices"
@@ -276,5 +322,5 @@ if(CCACHE_PROGRAM)
     set(CMAKE_C_COMPILER_LAUNCHER "${CMAKE_BINARY_DIR}/launch-c")
     set(CMAKE_CXX_COMPILER_LAUNCHER "${CMAKE_BINARY_DIR}/launch-cxx")
   endif()
- endif()
+endif()
 

@@ -9,6 +9,7 @@ jobs:
     displayName: brew install
   - script: |
       cd gradle
+      ./gradlew test -Pconfig=Debug
       ./gradlew build_all -Pconfig=Release
     env:
       AZURE_STORAGE_ACCOUNT: $(azure.storage.account)
@@ -31,6 +32,7 @@ jobs:
     displayName: brew install
   - script: |
       cd gradle
+      ./gradlew test -Pconfig=Debug
       ./gradlew build_all -Pconfig=Release
     env:
       AZURE_STORAGE_ACCOUNT: $(azure.storage.account)
@@ -49,7 +51,8 @@ jobs:
   steps:
   - script: |
       cd gradle
-      gradlew build_all -Pconfig=Release
+      call gradlew test -Pconfig=Debug
+      call gradlew build_all -Pconfig=Release
     env:
       AZURE_STORAGE_ACCOUNT: $(azure.storage.account)
       AZURE_STORAGE_KEY: $(azure.storage.key)

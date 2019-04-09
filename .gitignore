@@ -18,4 +18,5 @@ gradle/.gradle
 
 build_debug
 build_release
+test
 schema/cpp

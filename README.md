@@ -29,7 +29,7 @@ Currently Terra can be built on these platforms:
 ### Prerequisites
 
 * Git 2.8.1 or later
-* CMake 3.13.1 or later
+* CMake 3.14.1 or later
 * Xcode 9.3.1 or later
 * Visual Studio 2017
 

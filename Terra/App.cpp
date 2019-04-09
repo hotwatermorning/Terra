@@ -692,4 +692,6 @@ bool MyApp::OnCmdLineParsed(wxCmdLineParser& parser)
 
 NS_HWM_END
 
+#if !defined(TERRA_BUILD_TEST)
 wxIMPLEMENT_APP(hwm::MyApp);
+#endif

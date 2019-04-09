@@ -26,6 +26,7 @@ ext {
   getenv = { String key -> return java.lang.System.getenv()[key] }
   isWindows = { return System.properties['os.name'].toLowerCase().startsWith("windows") }
   build_dir_name = "build_${project.config.toLowerCase()}"
+  test_build_dir_name = "test"
   has_ccache = (project.use_ccache == "true" ? "which ccache".execute().waitFor() == 0 : false)
   ccache_path = (has_ccache ? "which ccache".execute().text.trim() : "")
   ccache_envvars = (has_ccache ? [CC: "${ccache_path} clang", CXX: "${ccache_path} clang++"] : [:])
@@ -431,8 +432,6 @@ task build_protobuf {
       get_hash("protobuf"),
       {
         if(isWindows()) {
-          execute("echo %VS2017INSTALLDIR%")
-          execute("setx VS2017INSTALLDIR \"C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\"")
           execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
                   "-Dprotobuf_BUILD_TESTS=OFF -Dprotobuf_MSVC_STATIC_RUNTIME=OFF ../cmake"
                   , build_dir)
@@ -639,14 +638,18 @@ task copy_resources {
     // because the resources are copied into a bundle directory by cmake script.
     if(isWindows() == false) { return; }
 
-    def output_dir = file("../${build_dir_name}/${project.config}").getAbsolutePath()
+    def dest_dir_names = [ build_dir_name, test_build_dir_name ]
 
-    def src = file("../data")
-    def dest = new File(output_dir, "Resource")
-    assert(mkdirs_if_needed(output_dir))
-    copy {
-      from src
-      into dest
+    dest_dir_names.each { def dir_name ->
+      def output_dir = file("../${dir_name}/${project.config}").getAbsolutePath()
+
+      def src = file("../data")
+      def dest = new File(output_dir, "Resource")
+      assert(mkdirs_if_needed(output_dir))
+      copy {
+        from src
+        into dest
+      }
     }
   }
 
@@ -675,14 +678,53 @@ task build_app {
 build_app.mustRunAfter copy_resources
 build_app.mustRunAfter prepare_app
 
+task prepare_test {
+  doLast {
+    // test project must be built with Debug configuration
+    assert(project.config == "Debug")
+
+    def build_dir = file("../${test_build_dir_name}").getAbsolutePath()
+    assert(mkdirs_if_needed(build_dir))
+    execute("cmake ${getCMakeGenerator()} -DCMAKE_BUILD_TYPE=${project.config} -DTERRA_BUILD_TEST=ON ..", build_dir)
+  }
+}
+prepare_test.mustRunAfter build_submodules
+prepare_test.mustRunAfter compile_schemas
+
+task build_test {
+  doLast {
+    // test project must be built with Debug configuration
+    assert(project.config == "Debug")
+
+    def build_dir = file("../${test_build_dir_name}").getAbsolutePath()
+    // for macOS, Xcode build performs parallel builds by default and
+    // requires a number of concurrency for this option.
+    def parallel_option = isWindows() ? "-j" : ""
+    execute("cmake --build . ${parallel_option} --target ALL_BUILD --config ${project.config}", build_dir)
+  }
+}
+build_test.mustRunAfter copy_resources
+build_test.mustRunAfter prepare_test
+
+task run_test {
+  doLast {
+    def build_dir = file("../${test_build_dir_name}").getAbsolutePath()
+    if(isWindows()) {
+      execute("Debug\\Terra-Test.exe", build_dir)
+    } else {
+      execute("./Debug/Terra-Test.app/Contents/MacOS/Terra-Test", build_dir)
+    }
+  }
+}
+run_test.mustRunAfter build_test
+
 //! 指定したディレクトリの直下にあるディレクトリのうち、
 //! 現在のビルド構成によって決まるディレクトリ名と同じディレクトリがあれば、それを削除する。
-def delete_build_dir(def target_dir) {
-  file(target_dir).eachDir() {
-    if(it.getName() == build_dir_name) {
-      println "dir path to delete: '${it.getAbsolutePath()}'"
-      it.deleteDir()
-    }
+def delete_build_dir(def target_dir, def dir_name = build_dir_name) {
+  def target_path = new File(target_dir, dir_name)
+  if(target_path.exists()) {
+    println "dir path to delete: '${target_path}'"
+    target_path.deleteDir()
   }
 }
 
@@ -700,11 +742,22 @@ task clean_app {
   }
 }
 
+task clean_test {
+  doLast {
+    delete_build_dir("..", "test")
+  }
+}
+
 task clean_all {
-  dependsOn { [clean_submodules, clean_app] }
+  dependsOn { [clean_submodules, clean_app, clean_test] }
 }
 
 task build_all {
   dependsOn { [update_submodules, build_submodules, prepare_app, copy_resources, build_app] }
 }
 
+task test {
+  dependsOn { [update_submodules, build_submodules, prepare_test, copy_resources, build_test, run_test] }
+}
+
+defaultTasks 'build_all'

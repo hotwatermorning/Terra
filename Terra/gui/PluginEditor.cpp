@@ -4,6 +4,7 @@
 
 #include "../App.hpp"
 #include "./UnitData.hpp"
+#include "./PCKeyboardInput.hpp"
 
 namespace fmt {
     template <>
@@ -581,6 +582,8 @@ public:
 
         OnResizePlugView();
         Show(true);
+        
+        PCKeyboardInput::GetInstance()->ApplyTo(this);
     }
 
     ~PluginEditorFrame() {

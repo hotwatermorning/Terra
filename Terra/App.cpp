@@ -18,6 +18,7 @@
 
 #include "device/AudioDeviceManager.hpp"
 #include "device/MidiDeviceManager.hpp"
+#include "gui/PCKeyboardInput.hpp"
 #include "gui/SettingDialog.hpp"
 #include "gui/SplashScreen.hpp"
 #include "resource/ResourceHelper.hpp"
@@ -49,6 +50,7 @@ struct MyApp::Impl
         }
     };
     
+    PCKeyboardInput  pc_keys_;
     std::unique_ptr<AudioDeviceManager> adm_;
     std::unique_ptr<MidiDeviceManager> mdm_;
     std::vector<MidiDevice *> midi_ins_;

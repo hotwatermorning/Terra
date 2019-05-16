@@ -9,16 +9,6 @@
 
 NS_HWM_BEGIN
 
-/*
-IKeyboard::IKeyboard(wxWindow *parent)
-:   IRenderableWindow<wxWindow>(parent, wxID_ANY)
-//,   IKeyboardViewBase(9, 0.8, 5.0)
-{}
-
-IKeyboard::~IKeyboard()
-{}
- */
-
 class Keyboard
 :   public IRenderableWindow<wxWindow>
 {
@@ -59,12 +49,8 @@ public:
         Bind(wxEVT_LEFT_DCLICK, [this](auto &ev) { OnLeftDown(ev); });
         Bind(wxEVT_LEFT_UP, [this](auto &ev) { OnLeftUp(ev); });
         Bind(wxEVT_MOTION, [this](auto &ev) { OnMotion(ev); });
-        Bind(wxEVT_KEY_DOWN, [this](auto &ev) { OnKeyDown(ev); });
-        Bind(wxEVT_KEY_UP, [this](auto &ev) { OnKeyUp(ev); });
         Bind(wxEVT_MOVE, [this](auto &ev) { Refresh(); });
         Bind(wxEVT_SIZE, [this](auto &ev) { Refresh(); });
-        
-        key_code_for_sample_note_.fill(0);
     }
     
     ~Keyboard()
@@ -194,49 +180,6 @@ public:
         last_dragging_note_ = note;
     }
     
-    void OnKeyDown(wxKeyEvent const &ev)
-    {
-        if(ev.HasAnyModifiers()) { return; }
-        
-        auto uc = ev.GetUnicodeKey();
-        if(uc == WXK_NONE ) { return; }
-        
-        if(uc == kOctaveUp) {
-            if(key_base_ + 12 < 128) { key_base_ += 12; }
-            return;
-        } else if(uc == kOctaveDown) {
-            if(key_base_ - 12 >= 0) { key_base_ -= 12; }
-            return;
-        }
-        
-        auto found = std::find(kKeyTable.begin(), kKeyTable.end(), uc);
-        if(found == kKeyTable.end()) { return; }
-        int note_number = key_base_ + (found - kKeyTable.begin());
-        if(note_number >= 128) { return; }
-        
-        key_code_for_sample_note_[note_number] = uc;
-        SendSampleNoteOn(note_number);
-    }
-    
-    void OnKeyUp(wxKeyEvent const &ev)
-    {
-        auto uc = ev.GetUnicodeKey();
-        if(uc == WXK_NONE ) { return; }
-        
-        if(uc == kPlayback) {
-            auto pj = Project::GetCurrentProject();
-            auto &tp = pj->GetTransporter();
-            tp.SetPlaying(!tp.IsPlaying());
-        }
-        
-        for(int i = 0; i < key_code_for_sample_note_.size(); ++i) {
-            if(key_code_for_sample_note_[i] == uc) {
-                SendSampleNoteOff(i);
-                key_code_for_sample_note_[i] = 0;
-            }
-        }
-    }
-    
     std::optional<int> PointToNoteNumber(wxPoint pt)
     {
         auto rect = GetClientRect();
@@ -317,19 +260,8 @@ private:
         proj->SendSampleNoteOff(sample_note_channel, note_number);
     }
     
-    void SendSampleNoteOffForAllKeyDown()
-    {
-        for(int i = 0; i < key_code_for_sample_note_.size(); ++i) {
-            if(key_code_for_sample_note_[i] != 0) {
-                SendSampleNoteOff(i);
-            }
-        }
-        key_code_for_sample_note_.fill(0);
-    }
-    
 private:
     std::optional<int> last_dragging_note_;
-    std::array<wxChar, 128> key_code_for_sample_note_;
     wxTimer timer_;
     PlayingNoteList playing_notes_;
     int key_base_ = 60;

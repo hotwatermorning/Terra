@@ -74,4 +74,5 @@ constexpr wchar_t const *kAppName = L"Terra";
 
 NS_HWM_END
 
+#include "misc/StrCnv.hpp"
 #include "misc/DebuggerOutputStream.hpp"

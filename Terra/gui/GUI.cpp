@@ -21,6 +21,7 @@
 #include "./GraphEditor.hpp"
 #include "../resource/ResourceHelper.hpp"
 #include "./PianoRoll.hpp"
+#include "./PCKeyboardInput.hpp"
 
 #if !defined(_MSC_VER)
 #include "./OSXMenuBar.h"
@@ -364,17 +365,6 @@ public:
         SetClientSize(size);
         graph_panel_->RearrangeNodes();
         
-        Bind(wxEVT_KEY_DOWN, [this](auto &ev) {
-            hwm::dout << L"Key Down: {}, {}"_format(ev.GetUnicodeKey(), ev.GetRawKeyCode()) << std::endl;
-            ev.Skip();
-            keyboard_->HandleWindowEvent(ev);
-        });
-        Bind(wxEVT_KEY_UP, [this](auto &ev) {
-            hwm::dout << L"Key Up: {}, {}"_format(ev.GetUnicodeKey(), ev.GetRawKeyCode()) << std::endl;
-            ev.Skip();
-            keyboard_->HandleWindowEvent(ev);
-        });
-        
         IMainFrame::GetInstance()->Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { SwitchPianoRoll(ev); }, ID_View_ShowPianoRoll);
         
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(ev); });
@@ -455,8 +445,6 @@ private:
     GraphEditor     *graph_panel_ = nullptr;
     wxWindow        *pianoroll_ = nullptr;
     MainPanelPianoRollViewStatus pianoroll_view_status_;
-    
-    wxTimer timer_;
 };
 
 class MyPanel;
@@ -546,6 +534,8 @@ MainFrame::MainFrame(wxSize initial_size)
     my_panel_ = new MyPanel(this, GetClientSize());
     
     slr_change_project_.reset(MyApp::GetInstance()->GetChangeProjectListeners(), this);
+    
+    PCKeyboardInput::GetInstance()->ApplyTo(this);
 }
 
 MainFrame::~MainFrame()

@@ -351,7 +351,7 @@ public:
         pianoroll_->SetSize(size);
         pianoroll_->Hide();
         
-        keyboard_ = CreateVirtualKeyboard(this, &pianoroll_view_status_, wxHORIZONTAL);
+        keyboard_ = CreateVirtualKeyboard(this);
   
         auto vbox = new wxBoxSizer(wxVERTICAL);
         vbox->Add(header_panel_, wxSizerFlags(0).Expand());

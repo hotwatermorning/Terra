@@ -592,9 +592,11 @@ public:
 
     bool Destroy() override
     {
-        contents_->Destroy();
-        contents_ = nullptr;
-
+        if(contents_) {
+            contents_->Destroy();
+            contents_ = nullptr;
+        }
+        
         on_destroy_();
         return wxFrame::Destroy();
     }

@@ -20,6 +20,32 @@ auto find_if(Range &range, Pred pred)
     return std::find_if(std::begin(range), std::end(range), pred);
 }
 
+template<class Range, class T>
+static constexpr
+auto find_last(Range &range, T &&value)
+{
+    auto const begin = std::begin(range);
+    auto const end = std::end(range);
+    auto const rbegin = std::make_reverse_iterator(end);
+    auto const rend = std::make_reverse_iterator(begin);
+    auto found = std::find(rbegin, rend, std::forward<T>(value));
+    
+    return (found != rend) ? (++found).base() : end;
+}
+
+template<class Range, class Predicate>
+static constexpr
+auto find_last_if(Range &range, Predicate pred)
+{
+    auto const begin = std::begin(range);
+    auto const end = std::end(range);
+    auto const rbegin = std::make_reverse_iterator(end);
+    auto const rend = std::make_reverse_iterator(begin);
+    auto found = std::find_if(rbegin, rend, pred);
+    
+    return (found != rend) ? (++found).base() : end;
+}
+
 //! erase if found.
 /*! @return true if found and erased
  */

@@ -182,18 +182,38 @@ public:
         
         std::shared_ptr<Processor> GetProcessor() const { return processor_; }
         
+        //! get audio connection list to the specified direction
         std::vector<AudioConnectionPtr> GetAudioConnections(BusDirection dir) const;
+        
+        //! get midi connection list to the specified direction
         std::vector<MidiConnectionPtr> GetMidiConnections(BusDirection dir) const;
         
+        //! get the audio connection to the specified target.
+        /*! @return return the audio connection if found, nullptr otherwise.
+         */
         std::vector<AudioConnectionPtr> GetAudioConnectionsTo(BusDirection dir, Node const *target) const;
+        //! get the midi connection to the specified target.
+        /*! @return return the midi connection if found, nullptr otherwise.
+         */
         std::vector<MidiConnectionPtr> GetMidiConnectionsTo(BusDirection dir, Node const *target) const;
-        bool HasAudioConnectionsTo(BusDirection dir, Node const *target) const;
-        bool HasMidiConnectionsTo(BusDirection dir, Node const *target) const;
-        bool HasConnectionsTo(BusDirection dir, Node const *target) const;
-        bool IsConnected() const;
         
+        //! @return true if this node is connected to the target directly with any audio connections.
+        bool HasAudioConnectionsTo(BusDirection dir, Node const *target) const;
+        //! @return true if this node is connected to the target directly with any midi connections.
+        bool HasMidiConnectionsTo(BusDirection dir, Node const *target) const;
+        //! @return true if this node is connected to the target directly with any connections.
+        bool HasConnectionsTo(BusDirection dir, Node const *target) const;
+        //! @return true if this node is connected to any targets.
+        bool IsConnected() const;
+
+        //! check that this node is connected directly or indirectly to the specified node.
+        //! @return true if the any downstream audio connections reach to the specified node.
         bool HasAudioPathTo(Node const *downstream) const;
+        //! check that this node is connected directly or indirectly to the specified node.
+        //! @return true if the any downstream midi connections reach to the specified node.
         bool HasMidiPathTo(Node const *downstream) const;
+        //! check that this node is connected directly or indirectly to the specified node.
+        //! @return true if the any downstream connections reach to the specified node.
         bool HasPathTo(Node const *downstream) const;
         
     protected:

@@ -26,7 +26,7 @@ ext {
   getenv = { String key -> return java.lang.System.getenv()[key] }
   isWindows = { return System.properties['os.name'].toLowerCase().startsWith("windows") }
   build_dir_name = "build_${project.config.toLowerCase()}"
-  test_build_dir_name = "test"
+  test_build_dir_name = "test_${project.config.toLowerCase()}"
   has_ccache = (project.use_ccache == "true" ? "which ccache".execute().waitFor() == 0 : false)
   ccache_path = (has_ccache ? "which ccache".execute().text.trim() : "")
   ccache_envvars = (has_ccache ? [CC: "${ccache_path} clang", CXX: "${ccache_path} clang++"] : [:])

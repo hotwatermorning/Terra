@@ -89,7 +89,7 @@ template<class Range, class Pred>
 static constexpr
 bool contains_if(Range &range, Pred pred)
 {
-    return find(range, pred) != std::end(range);
+    return find_if(range, pred) != std::end(range);
 }
 
 template<class Iterator>

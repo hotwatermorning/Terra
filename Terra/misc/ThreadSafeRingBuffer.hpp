@@ -64,6 +64,11 @@ public:
         pop_token_ = false;
     }
     
+    UInt32 GetNumChannels() const
+    {
+        return num_channels_;
+    }
+    
     //! 全体の容量を返す
     UInt32 GetCapacity() const
     {

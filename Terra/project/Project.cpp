@@ -1074,27 +1074,6 @@ void Project::StartProcessing(double sample_rate,
     }
 }
 
-template<class F>
-class TraversalCallback
-:   public Transporter::Traverser::ITraversalCallback
-{
-public:
-    TraversalCallback(F f) : f_(std::forward<F>(f)) {}
-    
-    void Process(TransportInfo const &info) override
-    {
-        f_(info);
-    }
-    
-    F f_;
-};
-
-template<class F>
-TraversalCallback<F> MakeTraversalCallback(F f)
-{
-    return TraversalCallback<F>(std::forward<F>(f));
-}
-
 template<class Iter, class Container>
 void CheckIterValidity(Iter it, Container const &cont)
 {

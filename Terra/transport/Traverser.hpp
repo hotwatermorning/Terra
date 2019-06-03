@@ -28,11 +28,39 @@ public:
         void Process(TransportInfo const &info) = 0;
     };
 
-    //! 指定した長さだけトランスポート位置を進める。
-    //! ループが有効な場合は、以下のように処理を行う。
-    //!    * ループ境界ごとに処理を分割し、分割した領域ごとにITraversalCallback::Processを呼び出す。
-    //!    * 処理がループ終端に達した場合は、次回の処理開始位置をループ先頭位置に巻き戻す。
+    //! Progress the playback position of Transorter.
+    /*! If loop is enabled and the playback frame intersects loop boundaries:
+     *      - Split the frame length at loop boundary, and invoke
+     *         ITraversalCallback::Process for each part of the frame.
+     *      - If the playback position reaches to the end of the loop range,
+     *        jump the playback position to the begin position of the loop range.
+     */
     void Traverse(Transporter *tp, SampleCount length, ITraversalCallback *cb);
 };
+
+template<class F>
+class TraversalCallback
+:   public Transporter::Traverser::ITraversalCallback
+{
+public:
+    explicit
+    TraversalCallback(F f) : f_(std::forward<F>(f)) {}
+    
+    void Process(TransportInfo const &info) override
+    {
+        f_(info);
+    }
+    
+    F f_;
+};
+
+//! Make ITraversalCallback object with a function object `f`.
+/*! @tparam F is a function or a function object having a signature `void(TransportInfo const &)`
+ */
+template<class F>
+TraversalCallback<F> MakeTraversalCallback(F f)
+{
+    return TraversalCallback<F>(std::forward<F>(f));
+}
 
 NS_HWM_END

@@ -488,7 +488,29 @@ task build_portaudio {
       get_hash("portaudio"),
       {
         if(isWindows()) {
-          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DPA_BUILD_STATIC=ON -DPA_DLL_LINK_WITH_STATIC_RUNTIME=OFF -DPA_BUILD_SHARED=OFF -DPA_USE_WDMKS=OFF ..", build_dir, ccache_envvars)
+          def asiosdk_zip_name = "asiosdk2.3.zip"
+          def asiosdk_zip_path = new File(build_dir, asiosdk_zip_name)
+          def asiosdk_url = "https://www.steinberg.net/sdk_downloads/${asiosdk_zip_name}"
+          def asiosdk_dir = new File(build_dir, "ASIOSDK2.3")
+
+          download {
+            src asiosdk_url
+            dest build_dir
+            overwrite false
+          }
+          assert(asiosdk_zip_path.exists())
+
+          copy {
+            from zipTree(asiosdk_zip_path)
+            into build_dir
+          }
+
+          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" " +
+                  "-DPA_BUILD_STATIC=ON -DPA_DLL_LINK_WITH_STATIC_RUNTIME=OFF " +
+                  "-DPA_BUILD_SHARED=OFF -DPA_USE_WDMKS=OFF " +
+                  "-DPA_USE_ASIO=ON -DASIOSDK_ROOT_DIR=\"${asiosdk_dir}\" " +
+                  "..",
+                  build_dir, ccache_envvars)
           execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
           execute("cmake --build . -j --target INSTALL --config ${project.config}", build_dir)
         } else {

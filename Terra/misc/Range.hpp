@@ -69,7 +69,7 @@ template<class Range, class Pred>
 static constexpr
 bool erase_element_if(Range &range, Pred pred)
 {
-    auto found = find(range, pred);
+    auto found = find_if(range, pred);
     if(found == std::end(range)) {
         return false;
     } else {
@@ -120,6 +120,5 @@ auto reversed(RangeType &r)
     auto end = std::rend(r);
     return Range<decltype(begin)>{begin, end};
 }
-
 
 NS_HWM_END

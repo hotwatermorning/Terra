@@ -203,19 +203,19 @@ if(TERRA_BUILD_TEST)
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DTERRA_BUILD_TEST")
 endif()
 
+find_library(VST3_SDK_LIB "sdk" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}" NO_DEFAULT_PATH)
+find_library(VST3_BASE_LIB "base" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}" NO_DEFAULT_PATH)
+find_library(VST3_PLUGINTERFACES_LIB "pluginterfaces" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}" NO_DEFAULT_PATH)
+
 if(IsMSVC)
   find_library(PORTAUDIO_LIB "portaudio_static_x64" PATHS "./ext/portaudio/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)
   find_library(PROTOBUF_LIB "libprotobuf" "libprotobufd" PATHS "./ext/protobuf/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)
   find_library(FMT_LIB NAMES "fmt" "fmtd.lib" PATHS "./ext/fmt/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)
-  find_library(VST3_SDK_LIB "sdk" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}" NO_DEFAULT_PATH)
-  find_library(VST3_BASE_LIB "base" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}" NO_DEFAULT_PATH)
   find_library(RTMIDI_LIB "rtmidi_static" "rtmidi_staticd" PATHS "./ext/rtmidi/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)
 else()
   find_library(PORTAUDIO_LIB "libportaudio.a" PATHS "./ext/portaudio/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)
   find_library(PROTOBUF_LIB "protobuf" PATHS "./ext/protobuf/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)
   find_library(FMT_LIB NAMES "fmt" "fmtd" PATHS "./ext/fmt/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)
-  find_library(VST3_SDK_LIB "sdk" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}" NO_DEFAULT_PATH)
-  find_library(VST3_BASE_LIB "base" PATHS "./ext/vst3sdk/${BUILD_DIR_NAME}/lib/${CAPITAL_CONFIG_NAME}" NO_DEFAULT_PATH)
   find_library(RTMIDI_LIB "rtmidi_static" PATHS "./ext/rtmidi/${BUILD_DIR_NAME}/install/lib" NO_DEFAULT_PATH)
   find_library(JACK_LIB jack)
 endif()
@@ -223,6 +223,7 @@ endif()
 list(APPEND LINKLIBS
   ${VST3_SDK_LIB}
   ${VST3_BASE_LIB}
+  ${VST3_PLUGINTERFACES_LIB}
   ${PORTAUDIO_LIB}
   ${PROTOBUF_LIB}
   ${FMT_LIB}

@@ -100,7 +100,7 @@ bool MyApp::OnInit()
 		L"C:/Program Files/Common Files/VST3",
 #else
         L"/Library/Audio/Plug-Ins/VST3",
-        wxStandardPaths::Get().GetDocumentsDir().ToStdWstring() + L"../Library/Audio/Plug-Ins/VST3",
+        wxStandardPaths::Get().GetDocumentsDir().ToStdWstring() + L"/../Library/Audio/Plug-Ins/VST3",
         L"../../ext/vst3sdk/build_debug/VST3/Debug",
 #endif
     });

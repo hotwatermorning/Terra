@@ -32,11 +32,11 @@ using namespace fmt::literals;
 #include <public.sdk/source/vst/hosting/eventlist.h>
 #include <public.sdk/source/vst/hosting/parameterchanges.h>
 
-#if defined(_MSC_VER)
+#if __has_include(<optional>)
 
 #include <optional>
 
-#else
+#elif __has_include(<experimental/optional>)
 
 #include <experimental/optional>
 namespace std {
@@ -44,6 +44,10 @@ namespace std {
     using optional = std::experimental::optional<Args...>;
     constexpr std::experimental::nullopt_t nullopt{0};
 }
+
+#else
+
+#error Terra needs std::optional but not found.
 
 #endif
 

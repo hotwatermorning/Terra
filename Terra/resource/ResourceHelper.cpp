@@ -5,13 +5,7 @@
 
 NS_HWM_BEGIN
 
-ResourceHelper::ResourceHelper()
-{}
-
-ResourceHelper::~ResourceHelper()
-{}
-
-String ResourceHelper::GetTerraDir() const
+String GetTerraDir()
 {
     auto &sp = wxStandardPaths::Get();
     auto path = wxFileName(sp.GetDocumentsDir(), "");
@@ -20,7 +14,7 @@ String ResourceHelper::GetTerraDir() const
     return path.GetFullPath().ToStdWstring();
 }
 
-String ResourceHelper::GetConfigFilePath() const
+String GetConfigFilePath()
 {
     auto path = wxFileName(GetTerraDir(), "");
     path.AppendDir("Config");
@@ -29,7 +23,7 @@ String ResourceHelper::GetConfigFilePath() const
 }
 
 //! Get resource file path specified by the path hierarchy.
-String ResourceHelper::GetResourcePath(String path) const
+String GetResourcePath(String path)
 {
     assert(path.size() > 0);
     
@@ -47,7 +41,7 @@ String ResourceHelper::GetResourcePath(String path) const
 }
 
 //! Get resource file path specified by the path hierarchy.
-String ResourceHelper::GetResourcePath(std::vector<String> path_hierarchy) const
+String GetResourcePath(std::vector<String> path_hierarchy)
 {
     assert(path_hierarchy.empty() == false &&
            std::all_of(path_hierarchy.begin(),

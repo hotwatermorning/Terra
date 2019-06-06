@@ -62,7 +62,6 @@ struct MyApp::Impl
     
     PluginScanner plugin_scanner_;
     PluginListExporter plugin_list_exporter_;
-    ResourceHelper resource_helper_;
     ISplashScreen *splash_screen_ = nullptr;
     wxFrame *main_frame_ = nullptr;
     std::thread initialization_thread_;

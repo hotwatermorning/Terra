@@ -358,7 +358,12 @@ public:
         vbox->Add(header_panel_, wxSizerFlags(0).Expand());
         vbox->Add(graph_panel_, wxSizerFlags(1).Expand());
         vbox->Add(pianoroll_, wxSizerFlags(1).Expand());
-        vbox->Add(keyboard_, wxSizerFlags(0).Expand());
+        
+        auto hbox = new wxBoxSizer(wxHORIZONTAL);
+        hbox->AddStretchSpacer(1);
+        hbox->Add(keyboard_, wxSizerFlags(100000).Expand());
+        hbox->AddStretchSpacer(1);
+        vbox->Add(hbox, wxSizerFlags(0).Expand());
         
         SetSizer(vbox);
         

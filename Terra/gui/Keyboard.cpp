@@ -10,10 +10,10 @@
 NS_HWM_BEGIN
 
 class Keyboard
-:   public IRenderableWindow<wxWindow>
+:   public wxScrolled<wxWindow>
 {
 public:
-    using PlayingNoteList = std::array<bool, 128>;
+    using PlayingNoteList = std::bitset<128>;
     
     static
     wxImage LoadImage(String filename)
@@ -22,14 +22,28 @@ public:
     }
     
     Keyboard(wxWindow *parent)
-    :   IRenderableWindow<wxWindow>(parent, wxID_ANY)
+    :   wxScrolled<wxWindow>(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxHSCROLL|wxALWAYS_SHOW_SB)
     {
         wxSize min_size(1, kWhiteKeyHeight);
         
         SetSize(min_size);
-        SetMinSize(min_size);
+        SetMinClientSize(min_size);
+        SetMaxClientSize(wxSize(kFullKeysWidth, kWhiteKeyHeight));
+        SetVirtualSize(wxSize(kFullKeysWidth, kWhiteKeyHeight));
         
-        playing_notes_.fill(false);
+        SetScrollbars(1,
+                      kWhiteKeyHeight,
+                      kFullKeysWidth,
+                      1,
+                      kFullKeysWidth / 2,
+                      0);
+        
+        ShowScrollbars(wxSHOW_SB_ALWAYS, wxSHOW_SB_DEFAULT);
+        
+        auto rect = GetClientRect();
+        last_size_ = rect.GetSize();
+        
+        playing_notes_.reset();
         
         img_white_          = LoadImage(L"pianokey_white.png");
         img_white_pushed_   = LoadImage(L"pianokey_white_pushed.png");
@@ -42,7 +56,7 @@ public:
         img_white_pushed_contiguous_.Rescale(kKeyWidth, kWhiteKeyHeight);
         img_black_.Rescale(kKeyWidth+1, kBlackKeyHeight);
         img_black_pushed_.Rescale(kKeyWidth+1, kBlackKeyHeight);
-                
+        
         timer_.Bind(wxEVT_TIMER, [this](auto &ev) { OnTimer(); });
         timer_.Start(50);
         Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { OnLeftDown(ev); });
@@ -51,10 +65,14 @@ public:
         Bind(wxEVT_MOTION, [this](auto &ev) { OnMotion(ev); });
         Bind(wxEVT_MOVE, [this](auto &ev) { Refresh(); });
         Bind(wxEVT_SIZE, [this](auto &ev) { Refresh(); });
+        Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(ev); });
+        Bind(wxEVT_SIZE, [this](auto &ev) { OnSize(ev); });
     }
     
     ~Keyboard()
     {}
+    
+    bool AcceptsFocus() const override { return false; }
     
     static constexpr int kKeyWidth = 16;
     static constexpr int kBlackKeyDispOffset = 6;
@@ -86,24 +104,28 @@ public:
     bool IsBlackKey(Int32 note_number) { return IsFound(note_number % 12, kBlackKeyIndices); }
     
     BrushPen const col_background { wxColour(0x26, 0x1E, 0x00) };
-
-    void doRender(wxDC &dc) override
+    
+    void OnPaint(wxPaintEvent &ev)
     {
+        wxPaintDC dc(this);
+        DoPrepareDC(dc);
+        
         auto rect = GetClientRect();
         
         col_background.ApplyTo(dc);
         dc.DrawRectangle(rect);
         
-        int const disp_half = rect.GetWidth() / 2;
-        int const disp_shift = kFullKeysWidth / 2 - disp_half;
+        int left, right, dummy;
+        CalcUnscrolledPosition(rect.GetLeft(), 0, &left, &dummy);
+        CalcUnscrolledPosition(rect.GetRight(), 0, &right, &dummy);
         
         auto draw_key = [&](auto note_num, auto const &prop, auto const &img) {
             int const octave = note_num / 12;
             auto key_rect = prop.rect_;
-            key_rect.Offset(octave * kKeyWidth * 7 - disp_shift, 0);
+            key_rect.Offset(octave * kKeyWidth * 7, 0);
             
-            if(key_rect.GetLeft() >= rect.GetWidth()) { return; }
-            if(key_rect.GetRight() < 0) { return; }
+            if(key_rect.GetLeft() >= right) { return; }
+            if(key_rect.GetRight() < left) { return; }
             
             dc.DrawBitmap(wxBitmap(img), key_rect.GetTopLeft());
         };
@@ -135,11 +157,11 @@ public:
             draw_key(i, kKeyPropertyList[i % 12], img);
         }
         
-        auto font = wxFont(wxFontInfo(wxSize(8, 10)).Family(wxFONTFAMILY_DEFAULT));
+        auto font = wxFont(wxFontInfo(wxSize(8, 10)).Family(wxFONTFAMILY_TELETYPE).AntiAliased());
         dc.SetFont(font);
         for(int i = 0; i < kNumKeys; i += 12) {
             int const octave = i / 12;
-            auto rc = wxRect(wxPoint(octave * kKeyWidth * 7 - disp_shift, rect.GetHeight() * 0.8),
+            auto rc = wxRect(wxPoint(octave * kKeyWidth * 7, rect.GetHeight() * 0.8),
                              wxSize(kKeyWidth, 10));
             
             dc.DrawLabel(wxString::Format("C%d", i / 12 - 2), wxBitmap(), rc, wxALIGN_CENTER);
@@ -148,14 +170,18 @@ public:
     
     void OnLeftDown(wxMouseEvent const &ev)
     {
-        assert(last_dragging_note_ == std::nullopt);
+#if _DEBUG
+        if(last_dragging_note_ != std::nullopt) {
+            hwm::dout << "left down is sent twice unexpectedly." << std::endl;
+        }
+#endif
         OnMotion(ev);
     }
     
     void OnLeftUp(wxMouseEvent const &ev)
     {
         if(last_dragging_note_) {
-            SendSampleNoteOff(*last_dragging_note_);
+            SendNoteOff(*last_dragging_note_);
         }
         
         last_dragging_note_ = std::nullopt;
@@ -168,25 +194,35 @@ public:
         auto pt = ev.GetPosition();
         
         auto note = PointToNoteNumber(pt);
+        if(note == last_dragging_note_) { return; }
         
-        if(last_dragging_note_ && last_dragging_note_ != note) {
-            SendSampleNoteOff(*last_dragging_note_);
+        if(last_dragging_note_) {
+            SendNoteOff(*last_dragging_note_);
         }
         
         if(note) {
-            SendSampleNoteOn(*note);
+            SendNoteOn(*note);
         }
         
         last_dragging_note_ = note;
     }
     
+    wxSize last_size_;
+    void OnSize(wxSizeEvent &ev)
+    {
+        auto center = GetScrollPos(wxHORIZONTAL) + last_size_.GetWidth() / 2;
+        
+        auto const new_size = ev.GetSize();
+        
+        SetScrollbars(1, kWhiteKeyHeight, kFullKeysWidth, 1, center - new_size.GetWidth() / 2, 0);
+        last_size_ = new_size;
+    }
+    
     std::optional<int> PointToNoteNumber(wxPoint pt)
     {
-        auto rect = GetClientRect();
-        int const disp_half = rect.GetWidth() / 2;
-        int const disp_shift = kFullKeysWidth / 2 - disp_half;
+        int x, y;
+        CalcUnscrolledPosition(pt.x, pt.y, &x, &y);
         
-        double const x = (pt.x + disp_shift);
         int const kOctaveWidth = 7.0 * kKeyWidth;
         
         int octave = (int)(x / (double)kOctaveWidth);
@@ -199,7 +235,7 @@ public:
             auto rc = key.rect_;
             rc.SetWidth(kBlackKeyDispWidth);
             rc.Inflate(1, 1);
-            if(rc.Contains(x_in_oct - kBlackKeyDispOffset, pt.y)) {
+            if(rc.Contains(x_in_oct - kBlackKeyDispOffset, y)) {
                 if(!found) { found = (index + octave * 12); }
                 break;
             }
@@ -209,7 +245,7 @@ public:
             auto key = kKeyPropertyList[index];
             auto rc = key.rect_;
             rc.Inflate(1, 1);
-            if(rc.Contains(x_in_oct, pt.y)) {
+            if(rc.Contains(x_in_oct, y)) {
                 if(!found) { found = (index + octave * 12); }
                 break;
             }
@@ -230,7 +266,6 @@ public:
         std::vector<Project::PlayingNoteInfo> list_sample = pj->GetPlayingSampleNotes();
         
         PlayingNoteList tmp = {};
-        
         for(auto &list: {list_seq, list_sample}) {
             for(auto &note: list) {
                 tmp[note.pitch_] = true;
@@ -244,37 +279,32 @@ public:
     }
     
 private:
-    void SendSampleNoteOn(UInt8 note_number)
+    void SendNoteOn(UInt8 note_number)
     {
         assert(note_number < 128);
         
         auto proj = Project::GetCurrentProject();
-        proj->SendSampleNoteOn(sample_note_channel, note_number);
+        proj->SendSampleNoteOn(sample_note_channel_, note_number);
     }
     
-    void SendSampleNoteOff(UInt8 note_number)
+    void SendNoteOff(UInt8 note_number)
     {
         assert(note_number < 128);
         
         auto proj = Project::GetCurrentProject();
-        proj->SendSampleNoteOff(sample_note_channel, note_number);
+        proj->SendSampleNoteOff(sample_note_channel_, note_number);
     }
     
 private:
     std::optional<int> last_dragging_note_;
     wxTimer timer_;
     PlayingNoteList playing_notes_;
-    int key_base_ = 60;
-    constexpr static wxChar kPlayback = L' ';
-    constexpr static wxChar kOctaveDown = L'Z';
-    constexpr static wxChar kOctaveUp = L'X';
-    static std::vector<wxChar> const kKeyTable;
-    int sample_note_channel = 0;
     wxImage img_white_;
     wxImage img_white_pushed_;
     wxImage img_white_pushed_contiguous_;
     wxImage img_black_;
     wxImage img_black_pushed_;
+    int sample_note_channel_ = 0;
     
     struct KeyProperty {
         KeyProperty(int x, wxSize sz)
@@ -299,10 +329,6 @@ private:
         { int(kKeyWidth * 5.5 - 2), kBlackKey },
         { kKeyWidth * 6,            kWhiteKey },
     };
-};
-
-std::vector<wxChar> const Keyboard::kKeyTable = {
-    L'A', L'W', L'S', L'E', L'D', L'F', L'T', L'G', L'Y', L'H', L'U', L'J', L'K', L'O', L'L', L'P'
 };
 
 wxSize const Keyboard::kWhiteKey { kKeyWidth, kWhiteKeyHeight };

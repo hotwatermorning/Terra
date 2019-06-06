@@ -13,10 +13,12 @@ public:
     ~IRenderableWindowBase()
     {}
     
-    //! DC の原点をこのWindowの左上位置に変換してから描画。
-    //! 描画完了後、原点を元の状態に戻す
+    //! 親ウィンドウで作成したDCを受け取って描画。
+    /*! 受け取ったDCの原点をこのWindowの左上位置に変換してから描画。
+     * 描画完了後、DCの原点を元の状態に戻す
+     */
     virtual
-    void SetOriginAndRender(wxDC &dc) = 0;
+    void RenderWithParentDC(wxDC &dc) = 0;
     void Render(wxDC &dc);
 
     virtual
@@ -50,7 +52,7 @@ public:
         UseDefaultPaintMethod(true);
     }
     
-    void SetOriginAndRender(wxDC &dc) override
+    void RenderWithParentDC(wxDC &dc) override
     {
         auto const saved_pos = dc.GetLogicalOrigin();
         auto const pos = saved_pos - this->GetPosition();  

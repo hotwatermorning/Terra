@@ -482,10 +482,10 @@ public:
         dc.DrawRectangle(rc_sash_vert);
         dc.DrawRectangle(rc_sash_horz);
         
-        keyboard_->SetOriginAndRender(dc);
-        editor_->SetOriginAndRender(dc);
-        envelope_header_->SetOriginAndRender(dc);
-        envelope_->SetOriginAndRender(dc);
+        keyboard_->RenderWithParentDC(dc);
+        editor_->RenderWithParentDC(dc);
+        envelope_header_->RenderWithParentDC(dc);
+        envelope_->RenderWithParentDC(dc);
     }
     
     bool Layout() override

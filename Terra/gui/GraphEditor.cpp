@@ -337,7 +337,7 @@ public:
         
         for(auto child: GetChildren()) {
             if(auto p = dynamic_cast<IRenderableWindowBase *>(child)) {
-                p->SetOriginAndRender(dc);
+                p->RenderWithParentDC(dc);
             }
         }
     }
@@ -1086,7 +1086,7 @@ private:
         }
 
         for(auto &nc: node_components_) {
-            nc->SetOriginAndRender(dc);
+            nc->RenderWithParentDC(dc);
         }
 
         PaintOverChildren(dc); 

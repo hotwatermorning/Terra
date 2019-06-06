@@ -45,7 +45,6 @@ public:
         SetSize(image_.GetWidth(), image_.GetHeight());
         CentreOnScreen();
 
-        text_buffer_ = GraphicsBuffer(GetSize());
         back_buffer_ = GraphicsBuffer(GetSize());
 
         Bind(wxEVT_CLOSE_WINDOW, [this](auto &ev) { StartClosingWithEffect(); });
@@ -86,8 +85,7 @@ public:
 
     void OnPaint()
     {
-        RenderTextBuffer();
-        RenderBackBuffer();
+        Render();
 
         int const k = std::min<int>(255, 256 - 256 * (opaque_));
 
@@ -117,13 +115,18 @@ public:
 #endif
     }
 
-    void RenderTextBuffer()
+    void Render()
     {
-        text_buffer_.Clear();
-        wxMemoryDC memory_dc(text_buffer_.GetBitmap());
+        back_buffer_.Clear();
+        
+        wxMemoryDC memory_dc(back_buffer_.GetBitmap());
         assert(memory_dc.IsOk());
-
+        
         wxGCDC dc(memory_dc);
+        
+        auto img = wxBitmap(image_, 32);
+        dc.DrawBitmap(img, wxPoint());
+        
         dc.SetFont(font_);
         dc.SetTextForeground(kColMessage);
 
@@ -148,18 +151,6 @@ public:
         lock.unlock();
     }
 
-    void RenderBackBuffer()
-    {
-        back_buffer_.Clear();
-
-        wxMemoryDC memory_dc(back_buffer_.GetBitmap());
-        wxGCDC dc(memory_dc);
-
-        auto img = wxBitmap(image_, 32);
-        dc.DrawBitmap(img, wxPoint());
-        dc.DrawBitmap(text_buffer_.GetBitmap(), wxPoint());
-    }
-
     void OnTimer()
     {
         auto now = clock_t::now();
@@ -177,7 +168,6 @@ public:
 
 private:
     GraphicsBuffer back_buffer_;
-    GraphicsBuffer text_buffer_;
     wxImage image_;
     wxTimer timer_;
     wxFont font_;

@@ -1,5 +1,5 @@
 jobs:
-- job: build_osx_10_13_xcode9_3
+- job: build_osx_10_13
   pool:
     vmImage: 'macOS-10.13'
   variables:
@@ -9,8 +9,8 @@ jobs:
     displayName: brew install
   - script: |
       cd gradle
-      ./gradlew test -Pconfig=Debug
-      ./gradlew build_all -Pconfig=Release
+      ./gradlew test -Pconfig=Debug -Pcache_title=macosx10.13-xcode9.3
+      ./gradlew build_all -Pconfig=Release -Pcache_title=macosx-10.13-xcode9.3
     env:
       AZURE_STORAGE_ACCOUNT: $(azure.storage.account)
       AZURE_STORAGE_KEY: $(azure.storage.key)
@@ -22,18 +22,18 @@ jobs:
       pathtoPublish: '$(System.DefaultWorkingDirectory)/build_release/Release'
       artifactName: terra_release_osx_10_13_xcode9_3
     displayName: publish
-- job: build_osx_10_13_xcode10_1
+- job: build_osx_10_14
   pool:
-    vmImage: 'macOS-10.13'
+    vmImage: 'macOS-10.14'
   variables:
-    DEVELOPER_DIR: "/Applications/Xcode_10.1.app"
+    DEVELOPER_DIR: "/Applications/Xcode_10.2.1.app"
   steps:
   - script: brew install libtool automake
     displayName: brew install
   - script: |
       cd gradle
-      ./gradlew test -Pconfig=Debug
-      ./gradlew build_all -Pconfig=Release
+      ./gradlew test -Pconfig=Debug -Pcache_title=macosx10.14-xcode10.2.1
+      ./gradlew build_all -Pconfig=Release -Pcache_title=macosx10.14-xcode10.2.1
     env:
       AZURE_STORAGE_ACCOUNT: $(azure.storage.account)
       AZURE_STORAGE_KEY: $(azure.storage.key)
@@ -43,7 +43,7 @@ jobs:
   - task: PublishBuildArtifacts@1
     inputs:
       pathtoPublish: '$(System.DefaultWorkingDirectory)/build_release/Release'
-      artifactName: terra_release_osx_10_13_xcode10_1
+      artifactName: terra_release_osx_10_14_xcode10_2_1
     displayName: publish
 - job: build_win_msvc_2017
   pool:
@@ -51,8 +51,8 @@ jobs:
   steps:
   - script: |
       cd gradle
-      call gradlew test -Pconfig=Debug
-      call gradlew build_all -Pconfig=Release
+      call gradlew test -Pconfig=Debug -Pmsvc_version="Visual Studio 15 2017" -Pcache_title=win2016-vs2017
+      call gradlew build_all -Pconfig=Release -Pmsvc_version="Visual Studio 15 2017" -Pcache_title=win2016-vs2017
     env:
       AZURE_STORAGE_ACCOUNT: $(azure.storage.account)
       AZURE_STORAGE_KEY: $(azure.storage.key)
@@ -63,4 +63,23 @@ jobs:
     inputs:
       pathtoPublish: '$(System.DefaultWorkingDirectory)/build_release/Release'
       artifactName: terra_release_win_msvc2017
+    displayName: publish
+- job: build_win_msvc_2019
+  pool:
+    vmImage: 'windows-2019'
+  steps:
+  - script: |
+      cd gradle
+      call gradlew test -Pconfig=Debug -Pmsvc_version="Visual Studio 16 2019" -Pcache_title=win2019-vs2019
+      call gradlew build_all -Pconfig=Release -Pmsvc_version="Visual Studio 16 2019" -Pcache_title=win2019-vs2019
+    env:
+      AZURE_STORAGE_ACCOUNT: $(azure.storage.account)
+      AZURE_STORAGE_KEY: $(azure.storage.key)
+      AZURE_STORAGE_CONTAINER_NAME: $(azure.storage.container.name)
+      ORG_GRADLE_PROJECT_renew_cache: $(cache.renew)
+    displayName: build all
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathtoPublish: '$(System.DefaultWorkingDirectory)/build_release/Release'
+      artifactName: terra_release_win_msvc2019
     displayName: publish

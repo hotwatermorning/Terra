@@ -24,6 +24,7 @@ ensure_property(project, "config", ["Debug", "Release"])
 ensure_property(project, "use_ccache", ["true", "false"])
 // build libraries even if cache archives are available.
 ensure_property(project, "renew_cache", ["false", "true"])
+ensure_property(project, "msvc_version", ["Visual Studio 16 2019", "Visual Studio 15 2017"])
 
 ext {
   isWindows = { return System.properties['os.name'].toLowerCase().startsWith("windows") }
@@ -34,7 +35,7 @@ ext {
   ccache_envvars = (enable_ccache ? [CC: "${ccache_path} clang", CXX: "${ccache_path} clang++"] : [CCACHE_DISABLE: "true"])
   should_renew_cache = (project.renew_cache == "true")
   getCMakeGenerator = {
-    return isWindows() ? "-G \"Visual Studio 15 2017 Win64\" -Tv141,host=x64" : "-G Xcode"
+    return isWindows() ? "-G \"${project.msvc_version}\" -A x64" : "-G Xcode"
   }
 }
 

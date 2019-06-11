@@ -17,7 +17,7 @@ endif()
 # GeneratorがVisual Studioの場合、Win64指定されているかどうかでプラットフォーム指定を分岐
 # Xcodeでは常にx64を指定する
 if(IsMSVC)
-    if(${CMAKE_GENERATOR} MATCHES "Win64$")
+    if(${CMAKE_GENERATOR_PLATFORM} STREQUAL x64)
         set(PLATFORM "x64")
         set(Isx64 "1")
     else()

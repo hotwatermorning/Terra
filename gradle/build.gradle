@@ -789,7 +789,7 @@ task clean_app {
 
 task clean_test {
   doLast {
-    delete_build_dir("..", "test")
+    delete_build_dir("..", test_build_dir_name)
   }
 }
 

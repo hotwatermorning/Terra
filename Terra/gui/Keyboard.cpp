@@ -1,6 +1,7 @@
 #include "Keyboard.hpp"
 
 #include <array>
+#include <bitset>
 
 #include "../App.hpp"
 #include "../resource/ResourceHelper.hpp"

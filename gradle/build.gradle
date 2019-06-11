@@ -1,9 +1,8 @@
 import groovy.json.*
-import groovy.transform.Field
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-@Field def slurper = new JsonSlurper()
+def slurper = new JsonSlurper()
 
 def ensure_property(def obj, String keyname, List candidates, Integer default_value_index = 0)
 {
@@ -164,7 +163,7 @@ class ExecutionResult
 //! @param command is a string consists of executable command and its parameters.
 //! @param working_dir is the working directory for the executable.
 //! @param env_vars is environment variables as a list of key:value pair. this parameter may be nil.
-@Field def execute_may_fail = { String command, def working_dir = ".", Map env_vars = [:] ->
+def execute_may_fail = { String command, def working_dir = ".", Map env_vars = [:] ->
   if(isWindows()) {
     command = "cmd /c chcp 65001 > nul & " + command.toString()
   }
@@ -209,7 +208,7 @@ class ExecutionResult
 }
 
 //! similar to execute_may_fail but this function fails if the command finished with an exit value of non zero.
-@Field def execute = { String params, def working_dir = ".", Map env_vars = [:] ->
+def execute = { String params, def working_dir = ".", Map env_vars = [:] ->
   def result = execute_may_fail(params, working_dir, env_vars)
   assert (result.exitValue() == 0), "undesirable exit value ${result.exitValue()}"
   return result
@@ -223,14 +222,14 @@ task update_submodules {
 
 // 指定したディレクトリが存在しなければ作成し、成功か失敗かをbooleanで返す
 // 存在する場合は何もせずにtrueを返す
-@Field def mkdirs_if_needed = { def path ->
+def mkdirs_if_needed = { def path ->
   def f = file(path)
   if(f.exists()) { return true }
 
   return f.mkdirs()
 }
 
-@Field def createCacheParam = { File cache_dir, String archive_name, String build_config, String hash ->
+def createCacheParam = { File cache_dir, String archive_name, String build_config, String hash ->
   def getOsName = { return isWindows() ? "win" : "mac" }
   return [
     getOsName: getOsName,
@@ -252,14 +251,14 @@ task update_submodules {
 //   boolean store(def param)
 // }
 
-@Field def createNullCacheStrategy = {
+def createNullCacheStrategy = {
   return [
     fetch: { def param -> return false },
     store: { def param -> return false },
   ]
 }
 
-@Field def createAzureCacheStrategy = {
+def createAzureCacheStrategy = {
   def getAzureStorageAccount = {
     return getenv("AZURE_STORAGE_ACCOUNT").toString()
   }
@@ -380,12 +379,12 @@ task update_submodules {
   ]
 }
 
-@Field def get_hash = { String submodule_name ->
+def get_hash = { String submodule_name ->
   def result = execute("git rev-parse HEAD", file("../ext/${submodule_name}"))
   return result.text.trim()
 }
 
-@Field def get_cache_strategy = {
+def get_cache_strategy = {
   def st = createAzureCacheStrategy()
   if(st) {
     println "Use AzureCacheStrategy"
@@ -401,7 +400,7 @@ task update_submodules {
 
 // 指定したディレクトリのキャッシュが有効なときはそれを使用し、
 // キャッシュがないときはビルドを行う
-@Field def build_if_needed = { String archive_name, File cache_dir, String hash, Closure do_build ->
+def build_if_needed = { String archive_name, File cache_dir, String hash, Closure do_build ->
   def cache = get_cache_strategy()
 
   def param = createCacheParam(cache_dir, archive_name, project.config, hash)

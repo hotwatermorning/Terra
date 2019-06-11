@@ -22,16 +22,30 @@ ensure_property(project, "use_ccache", ["true", "false"])
 ensure_property(project, "renew_cache", ["false", "true"])
 
 ext {
-  getenv = { String key -> return java.lang.System.getenv()[key] }
   isWindows = { return System.properties['os.name'].toLowerCase().startsWith("windows") }
   build_dir_name = "build_${project.config.toLowerCase()}"
   test_build_dir_name = "test_${project.config.toLowerCase()}"
-  has_ccache = (project.use_ccache == "true" ? "which ccache".execute().waitFor() == 0 : false)
-  ccache_path = (has_ccache ? "which ccache".execute().text.trim() : "")
-  ccache_envvars = (has_ccache ? [CC: "${ccache_path} clang", CXX: "${ccache_path} clang++"] : [:])
+  enable_ccache = (project.use_ccache == "true" ? "which ccache".execute().waitFor() == 0 : false)
+  ccache_path = (enable_ccache ? "which ccache".execute().text.trim() : "")
+  ccache_envvars = (enable_ccache ? [CC: "${ccache_path} clang", CXX: "${ccache_path} clang++"] : [CCACHE_DISABLE: "true"])
   should_renew_cache = (project.renew_cache == "true")
   getCMakeGenerator = {
     return isWindows() ? "-G \"Visual Studio 15 2017 Win64\" -Tv141,host=x64" : "-G Xcode"
+  }
+}
+
+//! @param options is a map to customize getenv behavior.
+//! these options are supported.
+//! * null_as_empty. (Boolean, default is false)
+//! * trim. (Boolean. default is false)
+def getenv = { String key, Map options = [:] ->
+  def tmp = java.lang.System.getenv()[key]
+  if(options["null_as_empty"]) {
+    if(tmp == null) { tmp = "" }
+  }
+
+  if(options["trim"]) {
+    tmp = tmp.trim()
   }
 }
 
@@ -259,16 +273,17 @@ def createNullCacheStrategy = {
 }
 
 def createAzureCacheStrategy = {
+  logger.info("create AzureCacheStrategy object")
   def getAzureStorageAccount = {
-    return getenv("AZURE_STORAGE_ACCOUNT").toString()
+    return getenv("AZURE_STORAGE_ACCOUNT", [null_as_empty: true, trim: true])
   }
 
   def getAzureStorageKey = {
-    return getenv("AZURE_STORAGE_KEY").toString()
+    return getenv("AZURE_STORAGE_KEY", [null_as_empty: true, trim: true])
   }
 
   def getAzureStorageContainerName = {
-    return getenv("AZURE_STORAGE_CONTAINER_NAME").toString()
+    return getenv("AZURE_STORAGE_CONTAINER_NAME", [null_as_empty: true, trim: true])
   }
 
   def getBlobApiParams = {
@@ -301,11 +316,14 @@ def createAzureCacheStrategy = {
   } else {
     if(execute_may_fail("which az").failed()) { return null }
   }
-  if(getAzureStorageAccount()?.trim() == false
-     || getAzureStorageKey()?.trim() == false
-     || getAzureStorageContainerName()?.trim() == false
-   )
-   { return null }
+
+  if(getAzureStorageAccount() == ""
+     || getAzureStorageKey() == ""
+     || getAzureStorageContainerName() == "")
+   {
+      logger.info("azure settings not found")
+      return null
+   }
 
   return [
     fetch: { def param ->
@@ -405,11 +423,14 @@ def build_if_needed = { String archive_name, File cache_dir, String hash, Closur
 
   def param = createCacheParam(cache_dir, archive_name, project.config, hash)
 
-  // fetchしたデータの正当性は確認しない
-  // （正当性を確認して、内容が不十分なときはdo_buildでビルドし直すような設計も考えられるが、
-  // do_buildの実装側が面倒になるので、そこまではしない）
-  if(should_renew_cache == false && cache.fetch(param)) {
-    return
+  if(should_renew_cache) {
+    println "Renew cache"
+  } else {
+    // fetchしたデータの正当性は確認しない
+    // （正当性を確認して、内容が不十分なときはdo_buildでビルドし直すような設計も考えられるが、
+    // do_buildの実装側が面倒になるので、そこまではしない）
+    def fetched = cache.fetch(param)
+    if(fetched) { return }
   }
 
   do_build()
@@ -442,7 +463,7 @@ task build_protobuf {
                   build_dir,
                   ccache_envvars
                   )
-          execute("make", build_dir)
+          execute("make", build_dir, ccache_envvars)
           execute("make install", build_dir)
         }
       })
@@ -462,12 +483,12 @@ task build_rtmidi {
       get_hash("rtmidi"),
       {
         if(isWindows()) {
-          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF ..", build_dir, ccache_envvars)
+          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF ..", build_dir)
           execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
           execute("cmake --build . -j --target INSTALL --config ${project.config}", build_dir)
         } else {
           execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-          execute("make -j", build_dir)
+          execute("make -j", build_dir, ccache_envvars)
           execute("make install", build_dir)
         }
       })
@@ -514,14 +535,13 @@ task build_portaudio {
           execute("cmake --build . -j --target INSTALL --config ${project.config}", build_dir)
         } else {
           execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-          execute("make -j", build_dir)
+          execute("make -j", build_dir, ccache_envvars)
           execute("make install", build_dir)
         }
       })
   }
 }
 build_portaudio.mustRunAfter update_submodules
-
 
 task build_vst3sdk {
   doLast {
@@ -542,7 +562,7 @@ task build_vst3sdk {
             + " -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF "
             + " -DSMTG_ADD_VSTGUI=OFF "
             + ".."
-            , build_dir, ccache_envvars)
+            , build_dir)
           execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
         } else {
           // VST3SDKは、makeのinstallターゲットを用意しない
@@ -553,7 +573,7 @@ task build_vst3sdk {
             + " -DSMTG_ADD_VSTGUI=OFF "
             + ".."
             , build_dir, ccache_envvars)
-          execute("make -j", build_dir)
+          execute("make -j", build_dir, ccache_envvars)
         }
       })
   }
@@ -602,7 +622,7 @@ task build_wxwidgets {
                   build_dir,
                   ccache_envvars
                   )
-          execute("make -j4", build_dir)
+          execute("make -j4", build_dir, ccache_envvars)
           execute("make install", build_dir)
         }
       })
@@ -628,7 +648,7 @@ task build_fmtlib {
           execute("cmake --build . -j --target INSTALL --config ${project.config}", build_dir)
         } else {
           execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-          execute("make -j", build_dir)
+          execute("make -j", build_dir, ccache_envvars)
           execute("make install", build_dir)
         }
       })
@@ -681,7 +701,7 @@ task prepare_app {
   doLast {
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
     assert(mkdirs_if_needed(build_dir))
-    execute("cmake ${getCMakeGenerator()} -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir)
+    execute("cmake ${getCMakeGenerator()} -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
   }
 }
 prepare_app.mustRunAfter build_submodules
@@ -693,7 +713,7 @@ task build_app {
     // for macOS, Xcode build performs parallel builds by default and
     // requires a number of concurrency for this option.
     def parallel_option = isWindows() ? "-j" : ""
-    execute("cmake --build . ${parallel_option} --target ALL_BUILD --config ${project.config}", build_dir)
+    execute("cmake --build . ${parallel_option} --target ALL_BUILD --config ${project.config}", build_dir, ccache_envvars)
   }
 }
 build_app.mustRunAfter copy_resources
@@ -706,7 +726,7 @@ task prepare_test {
 
     def build_dir = file("../${test_build_dir_name}").getAbsolutePath()
     assert(mkdirs_if_needed(build_dir))
-    execute("cmake ${getCMakeGenerator()} -DCMAKE_BUILD_TYPE=${project.config} -DTERRA_BUILD_TEST=ON ..", build_dir)
+    execute("cmake ${getCMakeGenerator()} -DCMAKE_BUILD_TYPE=${project.config} -DTERRA_BUILD_TEST=ON ..", build_dir, ccache_envvars)
   }
 }
 prepare_test.mustRunAfter build_submodules
@@ -721,7 +741,7 @@ task build_test {
     // for macOS, Xcode build performs parallel builds by default and
     // requires a number of concurrency for this option.
     def parallel_option = isWindows() ? "-j" : ""
-    execute("cmake --build . ${parallel_option} --target ALL_BUILD --config ${project.config}", build_dir)
+    execute("cmake --build . ${parallel_option} --target ALL_BUILD --config ${project.config}", build_dir, ccache_envvars)
   }
 }
 build_test.mustRunAfter copy_resources

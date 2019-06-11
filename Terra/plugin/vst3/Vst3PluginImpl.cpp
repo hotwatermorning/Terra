@@ -485,8 +485,16 @@ UInt32 Vst3Plugin::Impl::GetProgramIndex(Vst::UnitID unit_id) const
         return -1;
     }
     
-    auto const normalized_value = GetEditController()->getParamNormalized(param_id);
-    auto const plain = (UInt32)std::round(normalized_value * (size-1));
+    auto param_info = GetParameterInfoList().FindItemByID(param_id);
+    if(!param_info) {
+        return -1;
+    }
+    
+    auto const normalized = GetEditController()->getParamNormalized(param_id);
+    
+    auto const plain = std::min<UInt32>(param_info->step_count_,
+                                        normalized * (param_info->step_count_ + 1)
+                                        );
     assert(plain < size);
     
     return plain;
@@ -504,15 +512,12 @@ void Vst3Plugin::Impl::SetProgramIndex(UInt32 index, Vst::UnitID unit_id)
         return;
     }
     
-    hwm::dout << "Set Program[{}] of Unit[{}]"_format(index,
-                                                      GetUnitInfoList().GetIndexByID(unit_id)
-                                                      )
-    << std::endl;
+    auto param_info = GetParameterInfoList().FindItemByID(param_id);
+    if(!param_info) {
+        return;
+    }
     
-    // Wavesでは、このパラメータに対するstepCountがsizeと同一になっていて、
-    // VST3のドキュメントにあるようにstepCount+1でnormalied_valueを計算すると、ズレが発生してしまう。
-    // そのため、プログラムのindexに関してはstepCountは使用せず、プログラム数からnormalized_valueを計算する。
-    auto const normalized_value = index / (double)size;
+    auto const normalized_value = index / (double)param_info->step_count_;
     
     GetEditController()->setParamNormalized(unit_info.program_change_param_, normalized_value);
     PushBackParameterChange(unit_info.program_change_param_, normalized_value);

@@ -2,6 +2,10 @@ import groovy.json.*
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
+plugins {
+  id "de.undercouch.download" version "3.4.3"
+}
+
 def slurper = new JsonSlurper()
 
 def ensure_property(def obj, String keyname, List candidates, Integer default_value_index = 0)

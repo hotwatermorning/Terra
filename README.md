@@ -28,10 +28,11 @@ Currently Terra can be built on these platforms:
 
 ### Prerequisites
 
+* Java JDK or JRE version 8 or higher (for Gradle)
 * Git 2.8.1 or later
 * CMake 3.14.1 or later
 * Xcode 9.3.1 or later
-* Visual Studio 2017
+* Visual Studio 2017 or later
 
 ### macOS
 
@@ -49,8 +50,11 @@ open ../build_debug/Debug/Terra.app
 ```bat
 cd .\gradle
 
-gradlew build_all [-Pconfig=Debug]
+gradlew build_all [-Pconfig=Debug] [-Pmsvc_version="..."]
 : The `config` property is optional. For release build, use `-Pconfig=Release` instead.
+: msvc_version property can be either `"Visual Studio 16 2019"` or `"Visual Studio 15 2017"`.
+: The former is the default value.
+: If you have only Visual Studio 2017, specify the latter value to the property.
 : For non-English locales, add `-Dfile.encoding=UTF-8` option to prevent Mojibake.
 
 start ..\build_debug\Debug\Terra.exe

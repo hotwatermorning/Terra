@@ -26,6 +26,13 @@ ensure_property(project, "use_ccache", ["true", "false"])
 ensure_property(project, "renew_cache", ["false", "true"])
 ensure_property(project, "msvc_version", ["Visual Studio 16 2019", "Visual Studio 15 2017"])
 
+// enable setting cache title to distiguish stored caches with titles.
+if(project.hasProperty("cache_title") == false) {
+  project.metaClass.setProperty("cache_title", "")
+}
+
+project.cache_title = project.cache_title.trim().replaceAll(/ /, "_")
+
 ext {
   isWindows = { return System.properties['os.name'].toLowerCase().startsWith("windows") }
   build_dir_name = "build_${project.config.toLowerCase()}"
@@ -257,7 +264,9 @@ def createCacheParam = { File cache_dir, String archive_name, String build_confi
     build_config: build_config,
     hash: hash,
     getArchiveFileName: {
-      def name = "${archive_name}_${getOsName()}_${build_config}_${hash}.tar.gz"
+      def name = project.cache_title
+      if(name != "") { name += "_" }
+      name += "${archive_name}_${getOsName()}_${build_config}_${hash}.tar.gz"
       assert(name.contains(" ") == false)
       return name
     }
@@ -425,7 +434,6 @@ def get_cache_strategy = {
 // キャッシュがないときはビルドを行う
 def build_if_needed = { String archive_name, File cache_dir, String hash, Closure do_build ->
   def cache = get_cache_strategy()
-
   def param = createCacheParam(cache_dir, archive_name, project.config, hash)
 
   if(should_renew_cache) {

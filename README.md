@@ -52,7 +52,7 @@ cd .\gradle
 
 gradlew build_all [-Pconfig=Debug] [-Pmsvc_version="..."]
 : The `config` property is optional. For release build, use `-Pconfig=Release` instead.
-: msvc_version property can be either `"Visual Studio 16 2019"` or `"Visual Studio 15 2017"`.
+: The `msvc_version` property can be either `"Visual Studio 16 2019"` or `"Visual Studio 15 2017"`.
 : The former is the default value.
 : If you have only Visual Studio 2017, specify the latter value to the property.
 : For non-English locales, add `-Dfile.encoding=UTF-8` option to prevent Mojibake.

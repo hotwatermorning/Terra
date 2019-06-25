@@ -57,8 +57,6 @@ void Processor::Process(ProcessInfo &pi)
     }
     
     volume_.update_transition(pi.time_info_->play_.duration_.sample_);
-    
-    doProcessPostFader(pi);
 }
 
 void Processor::OnStopProcessing()

@@ -70,9 +70,6 @@ private:
     void doProcess(ProcessInfo &pi) = 0;
     
     virtual
-    void doProcessPostFader(ProcessInfo &pi) {};
-    
-    virtual
     void doOnStopProcessing()
     {}
 };

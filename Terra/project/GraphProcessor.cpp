@@ -140,12 +140,14 @@ public:
         }
         
         pi.output_audio_buffer_ = BufferRef<float>{ output_, 0, channels_to_copy, 0, samples_to_copy };
+
+        pi_ = pi;
         ref_ = BufferRef<float const>{ output_, 0, channels_to_copy, 0, samples_to_copy };
     }
     
-    void doProcessPostFader(ProcessInfo &pi) override
+    void ProcessPostFader()
     {
-        callback_(this, pi);
+        callback_(this, pi_);
     }
     
     std::unique_ptr<schema::Processor> ToSchemaImpl() const override
@@ -177,6 +179,7 @@ private:
     std::function<void(AudioOutput *, ProcessInfo const &)> callback_;
     BufferRef<float const> ref_;
     Buffer<float> output_;
+    ProcessInfo pi_;
 };
 
 class MidiInputImpl : public GraphProcessor::MidiInput
@@ -887,6 +890,13 @@ void GraphProcessor::Process(TransportInfo const &ti)
     //! 下流に接続していないNodeはProcessが呼ばれないので、ここで呼び出すようにする。
     for(auto const &conn: *pimpl_->frame_procedure_) {
         ToNodeImpl(conn->downstream_)->ProcessOnce(ti);
+    }
+    
+    for(auto const &conn: *pimpl_->frame_procedure_) {
+        auto node = ToNodeImpl(conn->downstream_);
+        if(auto p = dynamic_cast<AudioOutputImpl *>(node->GetProcessor().get())) {
+            p->ProcessPostFader();
+        }
     }
 }
 

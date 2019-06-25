@@ -848,7 +848,11 @@ public:
     void OnRightUp(wxMouseEvent const &ev)
     {
         auto menu_plugins = new wxMenu();
-        const int kPluginIDStart = 1000;
+        const int kPluginIDStart = wxID_HIGHEST + 200;
+        
+        auto menu_inst = new wxMenu();
+        auto menu_fx = new wxMenu();
+        auto menu_other = new wxMenu();
         
         auto ps = PluginScanner::GetInstance();
         auto descs = ps->GetPluginDescriptions();
@@ -868,14 +872,27 @@ public:
         
         for(int i = 0; i < descs.size(); ++i) {
             auto const &desc = descs[i];
-            std::string plugin_name;
-            if(IsEffectPlugin(desc) && IsInstrumentPlugin(desc)) { plugin_name = "[Fx|Inst] "; }
-            else if(IsEffectPlugin(desc)) { plugin_name = "[Fx] "; }
-            else if(IsInstrumentPlugin(desc)) { plugin_name = "[Inst] "; }
-            else { plugin_name = "[Unknown] "; }
+            
+            if(IsInstrumentPlugin(desc)) {
+                menu_inst->Append(kPluginIDStart + i, desc.name());
+            }
+            
+            if(IsEffectPlugin(desc)) {
+                menu_fx->Append(kPluginIDStart + i, desc.name());
+            }
+            
+            if(!IsInstrumentPlugin(desc) && !IsEffectPlugin(desc)) {
+                menu_other->Append(kPluginIDStart + i, desc.name());
+            }
+        }
         
-            plugin_name += desc.name();
-            menu_plugins->Append(kPluginIDStart + i, plugin_name);
+        menu_plugins->AppendSubMenu(menu_inst, "Instruments");
+        menu_plugins->AppendSubMenu(menu_fx, "Effects");
+        if(menu_other->GetMenuItemCount() > 0) {
+            menu_plugins->AppendSubMenu(menu_other, "Others");
+        } else {
+            delete menu_other;
+            menu_other = nullptr;
         }
         
         wxMenu menu;

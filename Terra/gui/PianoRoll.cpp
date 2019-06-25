@@ -30,18 +30,17 @@ IPianoRollViewStatus::NoteHeight IPianoRollViewStatus::GetNoteYRange(Int32 note_
     };
 }
 
-Int32 IPianoRollViewStatus::GetNoteNumber(float y_position)
+Int32 IPianoRollViewStatus::GetNoteNumber(float y_position) const
 {
-    if(y_position < 0) { return kNumKeys - 1; }
     float const yzoom = GetZoomFactor(wxVERTICAL);
     Int32 const yscroll = GetScrollPosition(wxVERTICAL);
     
     assert(yzoom > 0);
     
-    Int32 virtual_y_pos = (Int32)std::round((y_position - yscroll) / yzoom);
-    Int32 tmp_note_number = kNumKeys - (Int32)(virtual_y_pos / kDefaultKeyHeight) - 1;
+    double const virtual_y_pos = (y_position + yscroll) / yzoom;
     
-    return std::min<Int32>(kNumKeys - 1, tmp_note_number);
+    Int32 tmp_note_number = kNumKeys - (Int32)(virtual_y_pos / kDefaultKeyHeight) - 1;
+    return Clamp<Int32>(tmp_note_number, 0, kNumKeys - 1);
 }
 
 float IPianoRollViewStatus::GetTotalHeight() const
@@ -94,7 +93,7 @@ class PianoRollEditor
 ,   public MyApp::ChangeProjectListener
 {
 public:
-    Sequence sequence_;
+    SequencePtr seq_;
     
     PianoRollEditor(wxWindow *parent, IPianoRollViewStatus *view_status)
     :   IPianoRollWindowComponent(parent, view_status)
@@ -102,9 +101,238 @@ public:
         slr_change_project_.reset(MyApp::GetInstance()->GetChangeProjectListeners(), this);
         OnChangeCurrentProject(nullptr, Project::GetCurrentProject());
         
+        Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent &ev) { OnLeftDown(ev); });
+        Bind(wxEVT_LEFT_UP, [this](wxMouseEvent &ev) { OnLeftUp(ev); });
+        Bind(wxEVT_LEFT_DCLICK, [this](wxMouseEvent &ev) { OnLeftDoubleClick(ev); });
+        Bind(wxEVT_RIGHT_DOWN, [this](wxMouseEvent &ev) { OnRightDown(ev); });
+        Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent &ev) { OnRightUp(ev); });
+        Bind(wxEVT_MOTION, [this](wxMouseEvent &ev) { OnMotion(ev); });
         Bind(wxEVT_MOUSEWHEEL, [this](wxMouseEvent &ev) { OnMouseWheel(ev); });
         timer_.Bind(wxEVT_TIMER, [this](wxTimerEvent &ev) { OnTimer(); });
         timer_.Start(30);
+        
+        seq_ = Project::GetCurrentProject()->GetSequence(0);
+    }
+    
+    enum class EditMode {
+        kNeutral,
+        kStretchHead,
+        kStretchTail,
+        kMove,
+        kCover
+    };
+    
+    EditMode em_;
+    Sequence::NotePtr grabbing_note_;
+    wxPoint drag_from_;
+    wxPoint last_drag_to_;
+    
+    // don't move or stretch notes until the mouse moves and reaches this limit.
+    static constexpr UInt32 kHoldLimit = 10;
+    bool once_reached_hold_limit_;
+    
+    void ClearSelections()
+    {
+        for(auto &note: seq_->notes_) {
+            note->SetNeutral();
+        }
+    }
+    
+    /*
+     LeftDown & ノートなし
+        hasAlt => 選択解除 & ノート追加 & 長さ変更モード
+            hasShift => Snap & Quantizeなし
+        hasShift => 範囲選択モード
+        hasCtrl => 何もしない
+        default => 選択解除
+     LeftDown & ノートあり
+        hasCtrl => ノートの選択状態を反転
+        hasShift => 範囲選択モード（そのノートを選択）
+        default
+            ノートが未選択状態
+                そのノートのみを選択
+            左端 => 後端長さ変更モード
+            右端 => 先端長さ変更モード
+            中央 => 位置変更モード (選択解除はLeftUpでやる）
+            ノートをGrabbingNoteに追加する
+     LeftDouble & ノートなし
+        N => 選択解除 & ノート追加 & 選択
+           Shift => Snap & Quantizeなし
+     LeftDouble & ノートあり
+        N => ノート削除
+     LeftUp（範囲選択モード）
+        範囲選択状態のノートを選択状態に変更
+     LeftUp（長さ変更モード）
+        モード終了
+     LeftUp（位置移動モード）
+　　　    モード終了
+     Motion（範囲選択モード）
+        今回新たに範囲に含まれるようになったノートで、未選択状態のものを範囲選択状態に変更
+        前回まで範囲に含まれていたノートで、範囲選択状態のものを未選択状態に変更
+     Motion（長さ変更モード）
+        選択中のノートの長さを変更。
+            hasShift => Snap & Quantizeなし
+            default => GrabbingNoteの基準位置（先頭 or 末尾）でSnap & Quantize
+        ノートの長さは0以下にはならないようにする。（各ノートごとのオリジナル長さ情報を持っておく必要あり）
+     Motion（位置移動モード）
+        選択中のノートを移動。
+            hasShift => Snap & Quantizeなし
+            default => GrabbingNoteの基準位置（先頭 or 末尾）でSnap & Quantize
+        ノートの長さは0以下にはならないようにする。ノートのピッチは0..127を超えないようにする。（各ノートごとのオリジナルピッチと長さ情報を持っておく必要あり）
+     */
+    void OnLeftDown(wxMouseEvent &ev)
+    {
+        if(em_ != EditMode::kNeutral) { return; }
+        
+        auto const index = GetNoteIndexFromPoint(ev.GetPosition());
+        if(index == -1) {
+            if(ev.AltDown()) {
+                // 新規ノート作成
+                
+                ClearSelections();
+                
+                auto nn = GetViewStatus()->GetNoteNumber(ev.GetY());
+                auto tick = GetViewStatus()->GetTick(ev.GetX());
+                auto note = std::make_shared<Sequence::Note>(tick, 480, nn);
+                
+                seq_->InsertSorted(note);
+                grabbing_note_ = note;
+                em_ = EditMode::kStretchTail;
+                Refresh();
+            } else if(ev.ShiftDown()) {
+                em_ = EditMode::kCover;
+            } else if(ev.ControlDown()) {
+                // do nothing.
+            } else {
+                ClearSelections();
+                grabbing_note_ = nullptr;
+                Refresh();
+            }
+        } else {
+            auto note = seq_->notes_[index];
+            if(ev.ControlDown()) {
+                if(note->IsSelected())  { note->SetNeutral(); }
+                else                    { note->SetSelected(); }
+                Refresh();
+            } else if(ev.ShiftDown()) {
+                em_ = EditMode::kCover;
+            } else {
+                if(note->IsNeutral()) {
+                    ClearSelections();
+                }
+                
+                // todo: 長さ変更モードへの移行
+                em_ = EditMode::kMove;
+                grabbing_note_ = note;
+                note->SetSelected();
+                
+                Refresh();
+            }
+        }
+        
+        drag_from_ = ev.GetPosition();
+        last_drag_to_ = ev.GetPosition();
+        once_reached_hold_limit_ = false;
+        OnMotion(ev);
+    }
+    
+    void OnUpdateSequence()
+    {
+        Project::GetCurrentProject()->CacheSequence(0);
+        Refresh();
+    }
+    
+    void OnLeftDoubleClick(wxMouseEvent &ev)
+    {
+        if(em_ != EditMode::kNeutral) { return; }
+        
+        auto const index = GetNoteIndexFromPoint(ev.GetPosition());
+        
+        if(index == -1) {
+            ClearSelections();
+            
+            auto nn = GetViewStatus()->GetNoteNumber(ev.GetY());
+            auto tick = GetViewStatus()->GetTick(ev.GetX());
+            auto note = std::make_shared<Sequence::Note>(tick, 480, nn);
+            seq_->InsertSorted(note);
+            OnUpdateSequence();
+        } else {
+            ClearSelections();
+            seq_->Erase(index);
+            OnUpdateSequence();
+        }
+    }
+    
+    void OnLeftUp(wxMouseEvent &ev)
+    {
+        if(em_ == EditMode::kCover) {
+            for(auto &note: seq_->notes_) {
+                if(note->IsCovered()) { note->SetSelected(); }
+            }
+        } else if(em_ == EditMode::kMove) {
+            for(auto &note: seq_->notes_) {
+                if(note->IsSelected()) {
+                    note->prev_pitch_ = note->pitch_;
+                    note->prev_pos_ = note->pos_;
+                    note->prev_length_ = note->length_;
+                }
+            }
+            
+            if(once_reached_hold_limit_ == false) {
+                ClearSelections();
+                grabbing_note_->SetSelected();
+                grabbing_note_ = nullptr;
+                Refresh();
+            }
+        }
+        
+        em_ = EditMode::kNeutral;
+    }
+    
+    void OnRightDown(wxMouseEvent &ev)
+    {
+        
+    }
+    
+    void OnRightUp(wxMouseEvent &ev)
+    {
+        
+    }
+    
+    void OnMotion(wxMouseEvent &ev)
+    {
+        if(em_ == EditMode::kNeutral) { return; }
+        else if(em_ == EditMode::kMove) {
+            auto new_drag_to = ev.GetPosition();
+            
+            if(once_reached_hold_limit_ == false) {
+                if(abs(new_drag_to.x - drag_from_.x) >= kHoldLimit ||
+                   abs(new_drag_to.y - drag_from_.y) >= kHoldLimit )
+                {
+                    once_reached_hold_limit_ = true;
+                }
+            }
+            
+            if(once_reached_hold_limit_ == false) { return; }
+            
+            auto const v = GetViewStatus();
+            
+            Int32 const pitch_diff = v->GetNoteNumber(ev.GetY()) - v->GetNoteNumber(drag_from_.y);
+            Int32 const tick_diff = v->GetTick(ev.GetX()) - v->GetTick(drag_from_.x);
+            
+            for(auto &note: seq_->notes_) {
+                if(note->IsSelected()) {
+                    note->pitch_ = (UInt8)Clamp<Int32>(note->prev_pitch_ + pitch_diff, 0, 127);
+                    note->pos_ = std::max<Tick>(0, note->prev_pos_ + tick_diff);
+                }
+            }
+            
+            last_drag_to_ = new_drag_to;
+            
+            seq_->SortStable();
+            Refresh();
+            OnUpdateSequence(); // todo: シーケンスのキャッシュをタイマーで駆動する。
+        }
     }
     
     void OnMouseWheel(wxMouseEvent &ev)
@@ -146,6 +374,7 @@ public:
     BrushPen col_black_key = { HSVToColour(0.0, 0.0, 0.64) };
     BrushPen col_white_key_gap = { HSVToColour(0.0, 0.0, 0.64) };
     BrushPen col_note = { HSVToColour(0.25, 0.22, 1.0), HSVToColour(0.0, 0.0, 0.6) };
+    BrushPen col_note_selected_or_covered = { HSVToColour(0.25, 0.22, 0.92), HSVToColour(0.0, 0.0, 0.6) };
     
     BrushPen col_beat = { HSVToColour(0.0, 0.0, 0.6, 0.15)};
     BrushPen col_measure = { HSVToColour(0.0, 0.0, 0.4, 0.4) };
@@ -211,15 +440,20 @@ public:
             dc.DrawLine(x, 0, x, size.GetHeight());
         }
         
-        for(auto &note: sequence_.notes_) {
-            auto rect = GetRectFromNote(note);
+        for(auto &note: seq_->notes_) {
+            auto rect = GetRectFromNote(*note);
             Int32 top = (Int32)std::round(rect.m_y);
             Int32 bottom = (Int32)std::round(rect.GetBottom());
             Int32 left = (Int32)std::round(rect.m_x);
             Int32 right = (Int32)std::round(rect.GetRight());
             
             wxRect rc(wxPoint{left, top}, wxPoint{right, bottom});
-            col_note.ApplyTo(dc);
+            
+            if(note->IsNeutral()) {
+                col_note.ApplyTo(dc);
+            } else {
+                col_note_selected_or_covered.ApplyTo(dc);
+            }
             auto min_edge = std::min<double>(rc.GetWidth(), rc.GetHeight());
             auto round = Clamp<double>(min_edge / 5, 1, 6);
             dc.DrawRoundedRectangle(rc, round);
@@ -243,9 +477,9 @@ public:
     
     Int32 GetNoteIndexFromPoint(wxPoint pt)
     {
-        for(Int32 i = 0; i < sequence_.notes_.size(); ++i) {
-            auto &note = sequence_.notes_[i];
-            auto rc = GetRectFromNote(note);
+        for(Int32 i = 0; i < seq_->notes_.size(); ++i) {
+            auto &note = seq_->notes_[i];
+            auto rc = GetRectFromNote(*note);
             if(rc.Contains(pt)) {
                 return i;
             }
@@ -266,8 +500,8 @@ public:
     
     wxRect2DDouble GetRectFromNote(Int32 note_index) const
     {
-        assert(note_index < sequence_.notes_.size());
-        return GetRectFromNote(sequence_.notes_[note_index]);
+        assert(note_index < seq_->notes_.size());
+        return GetRectFromNote(*seq_->notes_[note_index]);
     }
     
     void OnTimer()
@@ -291,9 +525,9 @@ private:
     void OnChangeCurrentProject(Project *old_pj, Project *new_pj) override
     {
         if(new_pj && new_pj->GetNumSequences() >= 1) {
-            sequence_ = new_pj->GetSequence(0);
+            seq_ = new_pj->GetSequence(0);
         } else {
-            sequence_ = Sequence();
+            seq_ = std::make_shared<Sequence>();
         }
     }
 };
@@ -445,6 +679,9 @@ public:
         
         SetAutoLayout(true);
         Layout();
+        
+        sb_horz_->SetThumbPosition(0);
+        sb_vert_->SetThumbPosition(sb_vert_->GetRange() / 2 - 100);
     }
     
     void OnPaint()

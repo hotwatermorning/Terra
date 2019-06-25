@@ -165,17 +165,24 @@ namespace {
         ~MidiSequenceDevice()
         {}
         
-        MidiDeviceInfo const & GetDeviceInfo() const override {
-            info_.name_id_ = seq_.name_;
+        MidiDeviceInfo const & GetDeviceInfo() const override
+        {
+            assert(seq_);
+            
+            info_.name_id_ = seq_->name_;
             info_.io_type_ = DeviceIOType::kInput;
             return info_;
         }
         
-        Sequence & GetSequence() { return seq_; }
-        Sequence const & GetSequence() const { return seq_; }
+        SequencePtr GetSequence() { return seq_; }
+        SequencePtr GetSequence() const { return seq_; }
+        void SetSequence(SequencePtr seq) { seq_ = seq; }
+        
         void CacheSequence(hwm::IMusicalTimeService *conv)
         {
-            cached_sequence_.Set(std::make_shared<CachedSequence>(seq_.MakeCache(conv)));
+            if(seq_) {
+                cached_sequence_.Set(std::make_shared<CachedSequence>(seq_->MakeCache(conv)));
+            }
         }
         
         //! prepare sequence midi messages before calling of GraphProcessor::Process()
@@ -266,7 +273,7 @@ namespace {
         }
         
     private:
-        Sequence seq_;
+        SequencePtr seq_;
         MidiDeviceInfo mutable info_;
         
         using CachedSequence = std::vector<ProcessInfo::MidiMessage>;
@@ -573,14 +580,14 @@ UInt32 Project::GetNumSequences() const
 
 void Project::AddSequence(String name, UInt32 insert_at)
 {
-    AddSequence(Sequence(name), insert_at);
+    AddSequence(std::make_shared<Sequence>(name), insert_at);
 }
 
-void Project::AddSequence(Sequence &&seq, UInt32 insert_at)
+void Project::AddSequence(SequencePtr seq, UInt32 insert_at)
 {
     if(insert_at == -1) { insert_at = GetNumSequences(); }
     auto device = std::make_unique<MidiSequenceDevice>();
-    device->GetSequence() = std::move(seq);
+    device->SetSequence(seq);
     
     auto p = device.get();
     pimpl_->sequence_devices_.insert(pimpl_->sequence_devices_.begin() + insert_at,
@@ -598,13 +605,13 @@ void Project::RemoveSequence(UInt32 index)
     pimpl_->sequence_devices_.erase(pimpl_->sequence_devices_.begin() + index);
 }
 
-Sequence & Project::GetSequence(UInt32 index)
+SequencePtr Project::GetSequence(UInt32 index)
 {
     assert(index < GetNumSequences());
     return pimpl_->sequence_devices_[index]->GetSequence();
 }
 
-Sequence const & Project::GetSequence(UInt32 index) const
+SequencePtr Project::GetSequence(UInt32 index) const
 {
     assert(index < GetNumSequences());
     return pimpl_->sequence_devices_[index]->GetSequence();
@@ -840,7 +847,7 @@ std::unique_ptr<schema::Project> Project::ToSchema() const
     p->set_allocated_graph(graph.release());
     
     for(int i = 0; i < GetNumSequences(); ++i) {
-        auto schema_seq = GetSequence(i).ToSchema();
+        auto schema_seq = GetSequence(i)->ToSchema();
         auto proc = pimpl_->midi_processors_.GetProcessorOf(pimpl_->sequence_devices_[i].get());
         assert(proc);
         auto node = pimpl_->graph_->GetNodeOf(proc);
@@ -936,7 +943,7 @@ std::unique_ptr<Project> Project::FromSchema(schema::Project const &schema)
             assert(sequence);
             
             auto device = std::make_unique<MidiSequenceDevice>();
-            device->GetSequence() = std::move(*sequence);
+            device->SetSequence(std::move(sequence));
             node_to_sequence_device[node] = std::move(device);
         }
         

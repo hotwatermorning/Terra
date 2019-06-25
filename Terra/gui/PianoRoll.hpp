@@ -52,7 +52,10 @@ public:
     //! get bottom y position for the note considering y-zoom factor and y-scroll position.
     NoteHeight GetNoteYRange(Int32 note_number) const;
     
-    Int32 GetNoteNumber(float y_position);
+    //! 指定したY座標位置でのノート番号を取得
+    /*! この座標は、画面に見えている範囲での相対位置。
+     */
+    Int32 GetNoteNumber(float y_position) const;
     
     // 現在のズーム率での、全体の高さ
     float GetTotalHeight() const;

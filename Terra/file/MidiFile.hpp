@@ -6,6 +6,6 @@
 
 NS_HWM_BEGIN
 
-std::vector<Sequence> CreateSequenceFromSMF(String path);
+std::vector<SequencePtr> CreateSequenceFromSMF(String path);
 
 NS_HWM_END

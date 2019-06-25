@@ -5,7 +5,7 @@
 
 NS_HWM_BEGIN
 
-std::vector<Sequence> CreateSequenceFromSMF(String path)
+std::vector<SequencePtr> CreateSequenceFromSMF(String path)
 {
     smf::MidiFile smf;
     
@@ -20,27 +20,27 @@ std::vector<Sequence> CreateSequenceFromSMF(String path)
     smf.doTimeAnalysis();
     smf.linkNotePairs();
     
-    std::vector<Sequence> ss;
+    std::vector<SequencePtr> ss;
     
     auto const num_tracks = smf.getTrackCount();
-    ss.resize(num_tracks);
     
     for(int tn = 0; tn < num_tracks; ++tn) {
+        ss.push_back(std::make_unique<Sequence>());
         auto &seq = ss[tn];
         auto const num_events = smf.getNumEvents(tn);
         for(int en = 0; en < num_events; ++en) {
             auto const &event = smf.getEvent(tn, en);
             if(event.isNoteOn() && event.isLinked()) {
                 auto *linked = event.getLinkedEvent();
-                Sequence::Note note;
-                note.pos_ = event.tick;
-                note.length_ = linked->tick;
-                note.pitch_ = event[1];
-                note.velocity_ = event[2];
-                seq.notes_.push_back(note);
+                auto note = std::make_shared<Sequence::Note>();
+                note->pos_ = event.tick;
+                note->length_ = linked->tick;
+                note->pitch_ = event[1];
+                note->velocity_ = event[2];
+                seq->notes_.push_back(std::move(note));
             } else if(event.isTrackName()) {
                 auto clone = event;
-                seq.name_ = to_wstr(clone.getMetaContent());
+                seq->name_ = to_wstr(clone.getMetaContent());
             }
         }
     }

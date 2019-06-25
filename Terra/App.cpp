@@ -363,8 +363,8 @@ std::unique_ptr<Project> MyApp::CreateInitialProject()
 {
     auto pj = std::make_unique<Project>();
     pj->AddSequence(L"Sequence");
-    auto &seq = pj->GetSequence(0);
-    seq = Sequence(L"Sequencer", {
+    auto seq = pj->GetSequence(0);
+    *seq = Sequence(L"Sequencer", {
         { 0,   1920, 48 },
         { 0,   1920, 55 },
         { 0,    240, 62 },
@@ -652,7 +652,7 @@ void MyApp::ImportFile(String path)
         return;
     }
     
-    std::vector<Sequence> sequences = CreateSequenceFromSMF(path);
+    std::vector<SequencePtr> sequences = CreateSequenceFromSMF(path);
     
     auto pj = Project::GetCurrentProject();
     for(auto &&seq: sequences) {

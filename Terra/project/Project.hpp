@@ -60,13 +60,13 @@ public:
     void RemoveMidiInput(MidiDevice const *device);
     void RemoveMidiOutput(MidiDevice const *device);
     void AddDefaultMidiInputs();
-    
+
     UInt32 GetNumSequences() const;
     void AddSequence(String name, UInt32 insert_at = -1);
-    void AddSequence(Sequence &&seq, UInt32 insert_at = -1);
+    void AddSequence(SequencePtr seq, UInt32 insert_at = -1);
     void RemoveSequence(UInt32 index);
-    Sequence & GetSequence(UInt32 index);
-    Sequence const & GetSequence(UInt32 index) const;
+    SequencePtr GetSequence(UInt32 index);
+    SequencePtr GetSequence(UInt32 index) const;
     void CacheSequence(UInt32 index);
     
     Transporter & GetTransporter();

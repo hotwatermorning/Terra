@@ -5,6 +5,7 @@
 #include <plugin_desc.pb.h>
 
 #include "../misc/LockFactory.hpp"
+#include "../misc/TransitionalVolume.hpp"
 
 NS_HWM_BEGIN
 
@@ -22,16 +23,9 @@ public:
     
     virtual String GetName() const = 0;
     
-    virtual
-    void OnStartProcessing(double sample_rate, SampleCount block_size)
-    {}
-    
-    virtual
-    void Process(ProcessInfo &pi) = 0;
-    
-    virtual
-    void OnStopProcessing()
-    {}
+    void OnStartProcessing(double sample_rate, SampleCount block_size);
+    void Process(ProcessInfo &pi);
+    void OnStopProcessing();
     
     virtual
     SampleCount GetLatencySample() const { return 0; }
@@ -55,9 +49,32 @@ public:
     static
     std::unique_ptr<Processor> FromSchema(schema::Processor const &schema);
     
+    double GetVolumeLevelMin() const;
+    double GetVolumeLevelMax() const;
+
+    //! Set volume in the range [GetVolumeLevelMin() .. GetVolumeLevelMax()].
+    void SetVolumeLevel(double dB);
+    //! Get volume in the range [GetVolumeLevelMin() .. GetVolumeLevelMax()].
+    double GetVolumeLevel();
+    
 private:
     virtual
     std::unique_ptr<schema::Processor> ToSchemaImpl() const = 0;
+    TransitionalVolume volume_;
+    
+    virtual
+    void doOnStartProcessing(double sample_rate, SampleCount block_size)
+    {}
+    
+    virtual
+    void doProcess(ProcessInfo &pi) = 0;
+    
+    virtual
+    void doProcessPostFader(ProcessInfo &pi) {};
+    
+    virtual
+    void doOnStopProcessing()
+    {}
 };
 
 NS_HWM_END
@@ -121,9 +138,10 @@ public:
     //! Do nothing and return a successful LoadResult if `IsLoaded() == true`.
     LoadResult doLoad() override;
 
-    void OnStartProcessing(double sample_rate, SampleCount block_size) override;
-    void Process(ProcessInfo &pi) override;
-    void OnStopProcessing() override;
+    void doOnStartProcessing(double sample_rate, SampleCount block_size) override;
+    void doProcess(ProcessInfo &pi) override;
+    void doOnStopProcessing() override;
+    
     SampleCount GetLatencySample() const override;
     UInt32 GetAudioChannelCount(BusDirection dir) const override;
     UInt32 GetMidiChannelCount(BusDirection dir) const override;

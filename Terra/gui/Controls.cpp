@@ -105,6 +105,12 @@ void ImageButton::doRender(wxDC &dc)
     }
     
     dc.DrawBitmap(img, 0, 0);
+    
+    if(IsEnabled() == false) {
+        BrushPen bp { HSVToColour(0.0, 0.0, 0.5, 0.8) };
+        bp.ApplyTo(dc);
+        dc.DrawRectangle(GetClientRect());
+    }
 }
 
 //------------------------------------------------------------------------------------------------------

@@ -44,7 +44,7 @@ wxColour const kGraphBackground(HSVToColour(0.0, 0.0, 0.1));
 
 wxSize const kDefaultNodeSize = { 200, 40 };
 
-wxSize const kEditorOpenButtonSize = { 14, 14 };
+wxSize const kNodeButtonSize = { 14, 14 };
 Int32 kNodeAlignmentSize = 10;
 int const kPinRadius = 6;
 wxSize const kLabelSize = { kDefaultNodeSize.GetWidth(), kDefaultNodeSize.GetHeight() - (kPinRadius * 4) };
@@ -97,22 +97,26 @@ public:
     };
     
 public:
+    const double kVolumeSliderScale = 1000.0;
+    wxSize node_size_ = kDefaultNodeSize;
+    
     NodeComponent(wxWindow *parent, GraphProcessor::Node *node, Callback *callback)
     :   base_type()
     ,   node_(node)
     ,   callback_(callback)
+    ,   node_size_(kDefaultNodeSize)
     {
         SetLabel(node->GetProcessor()->GetName());
         SetBackgroundStyle(wxBG_STYLE_PAINT);
-        Create(parent, wxID_ANY, wxDefaultPosition, kDefaultNodeSize, wxTRANSPARENT_WINDOW);
+        Create(parent, wxID_ANY, wxDefaultPosition, node_size_, wxTRANSPARENT_WINDOW);
 
         UseDefaultPaintMethod(false);
-        ImageAsset button_images = ImageAsset(GetResourcePath(L"graph/open_editor_buttons.png"), 1, 4);
+        ImageAsset button_images = ImageAsset(GetResourcePath(L"graph/node_buttons.png"), 2, 4);
         btn_open_editor_ = new ImageButton(this, true, button_images.GetImage(0, 0), button_images.GetImage(0, 1), button_images.GetImage(0, 2), button_images.GetImage(0, 3));
         btn_open_editor_->UseDefaultPaintMethod(false);
-        btn_open_editor_->SetClientSize(kEditorOpenButtonSize);
-        btn_open_editor_->SetMinSize(kEditorOpenButtonSize);
-        btn_open_editor_->SetMaxSize(kEditorOpenButtonSize);
+        btn_open_editor_->SetClientSize(kNodeButtonSize);
+        btn_open_editor_->SetMinClientSize(kNodeButtonSize);
+        
         btn_open_editor_->Bind(wxEVT_TOGGLEBUTTON, [this](auto &ev) {
             if(IsEditorOpened()) {
                 CloseEditor();
@@ -120,13 +124,50 @@ public:
                 OpenEditor();
             }
         });
+        
+        btn_open_mixer_ = new ImageButton(this, true, button_images.GetImage(1, 0), button_images.GetImage(1, 1), button_images.GetImage(1, 2), button_images.GetImage(1, 3));
+        btn_open_mixer_->UseDefaultPaintMethod(false);
+        btn_open_mixer_->SetClientSize(kNodeButtonSize);
+        btn_open_mixer_->SetMinClientSize(kNodeButtonSize);
+        
+        btn_open_mixer_->Bind(wxEVT_TOGGLEBUTTON, [this](auto &ev) {
+            auto size = GetClientSize();
+            if(btn_open_mixer_->IsPushed()) {
+                size.IncBy(0, 20);
+                node_size_.IncBy(0, 20);
+                SetClientSize(size);
+                detail_box_->ShowItems(true);
+            } else {
+                size.DecBy(0, 20);
+                node_size_.DecBy(0, 20);
+                SetClientSize(size);
+                detail_box_->ShowItems(false);
+            }
+            Layout();
+        });
+        
+        int min_value = node_->GetProcessor()->GetVolumeLevelMin();
+        int max_value = node_->GetProcessor()->GetVolumeLevelMax();
+        sl_volume_ = new wxSlider(this, wxID_ANY,
+                                  max_value * kVolumeSliderScale,
+                                  min_value * kVolumeSliderScale,
+                                  max_value * kVolumeSliderScale,
+                                  wxDefaultPosition,
+                                  wxSize(100, 20));
+        sl_volume_->Bind(wxEVT_SLIDER, [this](auto &ev) { OnVolumeSliderChanged(); });
 
         bool enable_editor_button = false;
-        //! There's always generic plugin views for each plugins even if the plugin provides no editor ui.
+        //! There's always generic plugin views for every plugins even if the plugin provides no editor ui.
         if(auto p = dynamic_cast<Vst3AudioProcessor *>(node_->GetProcessor().get())) {
             enable_editor_button = true;
         }
-        btn_open_editor_->Show(enable_editor_button);
+        btn_open_editor_->Enable(enable_editor_button);
+        
+        if(node_->GetProcessor()->GetAudioChannelCount(BusDirection::kOutputSide) == 0 &&
+           node_->GetProcessor()->GetAudioChannelCount(BusDirection::kInputSide) == 0)
+        {
+            btn_open_mixer_->Enable(false);
+        }
         
         lbl_plugin_name_ = new Label(this);
         lbl_plugin_name_->UseDefaultPaintMethod(false);
@@ -134,16 +175,32 @@ public:
         lbl_plugin_name_->SetAlignment(wxALIGN_CENTRE);
         lbl_plugin_name_->SetMinSize(kLabelSize);
         
-        auto vbox = new wxBoxSizer(wxVERTICAL);
         auto hbox = new wxBoxSizer(wxHORIZONTAL);
-        hbox->AddStretchSpacer();
-        hbox->Add(1, kPinRadius * 2);
-        hbox->Add(btn_open_editor_, wxSizerFlags(0));
-        vbox->Add(hbox, wxSizerFlags(0).Expand());
-        vbox->Add(lbl_plugin_name_, wxSizerFlags(0).Expand());
-        vbox->AddStretchSpacer();
         
-        SetSizer(vbox);
+        {
+            auto property_box = new wxBoxSizer(wxVERTICAL);
+            property_box->AddSpacer(kPinRadius * 2);
+            property_box->Add(lbl_plugin_name_, wxSizerFlags(1).Expand());
+            
+            {
+                detail_box_ = new wxBoxSizer(wxHORIZONTAL);
+                detail_box_->Add(sl_volume_, wxSizerFlags(1).Expand());
+                detail_box_->ShowItems(false);
+                property_box->Add(detail_box_, wxSizerFlags(1).Expand());
+            }
+            
+            property_box->AddSpacer(kPinRadius * 2);
+            hbox->Add(property_box, wxSizerFlags(1).Expand());
+        }
+        
+        {
+            auto command_box = new wxBoxSizer(wxVERTICAL);
+            command_box->Add(btn_open_editor_, wxSizerFlags(0));
+            command_box->Add(btn_open_mixer_, wxSizerFlags(0));
+            hbox->Add(command_box, wxSizerFlags(0).Expand());
+        }
+        
+        SetSizer(hbox);
 
         SetAutoLayout(true);
         Layout();
@@ -196,6 +253,8 @@ public:
         });
         Bind(wxEVT_KEY_DOWN, [](auto &ev) { ev.ResumePropagation(100); ev.Skip(); });
         Bind(wxEVT_KEY_UP, [](auto &ev) { ev.ResumePropagation(100); ev.Skip(); });
+        
+        Bind(wxEVT_RIGHT_UP, [this](auto &ev) { OnRightUp(ev); });
     }
     
     bool Layout() override
@@ -298,7 +357,7 @@ public:
             kNodeColor.ApplyTo(dc);
         }
         
-        auto rc_bg = wxRect(wxPoint{}, kDefaultNodeSize);
+        auto rc_bg = wxRect(wxPoint{}, node_size_);
         dc.DrawRoundedRectangle(rc_bg, kNodeRound);
         
         auto const p = node_->GetProcessor().get();
@@ -325,7 +384,6 @@ public:
             } else {
                 brush_pen_set.normal_.ApplyTo(dc);
             }
-            
             
             dc.DrawCircle(center, kPinRadius-1);
         };
@@ -391,6 +449,11 @@ public:
                 callback_->OnMouseMove(this, *pin_drag_begin_, pt);
             }
         }
+    }
+    
+    void OnRightUp(wxMouseEvent &ev)
+    {
+        ShowPopup();
     }
     
     void OnMouseLeave(wxMouseEvent &ev)
@@ -481,13 +544,21 @@ public:
         Move(pt);
         GetParent()->Refresh();
     }
-    
-    int const kID_RequestToUnload = 100;
-    
-    void OnRightUp(wxMouseEvent &ev)
+        
+     enum {
+         kID_Disconnect_Inputs = wxID_HIGHEST + 1,
+         kID_Disconnect_Outputs,
+         kID_RequestToUnload,
+     };
+     
+    void ShowPopup()
     {
         wxMenu menu;
-        menu.Append(kID_RequestToUnload, "Unload");
+        //menu.Append(kID_Disconnect_Inputs, L"&Disconnect All Inputs", L"&Disconnect All Inputs");
+        //menu.Append(kID_Disconnect_Outputs, L"&Disconnect All Outputs", L"&Disconnect All Outputs");
+        //menu.AppendSeparator();
+        menu.Append(kID_RequestToUnload, "&Unload\tCTRL-u", "Unload this plugin");
+        
         menu.Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) {
             if(ev.GetId() == kID_RequestToUnload) { callback_->OnRequestToUnload(this); }
         });
@@ -495,10 +566,18 @@ public:
         PopupMenu(&menu);
     }
     
+    void OnVolumeSliderChanged()
+    {
+        node_->GetProcessor()->SetVolumeLevel(sl_volume_->GetValue() / kVolumeSliderScale);
+    }
+    
     GraphProcessor::Node *node_ = nullptr;
     ImageButton     *btn_open_editor_ = nullptr;
+    ImageButton     *btn_open_mixer_ = nullptr;
     Label           *lbl_plugin_name_ = nullptr;
     wxFrame         *editor_frame_ = nullptr;
+    wxBoxSizer      *detail_box_ = nullptr;
+    wxSlider        *sl_volume_ = nullptr;
     std::optional<Pin> selected_pin_;
     std::optional<wxPoint> delta_; // window 移動
     std::optional<wxPoint> pin_drag_begin_; // pin選択
@@ -668,8 +747,9 @@ public:
             
             wxPoint pos{};
             if(schema_node.has_pos()) {
-                pos.x = Clamp<int>(schema_node.pos().x(), 0, width - kDefaultNodeSize.GetWidth());
-                pos.y = Clamp<int>(schema_node.pos().y(), 0, height - kDefaultNodeSize.GetHeight());
+                auto node_size = nc->node_size_;
+                pos.x = Clamp<int>(schema_node.pos().x(), 0, width - node_size.GetWidth());
+                pos.y = Clamp<int>(schema_node.pos().y(), 0, height - node_size.GetHeight());
             }
             
             nc->SetPosition(pos);
@@ -996,7 +1076,7 @@ public:
     void RearrangeNodes() override
     {
         auto node_grid = kDefaultNodeSize;
-        node_grid += wxSize(kNodeAlignmentSize, kNodeAlignmentSize);
+        node_grid += wxSize(kNodeAlignmentSize, kNodeAlignmentSize * 2);
         
         auto const rect = GetClientRect();
         int const num_cols = rect.GetWidth() / node_grid.GetWidth();
@@ -1084,6 +1164,8 @@ private:
             dc.SetBackground(wxBrush(kGraphBackground));
             dc.Clear();
         }
+        
+        DrawGrid(dc);
 
         for(auto &nc: node_components_) {
             nc->RenderWithParentDC(dc);
@@ -1096,6 +1178,20 @@ private:
     {
         return wxPoint(rect.GetX() + rect.GetWidth() / 2,
                        rect.GetY() + rect.GetHeight() / 2);
+    }
+    
+    void DrawGrid(wxDC &dc)
+    {
+        auto const size = GetClientSize();
+        BrushPen bg(HSVToColour(0, 0, 0.9, 0.1));
+        bg.ApplyTo(dc);
+        dc.DrawRectangle(GetClientRect());
+        dc.SetPen(wxPen(HSVToColour(0.0, 0.0, 0.9, 0.2)));
+        for(int x = kNodeAlignmentSize; x < size.x; x += kNodeAlignmentSize) {
+            for(int y = kNodeAlignmentSize; y < size.y; y += kNodeAlignmentSize) {
+                dc.DrawPoint(x, y);
+            }
+        }
     }
     
     void DrawConnection(wxDC &dc,
@@ -1149,18 +1245,6 @@ private:
             dc.DrawLine(dragging_line_->begin_,
                         dragging_line_->end_
                         );
-        }
-        
-        
-        auto const size = GetClientSize();
-        BrushPen bg(HSVToColour(0, 0, 0.9, 0.1));
-        bg.ApplyTo(dc);
-        dc.DrawRectangle(GetClientRect());
-        dc.SetPen(wxPen(HSVToColour(0.0, 0.0, 0.9, 0.2)));
-        for(int x = kNodeAlignmentSize; x < size.x; x += kNodeAlignmentSize) {
-            for(int y = kNodeAlignmentSize; y < size.y; y += kNodeAlignmentSize) {
-                dc.DrawPoint(x, y);
-            }
         }
     }
     

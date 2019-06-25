@@ -31,6 +31,63 @@ std::unique_ptr<Processor> Processor::FromSchema(schema::Processor const &schema
     return nullptr;
 }
 
+void Processor::OnStartProcessing(double sample_rate, SampleCount block_size)
+{
+    volume_.update_transition(INT_MAX);
+    doOnStartProcessing(sample_rate, block_size);
+}
+
+void Processor::Process(ProcessInfo &pi)
+{
+    doProcess(pi);
+    
+    auto gain = volume_.get_current_linear_gain();
+    if(gain == 1) {
+        //do nothing.
+    } else if(gain == 0) {
+        auto &buf = pi.output_audio_buffer_;
+        for(UInt32 ch = buf.channel_from(); ch < buf.channels(); ++ch) {
+            std::fill_n(buf.data()[ch], buf.samples(), 0);
+        }
+    } else {
+        auto &buf = pi.output_audio_buffer_;
+        for(UInt32 ch = buf.channel_from(); ch < buf.channels(); ++ch) {
+            std::for_each_n(buf.data()[ch], pi.time_info_->play_.duration_.sample_, [gain](auto &x) { x *= gain; });
+        }
+    }
+    
+    volume_.update_transition(pi.time_info_->play_.duration_.sample_);
+    
+    doProcessPostFader(pi);
+}
+
+void Processor::OnStopProcessing()
+{
+    doOnStopProcessing();
+}
+
+double Processor::GetVolumeLevelMin() const
+{
+    return volume_.get_min_db();
+}
+
+double Processor::GetVolumeLevelMax() const
+{
+    return volume_.get_max_db();
+}
+
+//! Set volume in the range [0.0 .. 1.0].
+void Processor::SetVolumeLevel(double dB)
+{
+    volume_.set_target_db(dB);
+}
+
+//! Get volume in the range [0.0 .. 1.0].
+double Processor::GetVolumeLevel()
+{
+    return volume_.get_target_db();
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -155,7 +212,7 @@ String Vst3AudioProcessor::GetName() const
     }
 }
 
-void Vst3AudioProcessor::OnStartProcessing(double sample_rate, SampleCount block_size)
+void Vst3AudioProcessor::doOnStartProcessing(double sample_rate, SampleCount block_size)
 {
     auto lock = process_lock_.make_lock();
     
@@ -172,7 +229,7 @@ void Vst3AudioProcessor::OnStartProcessing(double sample_rate, SampleCount block
     }
 }
 
-void Vst3AudioProcessor::Process(ProcessInfo &pi)
+void Vst3AudioProcessor::doProcess(ProcessInfo &pi)
 {
     auto lock = process_lock_.make_lock();
     if(plugin_) {
@@ -180,7 +237,7 @@ void Vst3AudioProcessor::Process(ProcessInfo &pi)
     }
 }
 
-void Vst3AudioProcessor::OnStopProcessing()
+void Vst3AudioProcessor::doOnStopProcessing()
 {
     auto lock = process_lock_.make_lock();
 

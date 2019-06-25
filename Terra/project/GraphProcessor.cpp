@@ -36,11 +36,7 @@ public:
     
     UInt32 GetChannelIndex() const override { return channel_index_; }
     
-    void OnStartProcessing(double sample_rate, SampleCount block_size) override
-    {
-    }
-    
-    void Process(ProcessInfo &pi) override
+    void doProcess(ProcessInfo &pi) override
     {
         assert(callback_);
         
@@ -54,9 +50,6 @@ public:
             std::copy_n(ch_src, pi.time_info_->play_.duration_.sample_, ch_dest);
         }
     }
-    
-    void OnStopProcessing() override
-    {}
     
     std::unique_ptr<schema::Processor> ToSchemaImpl() const override
     {
@@ -95,8 +88,7 @@ public:
     :   name_(name)
     ,   num_channels_(num_channels)
     ,   channel_index_(channel_index)
-    {
-    }
+    {}
     
     //! This must be called before `OnStartProcessing()`
     void SetCallback(std::function<void(AudioOutput *, ProcessInfo const &)> callback) override
@@ -119,18 +111,42 @@ public:
     
     UInt32 GetChannelIndex() const override { return channel_index_; }
     
-    void OnStartProcessing(double sample_rate, SampleCount block_size) override
-    {}
-    
-    void Process(ProcessInfo &pi) override
+    void doOnStartProcessing(double sample_rate, SampleCount block_size) override
     {
-        assert(callback_);
-        ref_ = pi.input_audio_buffer_;
-        callback_(this, pi);
+        output_.resize(num_channels_, block_size);
     }
     
-    void OnStopProcessing() override
-    {}
+    void doProcess(ProcessInfo &pi) override
+    {
+        assert(callback_);
+        
+        auto const input = pi.input_audio_buffer_;
+        auto const channels_to_copy = std::min(output_.channels(),
+                                               input.channels() - input.channel_from()
+                                               );
+        assert(channels_to_copy == input.channels() - input.channel_from());
+        
+        auto const samples_to_copy = std::min(output_.samples(),
+                                              input.samples() - input.sample_from()
+                                              );
+        assert(samples_to_copy == input.samples() - input.sample_from());
+        assert(samples_to_copy == pi.time_info_->play_.duration_.sample_);
+        
+        for(int ch = 0; ch < channels_to_copy; ++ch) {
+            auto const * const src = input.data()[ch + input.channel_from()] + input.sample_from();
+            auto * const dest = output_.data()[ch];
+            
+            std::copy_n(src, samples_to_copy, dest);
+        }
+        
+        pi.output_audio_buffer_ = BufferRef<float>{ output_, 0, channels_to_copy, 0, samples_to_copy };
+        ref_ = BufferRef<float const>{ output_, 0, channels_to_copy, 0, samples_to_copy };
+    }
+    
+    void doProcessPostFader(ProcessInfo &pi) override
+    {
+        callback_(this, pi);
+    }
     
     std::unique_ptr<schema::Processor> ToSchemaImpl() const override
     {
@@ -160,6 +176,7 @@ private:
     UInt32 channel_index_;
     std::function<void(AudioOutput *, ProcessInfo const &)> callback_;
     BufferRef<float const> ref_;
+    Buffer<float> output_;
 };
 
 class MidiInputImpl : public GraphProcessor::MidiInput
@@ -189,10 +206,7 @@ public:
         return (dir == BusDirection::kOutputSide) ? 1 : 0;
     }
     
-    void OnStartProcessing(double sample_rate, SampleCount block_size) override
-    {}
-    
-    void Process(ProcessInfo &pi) override
+    void doProcess(ProcessInfo &pi) override
     {
         assert(callback_);
         
@@ -207,10 +221,7 @@ public:
         
         ref_ = BufferType();
     }
-    
-    void OnStopProcessing() override
-    {}
-    
+
     std::unique_ptr<schema::Processor> ToSchemaImpl() const override
     {
         auto schema = std::make_unique<schema::Processor>();
@@ -263,10 +274,7 @@ public:
         return (dir == BusDirection::kInputSide) ? 1 : 0;
     }
     
-    void OnStartProcessing(double sample_rate, SampleCount block_size) override
-    {}
-    
-    void Process(ProcessInfo &pi) override
+    void doProcess(ProcessInfo &pi) override
     {
         assert(callback_);
         
@@ -277,9 +285,6 @@ public:
         callback_(this, pi);
         ref_ = BufferType();
     }
-    
-    void OnStopProcessing() override
-    {}
     
     std::unique_ptr<schema::Processor> ToSchemaImpl() const override
     {

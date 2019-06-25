@@ -282,8 +282,9 @@ public:
                 ClearSelections();
                 grabbing_note_->SetSelected();
                 grabbing_note_ = nullptr;
-                Refresh();
             }
+            
+            Refresh();
         }
         
         em_ = EditMode::kNeutral;
@@ -375,6 +376,7 @@ public:
     BrushPen col_white_key_gap = { HSVToColour(0.0, 0.0, 0.64) };
     BrushPen col_note = { HSVToColour(0.25, 0.22, 1.0), HSVToColour(0.0, 0.0, 0.6) };
     BrushPen col_note_selected_or_covered = { HSVToColour(0.25, 0.22, 0.92), HSVToColour(0.0, 0.0, 0.6) };
+    BrushPen col_note_moving = { HSVToColour(0.25, 0.22, 0.92, 0.75), HSVToColour(0.0, 0.0, 0.6, 0.75) };
     
     BrushPen col_beat = { HSVToColour(0.0, 0.0, 0.6, 0.15)};
     BrushPen col_measure = { HSVToColour(0.0, 0.0, 0.4, 0.4) };
@@ -440,23 +442,32 @@ public:
             dc.DrawLine(x, 0, x, size.GetHeight());
         }
         
-        for(auto &note: seq_->notes_) {
-            auto rect = GetRectFromNote(*note);
+        auto draw_note = [this](wxDC &dc, Sequence::Note const &note) {
+            auto rect = GetRectFromNote(note);
             Int32 top = (Int32)std::round(rect.m_y);
             Int32 bottom = (Int32)std::round(rect.GetBottom());
             Int32 left = (Int32)std::round(rect.m_x);
             Int32 right = (Int32)std::round(rect.GetRight());
             
             wxRect rc(wxPoint{left, top}, wxPoint{right, bottom});
-            
-            if(note->IsNeutral()) {
-                col_note.ApplyTo(dc);
-            } else {
-                col_note_selected_or_covered.ApplyTo(dc);
-            }
+
             auto min_edge = std::min<double>(rc.GetWidth(), rc.GetHeight());
             auto round = Clamp<double>(min_edge / 5, 1, 6);
             dc.DrawRoundedRectangle(rc, round);
+        };
+        
+        bool const now_moving = (em_ == EditMode::kMove && once_reached_hold_limit_);
+        for(auto &note: seq_->notes_) {
+            if(!note->IsNeutral() && now_moving) { continue; }
+            auto const &col = (note->IsNeutral() ? col_note : col_note_selected_or_covered);
+            col.ApplyTo(dc);
+            draw_note(dc, *note);
+        }
+        
+        for(auto &note: seq_->notes_) {
+            if(note->IsNeutral() || !now_moving) { continue; }
+            col_note_moving.ApplyTo(dc);
+            draw_note(dc, *note);
         }
         
         // draw transport bar

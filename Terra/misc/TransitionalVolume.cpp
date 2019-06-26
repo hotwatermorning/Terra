@@ -78,4 +78,9 @@ void TransitionalVolume::set_target_db(double db) {
     target_db_.store(hwm::Clamp<double>(db, min_db_, max_db_));
 }
 
+void TransitionalVolume::set_target_db_immediately(double db) {
+    target_db_.store(hwm::Clamp<double>(db, min_db_, max_db_));
+    current_db_ = db;
+}
+
 NS_HWM_END

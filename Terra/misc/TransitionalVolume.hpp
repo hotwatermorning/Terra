@@ -55,6 +55,12 @@ public:
      */
     void set_target_db(double db);
     
+    //! set target volume level and current one.
+    /*! @note do not invoke this function simultaneously with
+     *  update_transition(), get_current_db(), and get_current_linear_gain().
+     */
+    void set_target_db_immediately(double db);
+    
 private:
     double amount_;
     double min_db_;

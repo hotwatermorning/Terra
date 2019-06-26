@@ -113,6 +113,8 @@ public:
     
     UInt32 GetChannelIndex() const override { return channel_index_; }
     
+    bool IsGainFaderEnabled() const { return true; }
+    
     void doOnStartProcessing(double sample_rate, SampleCount block_size) override
     {
         output_.resize(num_channels_, block_size);

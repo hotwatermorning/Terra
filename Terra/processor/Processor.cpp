@@ -41,6 +41,11 @@ void Processor::Process(ProcessInfo &pi)
 {
     doProcess(pi);
     
+    if(IsGainFaderEnabled() == false) {
+        volume_.update_transition(pi.time_info_->play_.duration_.sample_);
+        return;
+    }
+    
     auto gain = volume_.get_current_linear_gain();
     if(gain == 1) {
         //do nothing.
@@ -62,6 +67,11 @@ void Processor::Process(ProcessInfo &pi)
 void Processor::OnStopProcessing()
 {
     doOnStopProcessing();
+}
+
+bool Processor::IsGainFaderEnabled() const
+{
+    return GetAudioChannelCount(BusDirection::kOutputSide) > 0;
 }
 
 double Processor::GetVolumeLevelMin() const

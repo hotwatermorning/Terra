@@ -146,12 +146,13 @@ public:
             Layout();
         });
         
-        int min_value = node_->GetProcessor()->GetVolumeLevelMin();
-        int max_value = node_->GetProcessor()->GetVolumeLevelMax();
+        double const cur_volume = node_->GetProcessor()->GetVolumeLevel();
+        double const min_volume = node_->GetProcessor()->GetVolumeLevelMin();
+        double const max_volume = node_->GetProcessor()->GetVolumeLevelMax();
         sl_volume_ = new wxSlider(this, wxID_ANY,
-                                  max_value * kVolumeSliderScale,
-                                  min_value * kVolumeSliderScale,
-                                  max_value * kVolumeSliderScale,
+                                  cur_volume * kVolumeSliderScale,
+                                  min_volume * kVolumeSliderScale,
+                                  max_volume * kVolumeSliderScale,
                                   wxDefaultPosition,
                                   wxSize(100, 20));
         sl_volume_->Bind(wxEVT_SLIDER, [this](auto &ev) { OnVolumeSliderChanged(); });
@@ -162,12 +163,7 @@ public:
             enable_editor_button = true;
         }
         btn_open_editor_->Enable(enable_editor_button);
-        
-        if(node_->GetProcessor()->GetAudioChannelCount(BusDirection::kOutputSide) == 0 &&
-           node_->GetProcessor()->GetAudioChannelCount(BusDirection::kInputSide) == 0)
-        {
-            btn_open_mixer_->Enable(false);
-        }
+        btn_open_mixer_->Enable(node_->GetProcessor()->IsGainFaderEnabled());
         
         lbl_plugin_name_ = new Label(this);
         lbl_plugin_name_->UseDefaultPaintMethod(false);

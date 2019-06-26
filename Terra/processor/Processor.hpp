@@ -49,6 +49,9 @@ public:
     static
     std::unique_ptr<Processor> FromSchema(schema::Processor const &schema);
     
+    virtual
+    bool IsGainFaderEnabled() const;
+    
     double GetVolumeLevelMin() const;
     double GetVolumeLevelMax() const;
 

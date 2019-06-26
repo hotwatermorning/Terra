@@ -72,6 +72,9 @@ private:
     virtual
     void doOnStopProcessing()
     {}
+    
+protected:
+    void SetVolumeLevelImmediately(double dB);
 };
 
 NS_HWM_END

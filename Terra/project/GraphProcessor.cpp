@@ -88,7 +88,9 @@ public:
     :   name_(name)
     ,   num_channels_(num_channels)
     ,   channel_index_(channel_index)
-    {}
+    {
+        SetVolumeLevelImmediately(-10.0);
+    }
     
     //! This must be called before `OnStartProcessing()`
     void SetCallback(std::function<void(AudioOutput *, ProcessInfo const &)> callback) override

@@ -86,6 +86,11 @@ double Processor::GetVolumeLevel()
     return volume_.get_target_db();
 }
 
+void Processor::SetVolumeLevelImmediately(double dB)
+{
+    volume_.set_target_db_immediately(dB);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////
 
 

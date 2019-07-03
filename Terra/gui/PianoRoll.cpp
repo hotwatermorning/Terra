@@ -269,6 +269,7 @@ public:
             for(auto &note: seq_->notes_) {
                 if(note->IsCovered()) { note->SetSelected(); }
             }
+            Refresh();
         } else if(em_ == EditMode::kMove) {
             for(auto &note: seq_->notes_) {
                 if(note->IsSelected()) {
@@ -300,10 +301,39 @@ public:
         
     }
     
+    struct CoveringArea
+    {
+        std::pair<Tick, Tick> tick_range;
+        std::pair<int, int> pitch_range;
+    };
+    
+    template<class T>
+    static
+    auto make_sorted_pair(T const &x, T const &y) {
+        return std::make_pair(std::min(x, y), std::max(x, y));
+    }
+    
+    CoveringArea GetCoveringArea(wxPoint drag_from,
+                                 wxPoint new_drag_to) const
+    {
+        auto const vs = GetViewStatus();
+        auto t_begin = vs->GetTick(drag_from_.x);
+        auto t_new = vs->GetTick(new_drag_to.x);
+        
+        auto p_begin = vs->GetNoteNumber(drag_from_.y);
+        auto p_new = vs->GetNoteNumber(new_drag_to.y);
+        
+        return CoveringArea {
+            make_sorted_pair(t_begin, t_new),
+            make_sorted_pair(p_begin, p_new),
+        };
+    }
+    
     void OnMotion(wxMouseEvent &ev)
     {
-        if(em_ == EditMode::kNeutral) { return; }
-        else if(em_ == EditMode::kMove) {
+        if(em_ == EditMode::kNeutral) {
+            return;
+        } else if(em_ == EditMode::kMove) {
             auto new_drag_to = ev.GetPosition();
             
             if(once_reached_hold_limit_ == false) {
@@ -333,6 +363,37 @@ public:
             seq_->SortStable();
             Refresh();
             OnUpdateSequence(); // todo: シーケンスのキャッシュをタイマーで駆動する。
+        } else if(em_ == EditMode::kCover) {
+            auto new_drag_to = ev.GetPosition();
+            
+            /*
+            今回新たに範囲に含まれるようになったノートで、未選択状態のものを範囲選択状態に変更
+            前回まで範囲に含まれていたノートで、範囲選択状態のものを未選択状態に変更
+             */
+            
+            auto const c = GetCoveringArea(drag_from_, new_drag_to);
+            
+            auto const is_covered_now = [&c](auto note) {
+                bool const tick_covered
+                = note->pos_ <= c.tick_range.second && c.tick_range.first < note->GetEndPos();
+                
+                bool const pitch_covered
+                = c.pitch_range.first <= note->pitch_ && note->pitch_ <= c.pitch_range.second;
+                return tick_covered && pitch_covered;
+            };
+            
+            for(auto note: seq_->notes_) {
+                if(note->IsSelected()) {
+                    continue;
+                } else if(note->IsNeutral()) {
+                    if(is_covered_now(note)) { note->SetCovered(); }
+                } else if(note->IsCovered()) {
+                    if(is_covered_now(note) == false) { note->SetNeutral(); }
+                }
+            }
+            
+            last_drag_to_ = new_drag_to;
+            Refresh();
         }
     }
     
@@ -372,11 +433,11 @@ public:
     }
     
     BrushPen col_white_key = { HSVToColour(0.0, 0.0, 0.8) };
-    BrushPen col_black_key = { HSVToColour(0.0, 0.0, 0.64) };
+    BrushPen col_black_key = { HSVToColour(0.0, 0.0, 0.72) };
     BrushPen col_white_key_gap = { HSVToColour(0.0, 0.0, 0.64) };
     BrushPen col_note = { HSVToColour(0.25, 0.22, 1.0), HSVToColour(0.0, 0.0, 0.6) };
-    BrushPen col_note_selected_or_covered = { HSVToColour(0.25, 0.22, 0.92), HSVToColour(0.0, 0.0, 0.6) };
-    BrushPen col_note_moving = { HSVToColour(0.25, 0.22, 0.92, 0.75), HSVToColour(0.0, 0.0, 0.6, 0.75) };
+    BrushPen col_note_selected_or_covered = { HSVToColour(0.25, 0.22, 0.88), HSVToColour(0.0, 0.0, 0.6) };
+    BrushPen col_note_moving = { HSVToColour(0.25, 0.22, 0.88, 0.75), HSVToColour(0.0, 0.0, 0.6, 0.75) };
     
     BrushPen col_beat = { HSVToColour(0.0, 0.0, 0.6, 0.15)};
     BrushPen col_measure = { HSVToColour(0.0, 0.0, 0.4, 0.4) };
@@ -468,6 +529,15 @@ public:
             if(note->IsNeutral() || !now_moving) { continue; }
             col_note_moving.ApplyTo(dc);
             draw_note(dc, *note);
+        }
+        
+        // draw covering area
+        if(em_ == EditMode::kCover) {
+            wxRect rc(drag_from_, last_drag_to_);
+            BrushPen bp_cover { HSVToColour(0.0, 0.0, 0.0, 0.2) };
+            bp_cover.ApplyTo(dc);
+            
+            dc.DrawRectangle(rc);
         }
         
         // draw transport bar

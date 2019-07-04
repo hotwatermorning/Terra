@@ -157,6 +157,8 @@ public:
         Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent &ev) { OnRightUp(ev); });
         Bind(wxEVT_MOTION, [this](wxMouseEvent &ev) { OnMotion(ev); });
         Bind(wxEVT_MOUSEWHEEL, [this](wxMouseEvent &ev) { OnMouseWheel(ev); });
+        Bind(wxEVT_KEY_DOWN, [this](wxKeyEvent &ev) { OnKeyDown(ev); });
+        Bind(wxEVT_KEY_UP, [this](wxKeyEvent &ev) { OnKeyUp(ev); });
         timer_.Bind(wxEVT_TIMER, [this](wxTimerEvent &ev) { OnTimer(); });
         timer_.Start(30);
         
@@ -180,12 +182,7 @@ public:
     static constexpr UInt32 kHoldLimit = 10;
     bool once_reached_hold_limit_;
     
-    void ClearSelections()
-    {
-        for(auto &note: seq_->notes_) {
-            note->SetNeutral();
-        }
-    }
+    bool const IsEditing() const { return em_ != EditMode::kNeutral; }
     
     /*
      LeftDown & ノートなし
@@ -317,6 +314,11 @@ public:
     
     void OnLeftUp(wxMouseEvent &ev)
     {
+        EscapeEditing();
+    }
+    
+    void EscapeEditing()
+    {
         if(em_ == EditMode::kCover) {
             for(auto &note: seq_->notes_) {
                 if(note->IsCovered()) { note->SetSelected(); }
@@ -325,9 +327,7 @@ public:
         } else if(em_ == EditMode::kMove) {
             for(auto &note: seq_->notes_) {
                 if(note->IsSelected()) {
-                    note->prev_pitch_ = note->pitch_;
-                    note->prev_pos_ = note->pos_;
-                    note->prev_length_ = note->length_;
+                    note->ClearPrevState();
                 }
             }
             
@@ -341,9 +341,7 @@ public:
         } else if(em_ == EditMode::kStretchHead || em_ == EditMode::kStretchTail) {
             for(auto &note: seq_->notes_) {
                 if(note->IsSelected()) {
-                    note->prev_pitch_ = note->pitch_;
-                    note->prev_pos_ = note->pos_;
-                    note->prev_length_ = note->length_;
+                    note->ClearPrevState();
                 }
             }
             
@@ -391,15 +389,13 @@ public:
         };
     }
     
-    std::optional<EditMode> GetEditModeFor(Sequence::NotePtr note, int x, int y) const
+    //! @param x [in] mouse x position.
+    std::optional<EditMode> GetEditMode(Tick note_pos, Tick note_length, int x) const
     {
         auto const vs = GetViewStatus();
-        auto const pitch = vs->GetNoteNumber(y);
         
-        if(note->pitch_ != pitch) { return std::nullopt; }
-        
-        auto left = vs->GetNoteXPosition(note->pos_);
-        auto right = vs->GetNoteXPosition(note->GetEndPos());
+        auto left = vs->GetNoteXPosition(note_pos);
+        auto right = vs->GetNoteXPosition(note_pos + note_length);
         if((right - left) < kNoteDisplayLengthMinLimit) {
             right = left + kNoteDisplayLengthMinLimit;
         }
@@ -433,7 +429,7 @@ public:
             wxCursor cur = wxCursor(wxCURSOR_ARROW);
             for(auto &note: seq_->notes_) {
                 if(note->pitch_ != mouse_pitch) { continue; }
-                auto new_em = GetEditModeFor(note, pos.x, pos.y);
+                auto new_em = GetEditMode(note->pos_, note->length_, pos.x);
                 
                 if(!new_em) { continue; }
                 if(new_em == EditMode::kStretchHead) {
@@ -572,6 +568,114 @@ public:
             pos = Clamp<Int32>(pos, 0, std::max<int>(view_status->GetTotalHeight(), size.GetHeight()) - size.GetHeight());
             view_status->SetScrollPosition(wxVERTICAL, pos);
         }
+    }
+    
+    void DeleteSelectedNotes()
+    {
+        assert(!IsEditing());
+        
+        auto it = std::remove_if(seq_->notes_.begin(),
+                                 seq_->notes_.end(),
+                                 [](auto const &note) { return note->IsSelected(); });
+        seq_->notes_.erase(it, seq_->notes_.end());
+        Refresh();
+        OnUpdateSequence();
+    }
+    
+    void ShiftSelectedNotes(int pitch_diff, Tick tick_diff)
+    {
+        for(auto &note: seq_->notes_) {
+            if(note->IsSelected() == false) { continue; }
+            
+            note->pitch_ = (UInt8)Clamp<Int32>(note->pitch_ + pitch_diff, 0, 127);
+            note->pos_ = std::max<Tick>(note->pos_ + tick_diff, 0);
+            note->ClearPrevState();
+        }
+        
+        seq_->SortStable();
+        Refresh();
+        OnUpdateSequence();
+    }
+    
+    void SelectNotes(std::function<bool(Sequence::NotePtr const &p)> pred) {
+        for(auto &note: seq_->notes_) {
+            if(pred(note)) { note->SetSelected(); }
+        }
+        Refresh();
+    }
+    
+    void SelectAllNotes() {
+        SelectNotes([](auto const &p){ return true; });
+    }
+    
+    void ClearSelections()
+    {
+        for(auto &note: seq_->notes_) {
+            note->SetNeutral();
+        }
+    }
+    
+    void OnDeleteKeyDown(wxKeyEvent &ev)
+    {
+        if(IsEditing() == false) {
+            DeleteSelectedNotes();
+        }
+    }
+    
+    void OnEscapeKeyDown(wxKeyEvent &ev)
+    {
+        if(IsEditing()) {
+            EscapeEditing();
+        } else {
+            ClearSelections();
+            Refresh();
+        }
+    }
+    
+    void OnKeyDown(wxKeyEvent &ev)
+    {
+        auto const uc = ev.GetUnicodeKey();
+        
+        if(uc != WXK_NONE) {
+            hwm::dout << "Unicode: " << to_utf8(String{ev.GetUnicodeKey()}) << std::endl;
+            if(uc == WXK_DELETE || uc == WXK_BACK) {
+                OnDeleteKeyDown(ev);
+            } else if(uc == L'A' && ev.ControlDown()) {
+                SelectAllNotes();
+            } else if(uc == WXK_ESCAPE) {
+                OnEscapeKeyDown(ev);
+            }
+        } else {
+            hwm::dout  <<  "ASCII:   " << ev.GetKeyCode() << std::endl;
+            
+            auto const c = ev.GetKeyCode();
+            if(c == WXK_ESCAPE) {
+                OnEscapeKeyDown(ev);
+            } else if(c == WXK_DELETE || c == WXK_BACK) {
+                OnDeleteKeyDown(ev);
+            } else if(c == WXK_UP) {
+                if(IsEditing() == false) {
+                    ShiftSelectedNotes(1, 0);
+                }
+            } else if(c == WXK_DOWN) {
+                if(IsEditing() == false) {
+                    ShiftSelectedNotes(-1, 0);
+                }
+            } else if(c == WXK_LEFT) {
+                if(IsEditing() == false) {
+                    ShiftSelectedNotes(0, -480);
+                }
+            } else if(c == WXK_RIGHT) {
+                if(IsEditing() == false) {
+                    ShiftSelectedNotes(0, 480);
+                }
+            }
+        }
+    }
+    
+    void OnKeyUp(wxKeyEvent &ev)
+    {
+        
     }
     
     BrushPen col_white_key = { HSVToColour(0.0, 0.0, 0.8) };

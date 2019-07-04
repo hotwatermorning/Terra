@@ -57,6 +57,11 @@ struct Sequence
         
         Tick GetEndPos() const { return pos_ + length_; }
         Tick GetPrevEndPos() const { return prev_pos_ + prev_length_; }
+        void ClearPrevState() {
+            prev_pos_ = pos_;
+            prev_length_ = length_;
+            prev_pitch_ = pitch_;
+        }
     };
     
     using NotePtr = std::shared_ptr<Note>;

@@ -682,8 +682,8 @@ public:
     BrushPen col_black_key = { HSVToColour(0.0, 0.0, 0.72) };
     BrushPen col_white_key_gap = { HSVToColour(0.0, 0.0, 0.64) };
     BrushPen col_note = { HSVToColour(0.25, 0.22, 1.0), HSVToColour(0.0, 0.0, 0.6) };
-    BrushPen col_note_selected_or_covered = { HSVToColour(0.25, 0.22, 0.88), HSVToColour(0.0, 0.0, 0.6) };
-    BrushPen col_note_moving = { HSVToColour(0.25, 0.22, 0.88, 0.75), HSVToColour(0.0, 0.0, 0.6, 0.75) };
+    BrushPen col_note_selected_or_covered = { HSVToColour(0.25, 0.22, 0.90), HSVToColour(0.0, 0.5, 0.6) };
+    BrushPen col_note_moving = { HSVToColour(0.25, 0.22, 0.90, 0.75), HSVToColour(0.0, 0.5, 0.6, 0.75) };
     
     BrushPen col_beat = { HSVToColour(0.0, 0.0, 0.6, 0.15)};
     BrushPen col_measure = { HSVToColour(0.0, 0.0, 0.4, 0.4) };

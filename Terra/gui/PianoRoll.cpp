@@ -22,12 +22,12 @@ IPianoRollViewStatus::~IPianoRollViewStatus()
 //! get bottom y position for the note considering y-zoom factor and y-scroll position.
 IPianoRollViewStatus::NoteHeight IPianoRollViewStatus::GetNoteYRange(Int32 note_number) const
 {
-    float const yzoom = GetZoomFactor(wxVERTICAL);
+    double const yzoom = GetZoomFactor(wxVERTICAL);
     Int32 const yscroll = GetScrollPosition(wxVERTICAL);
     
     return NoteHeight {
-        (kNumKeys - note_number - 1) * kDefaultKeyHeight * yzoom - yscroll,
-        (kNumKeys - note_number) * kDefaultKeyHeight * yzoom - yscroll,
+        (float)((kNumKeys - note_number - 1) * kDefaultKeyHeight * yzoom - yscroll),
+        (float)((kNumKeys - note_number) * kDefaultKeyHeight * yzoom - yscroll),
     };
 }
 
@@ -38,10 +38,32 @@ Int32 IPianoRollViewStatus::GetNoteNumber(float y_position) const
     
     assert(yzoom > 0);
     
-    double const virtual_y_pos = (y_position + yscroll) / yzoom;
+    auto virtual_y_pos = (Int32)std::round((y_position + yscroll) / yzoom);
+    auto virtual_height_from_bottom = (kNumKeys * kDefaultKeyHeight) - virtual_y_pos - 1;
+    virtual_height_from_bottom = Clamp<Int32>(virtual_height_from_bottom,
+                                              0,
+                                              kNumKeys * kDefaultKeyHeight - 1);
     
-    Int32 tmp_note_number = kNumKeys - (Int32)(virtual_y_pos / kDefaultKeyHeight) - 1;
-    return Clamp<Int32>(tmp_note_number, 0, kNumKeys - 1);
+    auto const note_number = (Int32)(virtual_height_from_bottom / kDefaultKeyHeight);
+    
+    auto check_y_range = [this](int note_number, float y_position) {
+        auto tmp = GetNoteYRange(note_number);
+        auto top = (Int32)std::round(tmp.top_);
+        auto bottom = (Int32)std::round(tmp.bottom_);
+        
+        return top <= y_position && y_position <= bottom;
+    };
+
+    if(check_y_range(note_number, y_position)) {
+        return note_number;
+    } else if(note_number != 0 && check_y_range(note_number-1, y_position)) {
+        return note_number-1;
+    } else if(note_number != kNumKeys - 1 && check_y_range(note_number+1, y_position)) {
+        return note_number+1;
+    } else {
+        assert(false);
+        return -1;
+    }
 }
 
 float IPianoRollViewStatus::GetTotalHeight() const
@@ -249,12 +271,7 @@ public:
                     ClearSelections();
                 }
                 
-                auto new_em = GetEditModeFor(note, ev.GetPosition().x, ev.GetPosition().y);
-                if(new_em == std::nullopt) {
-                    int x = 0;
-                    x = 10;
-                    auto new_em2 = GetEditModeFor(note, ev.GetPosition().x, ev.GetPosition().y);
-                }
+                auto new_em = GetEditMode(note->pos_, note->length_, ev.GetPosition().x);
                 assert(new_em != std::nullopt);
                 
                 em_ = *new_em;
@@ -699,13 +716,13 @@ public:
     wxRect GetRectFromNote(Sequence::Note note) const
     {
         auto view_status = GetViewStatus();
-        auto left = (UInt32)std::round(view_status->GetNoteXPosition(note.pos_));
-        auto right = (UInt32)std::round(view_status->GetNoteXPosition(note.GetEndPos()));
+        auto left = (Int32)std::round(view_status->GetNoteXPosition(note.pos_));
+        auto right = (Int32)std::round(view_status->GetNoteXPosition(note.GetEndPos()));
         
         auto yrange = view_status->GetNoteYRange(note.pitch_);
         
-        auto top = (UInt32)std::round(yrange.top_);
-        auto bottom = (UInt32)std::round(yrange.bottom_);
+        auto top = (Int32)std::round(yrange.top_);
+        auto bottom = (Int32)std::round(yrange.bottom_);
         
         if(right - left < kNoteDisplayLengthMinLimit) { right = left + kNoteDisplayLengthMinLimit; }
         return wxRect(wxPoint(left, top), wxPoint(right, bottom));

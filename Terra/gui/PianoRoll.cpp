@@ -5,11 +5,12 @@
 #include "../misc/MathUtil.hpp"
 #include "../project/Sequence.hpp"
 #include "../project/Project.hpp"
+#include "../resource/ResourceHelper.hpp"
 #include "../App.hpp"
 
 NS_HWM_BEGIN
 
-IPianoRollViewStatus::ZoomFactorRange IPianoRollViewStatus::kZoomRangeHorz = { 0.5, 5 };
+IPianoRollViewStatus::ZoomFactorRange IPianoRollViewStatus::kZoomRangeHorz = { 0.05, 5 };
 IPianoRollViewStatus::ZoomFactorRange IPianoRollViewStatus::kZoomRangeVert = { 0.8, 5 };
 
 IPianoRollViewStatus::IPianoRollViewStatus()
@@ -98,6 +99,32 @@ public:
     PianoRollEditor(wxWindow *parent, IPianoRollViewStatus *view_status)
     :   IPianoRollWindowComponent(parent, view_status)
     {
+        int const cursor_width = 24;
+        wxSize const cursor_size = { cursor_width, cursor_width };
+        
+        wxImage img;
+        img.LoadFile(GetResourcePath(L"/cursor/Cursors.png"));
+        
+        auto img_stretch_head = img.GetSubImage(wxRect{wxPoint{0, cursor_width * 0}, cursor_size});
+        auto img_stretch_tail = img.GetSubImage(wxRect{wxPoint{0, cursor_width * 1}, cursor_size});
+        auto img_eraser = img.GetSubImage(wxRect{wxPoint{0, cursor_width * 2}, cursor_size});
+        auto img_knife = img.GetSubImage(wxRect{wxPoint{0, cursor_width * 3}, cursor_size});
+        
+        auto set_hotspot = [](auto &img, int x, int y) {
+            img.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_X, x);
+            img.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_Y, y);
+        };
+        
+        set_hotspot(img_stretch_head, 19, 12);
+        set_hotspot(img_stretch_tail, 5, 12);
+        set_hotspot(img_eraser, 2, 10);
+        set_hotspot(img_knife, 3, 5);
+        
+        cur_stretch_head_ = img_stretch_head;
+        cur_stretch_tail_ = img_stretch_tail;
+        cur_eraser_ = img_eraser;
+        cur_knife_ = img_knife;
+        
         slr_change_project_.reset(MyApp::GetInstance()->GetChangeProjectListeners(), this);
         OnChangeCurrentProject(nullptr, Project::GetCurrentProject());
         
@@ -197,6 +224,7 @@ public:
                 
                 seq_->InsertSorted(note);
                 grabbing_note_ = note;
+                note->SetSelected();
                 em_ = EditMode::kStretchTail;
                 Refresh();
             } else if(ev.ShiftDown()) {
@@ -221,8 +249,15 @@ public:
                     ClearSelections();
                 }
                 
-                // todo: 長さ変更モードへの移行
-                em_ = EditMode::kMove;
+                auto new_em = GetEditModeFor(note, ev.GetPosition().x, ev.GetPosition().y);
+                if(new_em == std::nullopt) {
+                    int x = 0;
+                    x = 10;
+                    auto new_em2 = GetEditModeFor(note, ev.GetPosition().x, ev.GetPosition().y);
+                }
+                assert(new_em != std::nullopt);
+                
+                em_ = *new_em;
                 grabbing_note_ = note;
                 note->SetSelected();
                 
@@ -286,6 +321,16 @@ public:
             }
             
             Refresh();
+        } else if(em_ == EditMode::kStretchHead || em_ == EditMode::kStretchTail) {
+            for(auto &note: seq_->notes_) {
+                if(note->IsSelected()) {
+                    note->prev_pitch_ = note->pitch_;
+                    note->prev_pos_ = note->pos_;
+                    note->prev_length_ = note->length_;
+                }
+            }
+            
+            Refresh();
         }
         
         em_ = EditMode::kNeutral;
@@ -329,9 +374,61 @@ public:
         };
     }
     
+    std::optional<EditMode> GetEditModeFor(Sequence::NotePtr note, int x, int y) const
+    {
+        auto const vs = GetViewStatus();
+        auto const pitch = vs->GetNoteNumber(y);
+        
+        if(note->pitch_ != pitch) { return std::nullopt; }
+        
+        auto left = vs->GetNoteXPosition(note->pos_);
+        auto right = vs->GetNoteXPosition(note->GetEndPos());
+        if((right - left) < kNoteDisplayLengthMinLimit) {
+            right = left + kNoteDisplayLengthMinLimit;
+        }
+        
+        auto const kEdgeWidthLimit = 10;
+        auto const kEdgeRatio = 0.3;
+
+        auto const len = right - left;
+        auto const edge_len = std::min<float>(kEdgeWidthLimit, len * kEdgeRatio);
+        auto const left_edge_limit = left + edge_len;
+        auto const right_edge_limit = right - edge_len;
+        
+        if(left_edge_limit <= x && x <= right_edge_limit) {
+            return EditMode::kMove;
+        } else if(left <= x && x <= left_edge_limit) {
+            return EditMode::kStretchHead;
+        } else if(right_edge_limit <= x && x <= right) {
+            return EditMode::kStretchTail;
+        }
+        
+        return std::nullopt;
+    }
+    
     void OnMotion(wxMouseEvent &ev)
     {
         if(em_ == EditMode::kNeutral) {
+            auto const vs = GetViewStatus();
+            auto const pos = ev.GetPosition();
+            auto const mouse_pitch = vs->GetNoteNumber(pos.y);
+            
+            wxCursor cur = wxCursor(wxCURSOR_ARROW);
+            for(auto &note: seq_->notes_) {
+                if(note->pitch_ != mouse_pitch) { continue; }
+                auto new_em = GetEditModeFor(note, pos.x, pos.y);
+                
+                if(!new_em) { continue; }
+                if(new_em == EditMode::kStretchHead) {
+                    cur = cur_stretch_head_;
+                } else if(new_em == EditMode::kStretchTail) {
+                    cur = cur_stretch_tail_;
+                } else if(new_em == EditMode::kMove) {
+                    cur = wxCursor(wxCURSOR_HAND);
+                }
+            }
+
+            SetCursor(cur);
             return;
         } else if(em_ == EditMode::kMove) {
             auto new_drag_to = ev.GetPosition();
@@ -394,6 +491,34 @@ public:
             
             last_drag_to_ = new_drag_to;
             Refresh();
+        } else if(em_ == EditMode::kStretchHead) {
+            auto vs = GetViewStatus();
+            auto const new_drag_to = ev.GetPosition();
+            auto const dtick = (Tick)std::round(vs->GetTick(new_drag_to.x) - vs->GetTick(drag_from_.x));
+            for(auto &note: seq_->notes_) {
+                if(note->IsSelected() == false) { continue; }
+                note->pos_ = Clamp<Tick>(note->prev_pos_ + dtick,
+                                         0,
+                                         note->GetPrevEndPos()-1);
+                note->length_ = note->GetPrevEndPos() - note->pos_;
+            }
+            
+            seq_->SortStable();
+            Refresh();
+            OnUpdateSequence();
+            
+        } else if(em_ == EditMode::kStretchTail) {
+            auto vs = GetViewStatus();
+            auto const new_drag_to = ev.GetPosition();
+            auto const dtick = (Tick)std::round(vs->GetTick(new_drag_to.x) - vs->GetTick(drag_from_.x));
+            for(auto &note: seq_->notes_) {
+                if(note->IsSelected() == false) { continue; }
+                note->length_ = std::max<Tick>(note->prev_length_ + dtick, 1);
+            }
+            
+            SetCursor(cur_stretch_tail_);
+            Refresh();
+            OnUpdateSequence();
         }
     }
     
@@ -442,6 +567,11 @@ public:
     BrushPen col_beat = { HSVToColour(0.0, 0.0, 0.6, 0.15)};
     BrushPen col_measure = { HSVToColour(0.0, 0.0, 0.4, 0.4) };
     BrushPen col_transpor_bar = { HSVToColour(0.15, 0.7, 1.0, 0.7) };
+
+    wxCursor cur_stretch_head_;
+    wxCursor cur_stretch_tail_;
+    wxCursor cur_eraser_;
+    wxCursor cur_knife_;
     
     void doRender(wxDC &dc) override
     {
@@ -504,14 +634,8 @@ public:
         }
         
         auto draw_note = [this](wxDC &dc, Sequence::Note const &note) {
-            auto rect = GetRectFromNote(note);
-            Int32 top = (Int32)std::round(rect.m_y);
-            Int32 bottom = (Int32)std::round(rect.GetBottom());
-            Int32 left = (Int32)std::round(rect.m_x);
-            Int32 right = (Int32)std::round(rect.GetRight());
+            auto rc = GetRectFromNote(note);
             
-            wxRect rc(wxPoint{left, top}, wxPoint{right, bottom});
-
             auto min_edge = std::min<double>(rc.GetWidth(), rc.GetHeight());
             auto round = Clamp<double>(min_edge / 5, 1, 6);
             dc.DrawRoundedRectangle(rc, round);
@@ -569,17 +693,25 @@ public:
         return -1;
     }
 
-    wxRect2DDouble GetRectFromNote(Sequence::Note note) const
+    //! Ensure notes will be treated at if each of them has at least 2px width.
+    static constexpr UInt32 kNoteDisplayLengthMinLimit = 5;
+
+    wxRect GetRectFromNote(Sequence::Note note) const
     {
         auto view_status = GetViewStatus();
-        auto left = view_status->GetNoteXPosition(note.pos_);
-        auto right = view_status->GetNoteXPosition(note.GetEndPos());
+        auto left = (UInt32)std::round(view_status->GetNoteXPosition(note.pos_));
+        auto right = (UInt32)std::round(view_status->GetNoteXPosition(note.GetEndPos()));
+        
         auto yrange = view_status->GetNoteYRange(note.pitch_);
         
-        return wxRect2DDouble(left, yrange.top_, right - left, yrange.GetHeight());
+        auto top = (UInt32)std::round(yrange.top_);
+        auto bottom = (UInt32)std::round(yrange.bottom_);
+        
+        if(right - left < kNoteDisplayLengthMinLimit) { right = left + kNoteDisplayLengthMinLimit; }
+        return wxRect(wxPoint(left, top), wxPoint(right, bottom));
     }
     
-    wxRect2DDouble GetRectFromNote(Int32 note_index) const
+    wxRect GetRectFromNote(Int32 note_index) const
     {
         assert(note_index < seq_->notes_.size());
         return GetRectFromNote(*seq_->notes_[note_index]);

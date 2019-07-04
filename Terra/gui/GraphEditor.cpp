@@ -31,7 +31,7 @@ BrushPen const kPinShadow = { HSVToColour(0.0, 0.0, 0.0, 0.5) };
 
 wxPen const kAudioLine = wxPen(HSVToColour(0.2, 0.8, 1.0, 0.7), 2, wxPENSTYLE_SOLID);
 wxPen const kMidiLine = wxPen(HSVToColour(0.5, 0.8, 1.0, 0.7), 2, wxPENSTYLE_SOLID);
-wxPen const kScissorLine = wxPen(HSVToColour(0.5, 0.0, 0.7, 0.7), 2, wxPENSTYLE_SHORT_DASH);
+wxPen const kCuttingLine = wxPen(HSVToColour(0.5, 0.0, 0.7, 0.7), 2, wxPENSTYLE_SHORT_DASH);
 
 auto const kNodeShadow = BrushPen(HSVToColour(0.0, 0.0, 0.0, 0.3));
 int const kShadowRadius = 5;
@@ -624,7 +624,7 @@ class GraphEditorImpl
         GraphEditorImpl *owner_;
     };
 public:
-    wxCursor scissors_;
+    wxCursor knife_;
     GraphEditorImpl(wxWindow *parent)
         : GraphEditor()
     {
@@ -634,15 +634,15 @@ public:
         SetDropTarget(new DropTarget(this));
         wxImage img;
 
-        img.LoadFile(GetResourcePath(L"/cursor/scissors.png"));
-        int const cursor_x = 24;
-        int const cursor_y = 24;
+        int const cursor_width = 24;
+        
+        img.LoadFile(GetResourcePath(L"/cursor/Cursors.png"));
+        img = img.GetSubImage(wxRect(wxPoint(0, cursor_width * 3), wxSize(cursor_width, cursor_width)));
 
-        img = img.Scale(cursor_x, cursor_y, wxIMAGE_QUALITY_HIGH);
-        img.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_X, cursor_x / 2);
-        img.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_Y, cursor_y / 2);
+        img.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_X, 3);
+        img.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_Y, 5);
 
-        scissors_ = wxCursor(img);
+        knife_ = wxCursor(img);
 
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(); });
         Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { OnLeftDown(ev); });
@@ -760,10 +760,10 @@ public:
             LineSetting ls;
             ls.begin_ = ev.GetPosition();
             ls.end_ = ls.begin_;
-            ls.pen_ = kScissorLine;
+            ls.pen_ = kCuttingLine;
             dragging_line_ = ls;
             CaptureMouse();
-            SetCursor(scissors_);
+            SetCursor(knife_);
         }
     }
     
@@ -1069,7 +1069,7 @@ public:
     void OnKeyDown(wxKeyEvent &ev)
     {
         if(ev.GetModifiers() == wxMOD_SHIFT) {
-            SetCursor(scissors_);
+            SetCursor(knife_);
         }
     }
     

@@ -24,6 +24,8 @@
 #include "resource/ResourceHelper.hpp"
 #include "file/ProjectObjectTable.hpp"
 #include "file/MidiFile.hpp"
+#include "log/LoggingSupport.hpp"
+#include "log/LoggingStrategy.hpp"
 
 NS_HWM_BEGIN
 
@@ -94,6 +96,23 @@ bool MyApp::OnInit()
     assert(image.IsOk());
     pimpl_->splash_screen_ = CreateSplashScreen(image);
     
+    InitializeDefaultGlobalLogger();
+    auto logger = GetGlobalLogger();
+    auto st = std::make_shared<FileLoggingStrategy>(GetTerraDir() + L"/Terra.log");
+    auto err = st->OpenPermanently();
+    if(err) {
+        wxMessageBox(L"Can't open log file: " + err.message());
+        return false;
+    }
+    
+    logger->SetStrategy(st);
+    logger->StartLogging(true);
+
+    EnableErrorCheckAssertionForLoggingMacros(true);
+    
+    String version_string = L"0.0.1.0";
+    TERRA_INFO_LOG(L"Startup Terra (version: " << version_string << L").");
+    
     pimpl_->plugin_scanner_.AddDirectories({
 #if defined(_MSC_VER)
 		L"C:/Program Files/Common Files/VST3",
@@ -103,6 +122,8 @@ bool MyApp::OnInit()
         L"../../ext/vst3sdk/build_debug/VST3/Debug",
 #endif
     });
+    
+    TERRA_DEBUG_LOG(L"Add plugin directories.");
     
     std::ifstream ifs(GetPluginDescFileName(), std::ios::in|std::ios::binary);
     if(ifs) {
@@ -117,6 +138,7 @@ bool MyApp::OnInit()
         
         pimpl_->splash_screen_->AddMessage(L"Import plugin list");
     } else {
+        TERRA_INFO_LOG(L"Begin plugin scanning asynchronously");
         pimpl_->plugin_scanner_.ScanAsync();
         pimpl_->splash_screen_->AddMessage(L"Scanning plugins...");
     }

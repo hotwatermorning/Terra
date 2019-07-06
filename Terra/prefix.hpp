@@ -10,6 +10,7 @@
 
 #include <wx/tglbtn.h>
 #include <wx/dcgraph.h>
+#include <wx/filename.h>
 
 #include <fmt/format.h>
 

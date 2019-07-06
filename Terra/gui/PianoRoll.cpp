@@ -1124,7 +1124,7 @@ public:
     
     void OnKeyUp(wxKeyEvent &ev)
     {
-        hwm::dout
+        hwm::wdout
         << L"[key up] ukey:{}, rkey:{}, rkeyflag:{}  shift:{}, cmd:{}, ctrl:{}"_format(
             ev.GetUnicodeKey(), ev.GetRawKeyCode(), ev.GetRawKeyFlags(),
             ev.ShiftDown(), ev.CmdDown(), ev.RawControlDown()

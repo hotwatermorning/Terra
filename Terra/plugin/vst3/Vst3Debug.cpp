@@ -34,7 +34,7 @@ std::wstring tresult_to_wstring(tresult result)
 Steinberg::tresult ShowError(Steinberg::tresult result, String context)
 {
     if(result != kResultOk) {
-        hwm::dout << L"Failed({}): {}"_format(tresult_to_wstring(result), context) << std::endl;
+        hwm::wdout << L"Failed({}): {}"_format(tresult_to_wstring(result), context) << std::endl;
     }
     
     return result;
@@ -50,7 +50,7 @@ void OutputParameterInfo(Vst::IEditController *edit_controller)
         Vst::ParameterInfo info;
         edit_controller->getParameterInfo(i, info);
         
-        hwm::dout <<
+        hwm::wdout <<
         L"{}: {{"
         L"ID:{}, Title:{}, ShortTitle:{}, Units:{}, "
         L"StepCount:{}, Default:{}, UnitID:{}, "

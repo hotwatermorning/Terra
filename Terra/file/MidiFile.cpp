@@ -13,7 +13,7 @@ std::vector<SequencePtr> CreateSequenceFromSMF(String path)
 
     bool successful = smf.read(ifs);
     if(!successful) {
-        hwm::dout << L"Failed to load {}"_format(path) << std::endl;
+        hwm::wdout << L"Failed to load {}"_format(path) << std::endl;
         return {};
     }
     

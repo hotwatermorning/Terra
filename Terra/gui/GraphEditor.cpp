@@ -221,17 +221,17 @@ public:
             OnRightUp(ev);
         });
         Bind(wxEVT_SET_FOCUS, [this](auto &ev) {
-            hwm::dout << "Set focus: " << node_->GetProcessor()->GetName() << std::endl;
+            hwm::wdout << L"Set focus: " << node_->GetProcessor()->GetName() << std::endl;
             //OnCaptureLost();
             Refresh();
         });
         Bind(wxEVT_KILL_FOCUS, [this](auto &ev) {
-            hwm::dout << "Kill Focus: " << node_->GetProcessor()->GetName() << std::endl;
+            hwm::wdout << L"Kill Focus: " << node_->GetProcessor()->GetName() << std::endl;
             OnCaptureLost();
             Refresh();
         });
         Bind(wxEVT_CHILD_FOCUS, [this](auto &ev) {
-            hwm::dout << "Child Focus: " << node_->GetProcessor()->GetName() << std::endl;
+            hwm::wdout << L"Child Focus: " << node_->GetProcessor()->GetName() << std::endl;
             //SetFocus();
             //Raise();
         });
@@ -240,11 +240,11 @@ public:
             OnMouseLeave(ev);
         });
         Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](auto &ev) {
-            hwm::dout << "Mouse Capture Lost: " << node_->GetProcessor()->GetName() << std::endl;
+            hwm::wdout << +"Mouse Capture Lost: " << node_->GetProcessor()->GetName() << std::endl;
             ev.Skip();
         });
         Bind(wxEVT_MOUSE_CAPTURE_CHANGED, [this](auto &ev) {
-            hwm::dout << "Mouse Capture Changed: " << node_->GetProcessor()->GetName() << std::endl;
+            hwm::wdout << L"Mouse Capture Changed: " << node_->GetProcessor()->GetName() << std::endl;
             ev.Skip();
         });
         Bind(wxEVT_KEY_DOWN, [](auto &ev) { ev.ResumePropagation(100); ev.Skip(); });

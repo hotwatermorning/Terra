@@ -246,7 +246,7 @@ bool Vst3Plugin::Impl::AudioBusesInfo::SetSpeakerArrangement(size_t bus_index, V
 {
     assert(bus_index < GetNumBuses());
     
-    hwm::dout
+    hwm::wdout
     << L"Set speaker arrangement for {} Bus[{}]: {}"_format(dir_ == Vst::BusDirections::kInput ? L"Input" : L"Output",
                                                              bus_index,
                                                              GetSpeakerName(arr)

@@ -139,7 +139,7 @@ TEST_CASE("FileLoggingStrategy test", "[log]")
     auto const test_file_name = L"logging-test.log";
     auto const test_file_path = wxFileName(scoped_dir.GetPath(), test_file_name);
     
-    FileLoggingStrategy st(test_file_path.GetFullPath());
+    FileLoggingStrategy st(test_file_path.GetFullPath().ToStdWstring());
     
     st.EnableRedirectionToDebugConsole(false);
     

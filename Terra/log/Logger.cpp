@@ -153,7 +153,7 @@ Error Logger::OutputLogImpl(String level, String message)
         time_str = std::string("(time not available: ") + strerror(error) + ")";
     } else {
         char buf[256] = {};
-        strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S:%L %z", &ltime);
+        strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S %z", &ltime);
         time_str = buf;
     }
     

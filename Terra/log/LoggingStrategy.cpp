@@ -58,6 +58,7 @@ Either<Error, FileStreamType> create_file_stream(String path, std::ios::openmode
     file.Mkdir(wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
     
     FileStreamType s;
+    errno = 0;
 #if defined(_MSC_VER)
     s.open(path, mode);
 #else
@@ -91,6 +92,7 @@ Error FileLoggingStrategy::OpenPermanently()
 Error FileLoggingStrategy::Close()
 {
     auto lock = pimpl_->lf_stream_.make_lock();
+    errno = 0;
     pimpl_->stream_.close();
     return Error(get_error_message());
 }
@@ -123,13 +125,18 @@ Error FileLoggingStrategy::OutputLog(String const &message)
     
     auto lock = pimpl_->lf_stream_.make_lock();
     if(pimpl_->stream_.is_open()) {
-        pimpl_->stream_ << message << std::endl;
-        return Error(get_error_message());
+        errno = 0;
+        pimpl_->stream_.clear();
+        pimpl_->stream_ << to_utf8(message) << std::endl;
+        if(pimpl_->stream_.fail()) {
+            return Error(get_error_message());
+        }
     } else {
         lock.unlock();
         auto result = create_file_stream<std::ofstream>(pimpl_->path_, kDefaultOpenMode);
         if(result.is_right()) {
-            result.right() << message << std::endl;
+            errno = 0;
+            result.right() << to_utf8(message) << std::endl;
             if(result.right().fail()) {
                 return Error(get_error_message());
             }

@@ -145,6 +145,7 @@ Error Logger::OutputLogImpl(String level, String message)
 #if defined(_MSC_VER)
     auto error = localtime_s(&ltime, &t);
 #else
+    errno = 0;
     localtime_r(&t, &ltime);
     auto error = errno;
 #endif

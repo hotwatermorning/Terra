@@ -1,3 +1,6 @@
+#include <atomic>
+#include <fstream>
+
 #include "LoggingStrategy.hpp"
 
 #include "../misc/Either.hpp"
@@ -14,9 +17,18 @@ Logger::LoggingStrategy::LoggingStrategy()
 Logger::LoggingStrategy::~LoggingStrategy()
 {}
 
-FileLoggingStrategy::FileLoggingStrategy(String path)
+struct FileLoggingStrategy::Impl
 {
-    path_ = path;
+    LockFactory lf_stream_;
+    String path_;
+    std::ofstream stream_;
+    std::atomic<bool> redirect_to_debug_console_ = { true };
+};
+
+FileLoggingStrategy::FileLoggingStrategy(String path)
+:   pimpl_(std::make_unique<Impl>())
+{
+    pimpl_->path_ = path;
 }
 
 FileLoggingStrategy::~FileLoggingStrategy()
@@ -26,8 +38,8 @@ FileLoggingStrategy::~FileLoggingStrategy()
 
 bool FileLoggingStrategy::IsOpenedPermanently() const
 {
-    auto lock = lf_stream_.make_lock();
-    return stream_.is_open();
+    auto lock = pimpl_->lf_stream_.make_lock();
+    return pimpl_->stream_.is_open();
 }
 
 String get_error_message()
@@ -42,6 +54,9 @@ String get_error_message()
 template<class FileStreamType>
 Either<Error, FileStreamType> create_file_stream(String path, std::ios::openmode mode)
 {
+    auto file = wxFileName::FileName(path);
+    file.Mkdir(wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+    
     FileStreamType s;
 #if defined(_MSC_VER)
     s.open(path, mode);
@@ -60,13 +75,13 @@ std::ios_base::openmode const kDefaultOpenMode = std::ios_base::app|std::ios_bas
 
 Error FileLoggingStrategy::OpenPermanently()
 {
-    auto lock = lf_stream_.make_lock();
-    if(stream_.is_open()) { return Error::NoError(); }
+    auto lock = pimpl_->lf_stream_.make_lock();
+    if(pimpl_->stream_.is_open()) { return Error::NoError(); }
     
-    auto result = create_file_stream<std::ofstream>(path_, kDefaultOpenMode);
+    auto result = create_file_stream<std::ofstream>(pimpl_->path_, kDefaultOpenMode);
     
     if(result.is_right()) {
-        stream_ = std::move(result.right());
+        pimpl_->stream_ = std::move(result.right());
         return Error::NoError();
     } else {
         return result.left();
@@ -75,9 +90,19 @@ Error FileLoggingStrategy::OpenPermanently()
 
 Error FileLoggingStrategy::Close()
 {
-    auto lock = lf_stream_.make_lock();
-    stream_.close();
+    auto lock = pimpl_->lf_stream_.make_lock();
+    pimpl_->stream_.close();
     return Error(get_error_message());
+}
+
+void FileLoggingStrategy::EnableRedirectionToDebugConsole(bool enable)
+{
+    pimpl_->redirect_to_debug_console_.store(enable);
+}
+
+bool FileLoggingStrategy::IsEnabledRedirectionToDebugConsole() const
+{
+    return pimpl_->redirect_to_debug_console_.load();
 }
 
 void FileLoggingStrategy::OnAfterAssigned(Logger *logger)
@@ -88,13 +113,21 @@ void FileLoggingStrategy::OnBeforeDeassigned(Logger *logger)
 
 Error FileLoggingStrategy::OutputLog(String const &message)
 {
-    auto lock = lf_stream_.make_lock();
-    if(stream_.is_open()) {
-        stream_ << message << std::endl;
+    if(pimpl_->redirect_to_debug_console_.load()) {
+#if defined(_MSC_VER)
+        hwm::wdout << message << std::endl;
+#else
+        hwm::dout << to_utf8(message) << std::endl;
+#endif
+    }
+    
+    auto lock = pimpl_->lf_stream_.make_lock();
+    if(pimpl_->stream_.is_open()) {
+        pimpl_->stream_ << message << std::endl;
         return Error(get_error_message());
     } else {
         lock.unlock();
-        auto result = create_file_stream<std::ofstream>(path_, kDefaultOpenMode);
+        auto result = create_file_stream<std::ofstream>(pimpl_->path_, kDefaultOpenMode);
         if(result.is_right()) {
             result.right() << message << std::endl;
             if(result.right().fail()) {

@@ -2,7 +2,7 @@
 
 #include "./Logger.hpp"
 
-#include <fstream>
+#include <memory>
 
 NS_HWM_BEGIN
 
@@ -46,14 +46,16 @@ public:
     //! Close the target file if the file has been opened permanently.
     Logger::Error Close();
     
+    void EnableRedirectionToDebugConsole(bool enable);
+    bool IsEnabledRedirectionToDebugConsole() const;
+    
     void OnAfterAssigned(Logger *logger) override;
     void OnBeforeDeassigned(Logger *logger) override;
     Logger::Error OutputLog(String const &message) override;
     
 private:
-    LockFactory lf_stream_;
-    String path_;
-    std::ofstream stream_;
+    struct Impl;
+    std::unique_ptr<Impl> pimpl_;
 };
 
 class DebugConsoleLoggingStrategy : public Logger::LoggingStrategy

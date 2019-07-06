@@ -22,13 +22,14 @@ The yet another audio plugin hosting application. (alpha version)
 
 Currently Terra can be built on these platforms:
 
-* macOS 10.13.4 & Xcode 9.3.1
-* macOS 10.13.4 & Xcode 10.1
+* macOS 10.13 & Xcode 9.3.1
+* macOS 10.14 & Xcode 10.2.1
 * Windows 10 & Visual Studio 2017
+* Windows 10 & Visual Studio 2019
 
 ### Prerequisites
 
-* Java JDK or JRE version 8 or higher (for Gradle)
+* Java JRE (or JDK) version 8 or higher (for Gradle)
 * Git 2.8.1 or later
 * CMake 3.14.1 or later
 * Xcode 9.3.1 or later

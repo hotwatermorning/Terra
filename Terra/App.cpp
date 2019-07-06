@@ -98,7 +98,7 @@ bool MyApp::OnInit()
     
     InitializeDefaultGlobalLogger();
     auto logger = GetGlobalLogger();
-    auto st = std::make_shared<FileLoggingStrategy>(GetTerraDir() + L"/Terra.log");
+    auto st = std::make_shared<FileLoggingStrategy>(GetTerraDir() + L"/log/Terra.log");
     auto err = st->OpenPermanently();
     if(err) {
         wxMessageBox(L"Can't open log file: " + err.message());

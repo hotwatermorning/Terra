@@ -95,8 +95,11 @@ bool Logger::IsValidLoggingLevel(String level) const
 
 void Logger::StartLogging(bool start)
 {
-    //! Ensure the current logging operation has finished.
+    // Ensure the current logging operation has finished.
     auto lock = lf_logging_.make_lock();
+    
+    // a strategy must available before starting.
+    assert(pimpl_->st_ != nullptr);
     
     pimpl_->started_.store(start);
 }

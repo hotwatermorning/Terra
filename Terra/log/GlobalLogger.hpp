@@ -22,8 +22,8 @@ public:
     LoggerRef(LoggerRef &&);
     LoggerRef & operator=(LoggerRef &&);
     
-    Logger * get() const { return logger_; }
-    Logger * operator->() { return logger_; }
+    Logger * get() const noexcept { return logger_; }
+    Logger * operator->() noexcept { return logger_; }
     
     bool is_valid() const noexcept { return logger_ != nullptr; }
     explicit operator bool() const noexcept { return is_valid(); }
@@ -33,6 +33,13 @@ public:
 private:
     Logger *logger_ = nullptr;
 };
+
+bool operator==(LoggerRef const &lhs, LoggerRef const &rhs) noexcept;
+bool operator==(Logger const *lhs, LoggerRef const &rhs) noexcept;
+bool operator==(LoggerRef const &lhs, Logger const *rhs) noexcept;
+bool operator!=(LoggerRef const &lhs, LoggerRef const &rhs) noexcept;
+bool operator!=(Logger const *lhs, LoggerRef const &rhs) noexcept;
+bool operator!=(LoggerRef const &lhs, Logger const *rhs) noexcept;
 
 //! Get global logger
 /*! @return LoggerRef object to the global logger.

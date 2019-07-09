@@ -62,6 +62,36 @@ void LoggerRef::reset()
     logger_ = nullptr;
 }
 
+bool operator==(LoggerRef const &lhs, LoggerRef const &rhs) noexcept
+{
+    return lhs.get() == rhs.get();
+}
+
+bool operator==(Logger const *lhs, LoggerRef const &rhs) noexcept
+{
+    return lhs == rhs.get();
+}
+
+bool operator==(LoggerRef const &lhs, Logger const *rhs) noexcept
+{
+    return lhs.get() == rhs;
+}
+
+bool operator!=(LoggerRef const &lhs, LoggerRef const &rhs) noexcept
+{
+    return !(lhs == rhs);
+}
+
+bool operator!=(Logger const *lhs, LoggerRef const &rhs) noexcept
+{
+    return !(lhs == rhs);
+}
+
+bool operator!=(LoggerRef const &lhs, Logger const *rhs) noexcept
+{
+    return !(lhs == rhs);
+}
+
 LoggerRef GetGlobalLogger()
 {
     auto lock = g_lf_.make_lock();

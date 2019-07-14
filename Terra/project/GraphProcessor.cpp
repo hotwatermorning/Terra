@@ -2,6 +2,8 @@
 #include "../processor/EventBuffer.hpp"
 #include "../misc/StrCnv.hpp"
 #include "../file/ProjectObjectTable.hpp"
+#include "../transport/Transporter.hpp"
+#include "../transport/Traverser.hpp"
 
 NS_HWM_BEGIN
 
@@ -113,7 +115,7 @@ public:
     
     UInt32 GetChannelIndex() const override { return channel_index_; }
     
-    bool IsGainFaderEnabled() const { return true; }
+    bool IsGainFaderEnabled() const override { return true; }
     
     void doOnStartProcessing(double sample_rate, SampleCount block_size) override
     {
@@ -458,7 +460,8 @@ bool GraphProcessor::Node::HasPathTo(Node const *downstream) const
     return result;
 }
 
-class NodeImpl : public GraphProcessor::Node
+class NodeImpl
+:   public GraphProcessor::Node
 {
 public:
     using RingBuffer = MultiChannelThreadSafeRingBuffer<AudioSample>;
@@ -522,39 +525,44 @@ public:
         processor_->OnStartProcessing(sample_rate, block_size);
     }
     
-    void ProcessOnce(TransportInfo const &ti)
+    void ProcessOnce(SampleCount num_samples)
     {
         if(processed_) { return; }
         else { processed_ = true; }
         
-        input_event_buffers_.ApplyCachedNoteOffs();
-        
-        output_event_buffers_.Clear();
-        input_event_buffers_.Sort();
-        
-        ProcessInfo pi;
-        pi.time_info_ = &ti;
-        pi.input_audio_buffer_ = BufferRef<float const > {
-            input_audio_buffer_,
-            0,
-            input_audio_buffer_.channels(),
-            0,
-            (UInt32)ti.play_.duration_.sample_
-        };
-        pi.output_audio_buffer_ = BufferRef<float> {
-            output_audio_buffer_,
-            0,
-            output_audio_buffer_.channels(),
-            0,
-            (UInt32)ti.play_.duration_.sample_
-        };
-        
-        pi.input_event_buffers_ = &input_event_buffers_;
-        pi.output_event_buffers_ = &output_event_buffers_;
-        
-        processor_->Process(pi);
-        
-        input_event_buffers_.Clear();
+        auto callback = MakeTraversalCallback([this](TransportInfo const &ti) {
+            input_event_buffers_.ApplyCachedNoteOffs();
+            
+            output_event_buffers_.Clear();
+            input_event_buffers_.Sort();
+            
+            ProcessInfo pi;
+            pi.time_info_ = &ti;
+            pi.input_audio_buffer_ = BufferRef<float const > {
+                input_audio_buffer_,
+                0,
+                input_audio_buffer_.channels(),
+                0,
+                (UInt32)ti.play_.duration_.sample_
+            };
+            pi.output_audio_buffer_ = BufferRef<float> {
+                output_audio_buffer_,
+                0,
+                output_audio_buffer_.channels(),
+                0,
+                (UInt32)ti.play_.duration_.sample_
+            };
+            
+            pi.input_event_buffers_ = &input_event_buffers_;
+            pi.output_event_buffers_ = &output_event_buffers_;
+            
+            processor_->Process(pi);
+            
+            input_event_buffers_.Clear();
+        });
+     
+        Transporter::Traverser tv;
+        tv.Traverse(processor_->GetTransporter(), num_samples, &callback);
     }
     
     void OnStopProcessing()
@@ -857,7 +865,7 @@ void GraphProcessor::StartProcessing(double sample_rate, SampleCount block_size)
     pimpl_->prepared_ = true;
 }
 
-void GraphProcessor::Process(TransportInfo const &ti)
+void GraphProcessor::Process(SampleCount num_samples)
 {
     auto lock = pimpl_->lf_.make_lock();
     
@@ -872,7 +880,7 @@ void GraphProcessor::Process(TransportInfo const &ti)
         auto up = ToNodeImpl(conn->upstream_);
         auto down = ToNodeImpl(conn->downstream_);
         
-        up->ProcessOnce(ti);
+        up->ProcessOnce(num_samples);
         
         if(auto ac = dynamic_cast<AudioConnection const *>(conn.get())) {
             BufferRef<float const> ref {
@@ -880,7 +888,7 @@ void GraphProcessor::Process(TransportInfo const &ti)
                 ac->upstream_channel_index_,
                 ac->num_channels_,
                 0,
-                (UInt32)ti.play_.duration_.sample_
+                (UInt32)num_samples
             };
             down->AddAudio(ref, ac->downstream_channel_index_);
         } else if(auto mc = dynamic_cast<MidiConnection const *>(conn.get())) {
@@ -893,7 +901,7 @@ void GraphProcessor::Process(TransportInfo const &ti)
 
     //! 下流に接続していないNodeはProcessが呼ばれないので、ここで呼び出すようにする。
     for(auto const &conn: *pimpl_->frame_procedure_) {
-        ToNodeImpl(conn->downstream_)->ProcessOnce(ti);
+        ToNodeImpl(conn->downstream_)->ProcessOnce(num_samples);
     }
     
     for(auto const &conn: *pimpl_->frame_procedure_) {
@@ -929,6 +937,7 @@ GraphProcessor::NodePtr GraphProcessor::AddNode(std::shared_ptr<Processor> proce
     if(found != pimpl_->nodes_.end()) { return *found; }
     
     auto node = std::make_shared<NodeImpl>(processor);
+    processor->ResetTransporter(GetTransporter()->GetMusicalTimeService());
     
     pimpl_->nodes_.push_back(node);
     pimpl_->RegisterIOProcessorIfNeeded(node->GetProcessor().get());

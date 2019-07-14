@@ -16,6 +16,52 @@ Vst3Plugin::BusDirections ToVst3BusDirection(BusDirection dir)
     : Vst3Plugin::BusDirections::kOutput;
 }
 
+//class Processor::TransportStateListener
+//:   public Transport::ITransportStateListener
+//{
+//    TransportStateListener(Processor *p)
+//    :   owner_(p)
+//    {}
+//
+//    void OnChanged(TransportInfo const &old_state, TransportInfo const &new_state);
+//};
+
+Processor::Processor()
+{}
+
+Processor::~Processor()
+{}
+
+void Processor::ResetTransporter(IMusicalTimeService const *mts)
+{
+    tp_ = std::make_unique<Transporter>(mts);
+}
+
+Transporter * Processor::GetTransporter()
+{
+    return tp_.get();
+}
+
+Transporter const * Processor::GetTransporter() const
+{
+    return tp_.get();
+}
+
+TransportInfo Processor::GetTransportInfo() const
+{
+    return tp_->GetCurrentState();
+}
+
+void Processor::SetTransportInfoWithPlaybackPosition(TransportInfo const &ti)
+{
+    tp_->SetCurrentStateWithPlaybackPosition(ti);
+}
+
+void Processor::SetTransportInfoWithoutPlaybackPosition(TransportInfo const &ti)
+{
+    tp_->SetCurrentStateWithoutPlaybackPosition(ti);
+}
+
 std::unique_ptr<schema::Processor> Processor::ToSchema() const
 {
     return ToSchemaImpl();

@@ -6,22 +6,33 @@
 
 #include "../misc/LockFactory.hpp"
 #include "../misc/TransitionalVolume.hpp"
+#include "../transport/TransportFwd.hpp"
+#include "../project/IMusicalTimeService.hpp"
 
 NS_HWM_BEGIN
 
 enum class BusDirection { kInputSide, kOutputSide };
 
+//! 各VST3プラグインのフレーム処理でも再生位置情報を渡す必要があるので、Transporterは必要。
 class Processor
 {
 protected:
-    Processor()
-    {}
+    Processor();
     
 public:
     virtual
-    ~Processor() {}
+    ~Processor();
     
     virtual String GetName() const = 0;
+    
+    void ResetTransporter(IMusicalTimeService const *mts);
+    TransportInfo GetTransportInfo() const;
+    
+    Transporter * GetTransporter();
+    Transporter const * GetTransporter() const;
+    
+    void SetTransportInfoWithPlaybackPosition(TransportInfo const &ti);
+    void SetTransportInfoWithoutPlaybackPosition(TransportInfo const &ti);
     
     void OnStartProcessing(double sample_rate, SampleCount block_size);
     void Process(ProcessInfo &pi);
@@ -64,6 +75,10 @@ private:
     virtual
     std::unique_ptr<schema::Processor> ToSchemaImpl() const = 0;
     TransitionalVolume volume_;
+    std::unique_ptr<Transporter> tp_;
+    
+//    friend
+//    struct TransportStateListener;
     
     virtual
     void doOnStartProcessing(double sample_rate, SampleCount block_size)
@@ -75,6 +90,11 @@ private:
     virtual
     void doOnStopProcessing()
     {}
+    
+    virtual
+    void doSetTransportInfoWithPlaybackPosition(TransportInfo const &ti) {}
+    virtual
+    void doSetTransportInfoWithoutPlaybackPosition(TransportInfo const &ti) {}
     
 protected:
     void SetVolumeLevelImmediately(double dB);
@@ -170,5 +190,10 @@ private:
     // apply saved data to the plugin if it has been resumed().
     void LoadDataImpl();
 };
+
+//class SequenceSourceProcessor
+//{
+//    
+//}
 
 NS_HWM_END

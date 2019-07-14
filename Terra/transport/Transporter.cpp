@@ -45,6 +45,21 @@ TransportInfo Transporter::GetCurrentState() const
     return transport_info_;
 }
 
+void Transporter::SetCurrentStateWithPlaybackPosition(TransportInfo const &new_info)
+{
+    AlterTransportInfo([new_info](auto &info) {
+        info = new_info;
+    });
+}
+
+void Transporter::SetCurrentStateWithoutPlaybackPosition(TransportInfo const &new_info)
+{
+    AlterTransportInfo([ni = new_info](auto &info) mutable {
+        ni.play_ = info.play_;
+        info = ni;
+    });
+}
+
 bool Transporter::IsPlaying() const
 {
     auto lock = lf_.make_lock();

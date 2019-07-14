@@ -23,6 +23,9 @@ public:
     
     TransportInfo GetCurrentState() const;
     
+    void SetCurrentStateWithPlaybackPosition(TransportInfo const &info);
+    void SetCurrentStateWithoutPlaybackPosition(TransportInfo const &info);
+    
     bool IsPlaying() const;
     TimeRange GetLoopRange() const;
     bool IsLoopEnabled() const;

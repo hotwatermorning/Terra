@@ -291,6 +291,7 @@ namespace {
 }
 
 struct Project::Impl
+:   public Transporter::ITransportStateListener
 {
     Impl(Project *pj)
     :   tp_(pj)
@@ -452,12 +453,19 @@ struct Project::Impl
     };
     
     MidiProcessorList midi_processors_;
+    
+    void OnChanged(TransportInfo const &prev_state,
+                   TransportInfo const &new_state) override
+    {
+        graph_->SetTransportInfoWithPlaybackPosition(new_state);
+    }
 };
 
 Project::Project()
 :   pimpl_(std::make_unique<Impl>(this))
 {
     pimpl_->graph_ = std::make_unique<GraphProcessor>();
+    pimpl_->graph_->ResetTransporter(this);
     
     pimpl_->playing_sequence_notes_.Clear();
     pimpl_->requested_sample_notes_.Clear();
@@ -1207,7 +1215,7 @@ void Project::Process(SampleCount block_size, float const * const * input, float
             (UInt32)ti.play_.duration_.sample_,
         };
         
-        pimpl_->graph_->Process(ti);
+        pimpl_->graph_->Process(ti.play_.duration_.sample_);
 
         num_processed += ti.play_.duration_.sample_;
     });

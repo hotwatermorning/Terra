@@ -8,11 +8,8 @@
 
 NS_HWM_BEGIN
 
-//! unlike juce::AudioProcessorGraph,
-//! This class does not inherit Processor,
-//! because currently this class is intended to only be used with the Project class,
-//! and therefore no need to be so generic as much as juce::AudioGraphProcessor which is also juce::AudioProcessor.
 class GraphProcessor
+:   public Processor
 {
 public:
     class Node;
@@ -123,7 +120,7 @@ public:
     MidiOutput const *  GetMidiOutput(UInt32 index) const;
     
     void StartProcessing(double sample_rate, SampleCount block_size);
-    void Process(TransportInfo const &ti);
+    void Process(SampleCount num_samples);
     void StopProcessing();
     
     class Connection
@@ -264,6 +261,38 @@ public:
     
     static
     std::unique_ptr<GraphProcessor> FromSchema(schema::NodeGraph const &schema);
+    
+//    virtual
+//    SampleCount GetLatencySample() const { return 0; }
+//
+//    //! オーディオ入出力チャンネル数
+//    virtual
+//    UInt32 GetAudioChannelCount(BusDirection dir) const { return 0; }
+//
+//    //! Midi入出力チャンネル数
+//    /*! ここでいうチャンネルは、Midiメッセージのチャンネルではなく、
+//     *  VST3のEventBusのインデックスを表す。
+//     */
+//    virtual
+//    UInt32 GetMidiChannelCount(BusDirection dir) const { return 0; }
+    
+    bool HasEditor() const override { return false; }
+        
+//    virtual
+//    bool IsGainFaderEnabled() const;
+    
+    void doOnStartProcessing(double sample_rate, SampleCount block_size) override {}
+    void doProcess(ProcessInfo &pi) override {}
+    void doOnStopProcessing() override {}
+    
+    void doSetTransportInfoWithPlaybackPosition(TransportInfo const &ti) override {}
+    void doSetTransportInfoWithoutPlaybackPosition(TransportInfo const &ti) override {}
+    
+    std::unique_ptr<schema::Processor> ToSchemaImpl() const override {
+        return nullptr;
+    }
+    
+    String GetName() const override { return L"GraphProcessor"; };
 
 public:
     struct Impl;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <vector>
@@ -62,6 +63,11 @@ public:
      *  @pre IsLoggingStarted() == false
      */
     void SetLoggingLevels(std::vector<String> const &levels);
+    
+    template<class T>
+    void SetLoggingLevels(std::initializer_list<T> const &levels) {
+        SetLoggingLevels(std::vector<String>(levels.begin(), levels.end()));
+    }
     
     //! Get logging levels.
     std::vector<String> GetLoggingLevels() const;

@@ -23,6 +23,7 @@ struct FileLoggingStrategy::Impl
     String path_;
     std::ofstream stream_;
     std::atomic<bool> redirect_to_debug_console_ = { true };
+    std::atomic<UInt64> file_size_limit_ = { 20 * 1024 * 1024 };
 };
 
 FileLoggingStrategy::FileLoggingStrategy(String path)
@@ -79,6 +80,10 @@ Error FileLoggingStrategy::OpenPermanently()
     auto lock = pimpl_->lf_stream_.make_lock();
     if(pimpl_->stream_.is_open()) { return Error::NoError(); }
     
+    if(auto err = Rotate(pimpl_->path_, GetFileSizeLimit() * 0.9)) {
+        return err;
+    }
+    
     auto result = create_file_stream<std::ofstream>(pimpl_->path_, kDefaultOpenMode);
     
     if(result.is_right()) {
@@ -107,6 +112,75 @@ bool FileLoggingStrategy::IsEnabledRedirectionToDebugConsole() const
     return pimpl_->redirect_to_debug_console_.load();
 }
 
+UInt64 FileLoggingStrategy::GetFileSizeLimit() const
+{
+    return pimpl_->file_size_limit_.load();
+}
+
+void FileLoggingStrategy::SetFileSizeLimit(UInt64 size)
+{
+    pimpl_->file_size_limit_.store(size);
+}
+
+Error FileLoggingStrategy::Rotate(String path, UInt64 size)
+{
+    if(wxFile::Exists(path) == false) {
+        return Error::NoError();
+    }
+    
+#if defined(_MSC_VER)
+    std::ifstream src(path, std::ios::in|std::ios::out|std::ios::binary);
+#else
+    std::ifstream src(to_utf8(path), std::ios::in|std::ios::out|std::ios::binary);
+#endif
+    
+    if(src.is_open() == false) { return Error(get_error_message()); }
+    
+    src.seekg(0, std::ios::end);
+    auto pos = src.tellg();
+    
+    if(pos <= size) { return Error::NoError(); }
+    
+    wxFile tmp;
+    
+    auto tmp_file_path = wxFileName::CreateTempFileName("terra-log.tmp", &tmp);
+    if(tmp.IsOpened() == false) { return Error(wxSysErrorMsg()); }
+    
+    src.seekg((UInt64)pos - size, std::ios::beg);
+    std::vector<char> buf(1024 * 1024);
+    
+    for( ; ; ) {
+        src.read(buf.data(), buf.size());
+        if(src.fail() && !src.eof()) {
+            // something wrong....
+            return Error(get_error_message());
+        }
+        
+        tmp.Write(buf.data(), src.gcount());
+        if(src.eof()) { break; }
+    }
+    
+    tmp.Flush();
+    
+    tmp.Close();
+    src.close();
+    
+    if(wxRemoveFile(path) == false) {
+        return Error(std::string("failed to remove the existing log file: ") + wxSysErrorMsg());
+    }
+    
+    if(wxCopyFile(tmp_file_path, path) == false) {
+        return Error(std::string("failed to move the rotated log file: ") + wxSysErrorMsg());
+    }
+    
+    if(wxRemoveFile(tmp_file_path) == false) {
+        std::cerr << "failed to cleanup the temporary file: " << wxSysErrorMsg() << std::endl;
+        // do not treat as an error because rotation is completed.
+    }
+    
+    return Error::NoError();
+}
+
 void FileLoggingStrategy::OnAfterAssigned(Logger *logger)
 {}
 
@@ -133,6 +207,7 @@ Error FileLoggingStrategy::OutputLog(String const &message)
         }
     } else {
         lock.unlock();
+        Rotate(pimpl_->path_, GetFileSizeLimit() * 0.9);
         auto result = create_file_stream<std::ofstream>(pimpl_->path_, kDefaultOpenMode);
         if(result.is_right()) {
             errno = 0;

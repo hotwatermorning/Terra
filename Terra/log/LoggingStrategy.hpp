@@ -53,6 +53,17 @@ public:
     void OnBeforeDeassigned(Logger *logger) override;
     Logger::Error OutputLog(String const &message) override;
     
+    
+    //! Get file size limit.
+    UInt64 GetFileSizeLimit() const;
+    
+    //! Set file size limit.
+    /*! the log file is rotated and shrunk to 90% of this size every time the file is opened.
+     */
+    void SetFileSizeLimit(UInt64 size);
+    
+    static Logger::Error Rotate(String path, UInt64 size);
+    
 private:
     struct Impl;
     std::unique_ptr<Impl> pimpl_;

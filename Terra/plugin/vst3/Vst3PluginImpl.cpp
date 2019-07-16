@@ -15,6 +15,7 @@
 
 #include "../../misc/StrCnv.hpp"
 #include "../../misc/ScopeExit.hpp"
+#include "../../log/LoggingSupport.hpp"
 #include "Vst3Utils.hpp"
 #include "Vst3Plugin.hpp"
 #include "Vst3PluginFactory.hpp"
@@ -781,9 +782,9 @@ std::optional<Vst::Event> const ToVstEvent(ProcessInfo::MidiMessage const &msg)
     using namespace MidiDataType;
     
     if(auto note_on = msg.As<NoteOn>()) {
-        hwm::dout << "Input Note On Event ch:{}, pi:{}, vel{}"_format(msg.channel_,
-                                                                      note_on->pitch_,
-                                                                      note_on->velocity_) << std::endl;
+        TERRA_DEBUG_LOG(L"Input Note On Event ch:{}, pi:{}, vel{}"_format(msg.channel_,
+                                                                          note_on->pitch_,
+                                                                          note_on->velocity_));
         e.type = Vst::Event::kNoteOnEvent;
         e.noteOn.channel = msg.channel_;
         e.noteOn.pitch = note_on->pitch_;
@@ -793,9 +794,9 @@ std::optional<Vst::Event> const ToVstEvent(ProcessInfo::MidiMessage const &msg)
         e.noteOn.noteId = -1;
         return e;
     } else if(auto note_off = msg.As<NoteOff>()){
-        hwm::dout << "Input Note Off Event ch:{}, pi:{}, vel{}"_format(msg.channel_,
-                                                                      note_off->pitch_,
-                                                                      note_off->off_velocity_) << std::endl;
+        TERRA_DEBUG_LOG(L"Input Note Off Event ch:{}, pi:{}, vel{}"_format(msg.channel_,
+                                                                           note_off->pitch_,
+                                                                           note_off->off_velocity_));
         e.type = Vst::Event::kNoteOffEvent;
         e.noteOff.channel = msg.channel_;
         e.noteOff.pitch = note_off->pitch_;

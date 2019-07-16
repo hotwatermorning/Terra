@@ -1294,9 +1294,9 @@ void Project::OnSetMidi(GraphProcessor::MidiInput *input, ProcessInfo const &pi,
 #if defined(_DEBUG)
     for(auto const &e: buffer) {
         if(auto p = e.As<MidiDataType::NoteOn>()) {
-            hwm::dout << "note on: offset {}, pitch {}"_format(e.offset_, p->pitch_) << std::endl;
+            TERRA_DEBUG_LOG(L"note on: offset {}, pitch {}"_format(e.offset_, p->pitch_));
         } else if(auto p = e.As<MidiDataType::NoteOff>()) {
-            hwm::dout << "note off: offset {}, pitch {}"_format(e.offset_, p->pitch_) << std::endl;
+            TERRA_DEBUG_LOG(L"note off: offset {}, pitch {}"_format(e.offset_, p->pitch_));
         }
     }
 #endif

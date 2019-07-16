@@ -5,6 +5,7 @@
 #include <array>
 #include <vector>
 
+#include "../misc/Range.hpp"
 #include "./ProcessInfo.hpp"
 
 NS_HWM_BEGIN
@@ -70,9 +71,10 @@ struct EventBuffer : public ProcessInfo::IEventBuffer
         return events_;
     }
     
-    void AddEvents(ArrayRef<ProcessInfo::MidiMessage const> ref)
+    void AddEvents(ArrayRef<ProcessInfo::MidiMessage const> ref, SampleCount offset_shift)
     {
         for(auto m: ref) {
+            m.offset_ += offset_shift;
             AddEvent(m);
         }
     }
@@ -80,6 +82,15 @@ struct EventBuffer : public ProcessInfo::IEventBuffer
     void Clear()
     {
         events_.clear();
+    }
+    
+    //! Events must already be sorted to work this function correctly.
+    void PopFrontEvents(SampleCount len)
+    {
+        std::for_each(events_.begin(), events_.end(), [len](auto &m) { m.offset_ -= len; });
+        auto found = find_if(events_, [](auto const &m) { return m.offset_ >= 0; });
+        
+        events_.erase(found, events_.end());
     }
     
     void Sort()

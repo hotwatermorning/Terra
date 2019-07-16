@@ -38,6 +38,9 @@ public:
     
     UInt32 GetChannelIndex() const override { return channel_index_; }
     
+    /*! レイテンシを補償しない現在の版では、外部入力を正しく扱えない。
+     *  どれだけのレイテンシが必要になるかを事前に計算しておき、その量までは無音を返すようにしないといけない。
+     */
     void doProcess(ProcessInfo &pi) override
     {
         assert(callback_);
@@ -153,7 +156,11 @@ public:
     
     void ProcessPostFader()
     {
+        if(pi_.time_info_ == nullptr) { return; }
+        
         callback_(this, pi_);
+        
+        pi_.time_info_ = nullptr;
     }
     
     std::unique_ptr<schema::Processor> ToSchemaImpl() const override
@@ -323,166 +330,206 @@ private:
 //================================================================================================
 //================================================================================================
 
-std::vector<GraphProcessor::AudioConnectionPtr>
-GraphProcessor::Node::GetAudioConnections(BusDirection dir) const
-{
-    if(dir == BusDirection::kInputSide) {
-        return input_audio_connections_;
-    } else {
-        return output_audio_connections_;
-    }
-}
+class NodeImpl;
+NodeImpl * ToNodeImpl(GraphProcessor::Node *node);
+NodeImpl const * ToNodeImpl(GraphProcessor::Node const *node);
 
-std::vector<GraphProcessor::MidiConnectionPtr>
-GraphProcessor::Node::GetMidiConnections(BusDirection dir) const
-{
-    if(dir == BusDirection::kInputSide) {
-        return input_midi_connections_;
-    } else {
-        return output_midi_connections_;
-    }
-}
-
-template<class List, class F>
-auto GetConnectionsToImpl(List const &list, F pred)
-{
-    List ret;
-    std::copy_if(list.begin(), list.end(), std::back_inserter(ret), pred);
-    return ret;
-}
-
-std::vector<GraphProcessor::AudioConnectionPtr>
-GraphProcessor::Node::GetAudioConnectionsTo(BusDirection dir, Node const *target) const
-{
-    if(dir == BusDirection::kInputSide) {
-        return GetConnectionsToImpl(input_audio_connections_, [target](auto x) { return x->upstream_ == target; });
-    } else {
-        return GetConnectionsToImpl(output_audio_connections_, [target](auto x) { return x->downstream_ == target; });
-    }
-}
-
-std::vector<GraphProcessor::MidiConnectionPtr>
-GraphProcessor::Node::GetMidiConnectionsTo(BusDirection dir, Node const *target) const
-{
-    if(dir == BusDirection::kInputSide) {
-        return GetConnectionsToImpl(input_midi_connections_, [target](auto x) { return x->upstream_ == target; });
-    } else {
-        return GetConnectionsToImpl(output_midi_connections_, [target](auto x) { return x->downstream_ == target; });
-    }
-}
-
-template<class List, class F>
-bool HasConnectionsToImpl(List const &list, F pred)
-{
-    return std::any_of(list.begin(), list.end(), pred);
-}
-
-bool GraphProcessor::Node::HasAudioConnectionsTo(BusDirection dir, Node const *target) const
-{
-    if(dir == BusDirection::kInputSide) {
-        return HasConnectionsToImpl(input_audio_connections_, [target](auto x) { return x->upstream_ == target; });
-    } else {
-        return HasConnectionsToImpl(output_audio_connections_, [target](auto x) { return x->downstream_ == target; });
-    }
-}
-
-bool GraphProcessor::Node::HasMidiConnectionsTo(BusDirection dir, Node const *target) const
-{
-    if(dir == BusDirection::kInputSide) {
-        return HasConnectionsToImpl(input_midi_connections_, [target](auto x) { return x->upstream_ == target; });
-    } else {
-        return HasConnectionsToImpl(output_midi_connections_, [target](auto x) { return x->downstream_ == target; });
-    }
-}
-
-bool GraphProcessor::Node::HasConnectionsTo(BusDirection dir, Node const *target) const
-{
-    return HasAudioConnectionsTo(dir, target) || HasMidiConnectionsTo(dir, target);
-}
-
-bool GraphProcessor::Node::IsConnected() const
-{
-    return  input_audio_connections_.size() > 0
-    ||      output_audio_connections_.size() > 0
-    ||      input_midi_connections_.size() > 0
-    ||      output_midi_connections_.size() > 0;
-}
-
-// upstrea から downstream に対して、(間接的にでも) 接続が存在しているかどうか
-template<class F>
-bool HasPathImpl(GraphProcessor::Node const *upstream,
-                 GraphProcessor::Node const *downstream,
-                 F get_connections)
-{
-    auto find_downstream = [get_connections](auto upstream, auto target, auto &hist, auto find_next) {
-        for(auto const &conn: get_connections(upstream)) {
-            if(conn->downstream_ == target) { return true; }
-            // ループを発見。
-            if(std::count(hist.begin(), hist.end(), conn) != 0) { return false; }
-            
-            hist.push_back(conn);
-            if(find_next(conn->downstream_, target, hist, find_next)) { return true; }
-            hist.pop_back();
-        }
-        
-        return false;
-    };
-    
-    std::vector<std::shared_ptr<GraphProcessor::Connection const>> hist;
-    return find_downstream(upstream, downstream, hist, find_downstream);
-}
-
-bool GraphProcessor::Node::HasAudioPathTo(Node const *downstream) const
-{
-    return HasPathImpl(this, downstream, [](auto node) {
-        return node->GetAudioConnections(BusDirection::kOutputSide);
-    });
-}
-
-bool GraphProcessor::Node::HasMidiPathTo(Node const *downstream) const
-{
-    return HasPathImpl(this, downstream, [](auto node) {
-        return node->GetMidiConnections(BusDirection::kOutputSide);
-    });
-}
-
-bool GraphProcessor::Node::HasPathTo(Node const *downstream) const
-{
-    auto result = HasPathImpl(this, downstream, [](auto stream) {
-        std::vector<ConnectionPtr> tmp;
-        auto audio_conns = stream->GetAudioConnections(BusDirection::kOutputSide);
-        tmp.insert(tmp.end(), audio_conns.begin(), audio_conns.end());
-        auto midi_conns = stream->GetMidiConnections(BusDirection::kOutputSide);
-        tmp.insert(tmp.end(), midi_conns.begin(), midi_conns.end());
-        return tmp;
-    });
-    
-    return result;
-}
+GraphProcessor::Node::Node() {}
+GraphProcessor::Node::~Node() {}
 
 class NodeImpl
 :   public GraphProcessor::Node
 {
 public:
+    using ConnectionPtr = GraphProcessor::ConnectionPtr;
+    using AudioConnectionPtr = GraphProcessor::AudioConnectionPtr;
+    using MidiConnectionPtr = GraphProcessor::MidiConnectionPtr;
+    
     using RingBuffer = MultiChannelThreadSafeRingBuffer<AudioSample>;
     
     NodeImpl(std::shared_ptr<Processor> processor)
-    :   Node(std::move(processor))
+    :   processor_(std::move(processor))
     {}
     
     ~NodeImpl()
     {}
     
+    std::shared_ptr<Processor> GetProcessor() const override
+    {
+        return processor_;
+    }
+    
+    std::vector<GraphProcessor::AudioConnectionPtr>
+    GetAudioConnections(BusDirection dir) const override
+    {
+        if(dir == BusDirection::kInputSide) {
+            return editable_connections_.audio_.input_;
+        } else {
+            return editable_connections_.audio_.output_;
+        }
+    }
+    
+    std::vector<GraphProcessor::MidiConnectionPtr>
+    GetMidiConnections(BusDirection dir) const override
+    {
+        if(dir == BusDirection::kInputSide) {
+            return editable_connections_.midi_.input_;
+        } else {
+            return editable_connections_.midi_.output_;
+        }
+    }
+    
+    template<class List, class F>
+    static
+    auto GetConnectionsToImpl(List const &list, F pred)
+    {
+        List ret;
+        std::copy_if(list.begin(), list.end(), std::back_inserter(ret), pred);
+        return ret;
+    }
+    
+    std::vector<GraphProcessor::AudioConnectionPtr>
+    GetAudioConnectionsTo(BusDirection dir, Node const *target) const override
+    {
+        if(dir == BusDirection::kInputSide) {
+            return GetConnectionsToImpl(editable_connections_.audio_.input_, [target](auto x) { return x->upstream_ == target; });
+        } else {
+            return GetConnectionsToImpl(editable_connections_.audio_.output_, [target](auto x) { return x->downstream_ == target; });
+        }
+    }
+    
+    std::vector<GraphProcessor::MidiConnectionPtr>
+    GetMidiConnectionsTo(BusDirection dir, Node const *target) const override
+    {
+        if(dir == BusDirection::kInputSide) {
+            return GetConnectionsToImpl(editable_connections_.midi_.input_, [target](auto x) { return x->upstream_ == target; });
+        } else {
+            return GetConnectionsToImpl(editable_connections_.midi_.output_, [target](auto x) { return x->downstream_ == target; });
+        }
+    }
+    
+    template<class List, class F>
+    static
+    bool HasConnectionsToImpl(List const &list, F pred)
+    {
+        return std::any_of(list.begin(), list.end(), pred);
+    }
+    
+    bool HasAudioConnectionsTo(BusDirection dir, Node const *target) const override
+    {
+        if(dir == BusDirection::kInputSide) {
+            return HasConnectionsToImpl(editable_connections_.audio_.input_, [target](auto x) { return x->upstream_ == target; });
+        } else {
+            return HasConnectionsToImpl(editable_connections_.audio_.output_, [target](auto x) { return x->downstream_ == target; });
+        }
+    }
+    
+    bool HasMidiConnectionsTo(BusDirection dir, Node const *target) const override
+    {
+        if(dir == BusDirection::kInputSide) {
+            return HasConnectionsToImpl(editable_connections_.midi_.input_, [target](auto x) { return x->upstream_ == target; });
+        } else {
+            return HasConnectionsToImpl(editable_connections_.midi_.output_, [target](auto x) { return x->downstream_ == target; });
+        }
+    }
+    
+    bool HasConnectionsTo(BusDirection dir, Node const *target) const override
+    {
+        return HasAudioConnectionsTo(dir, target) || HasMidiConnectionsTo(dir, target);
+    }
+    
+    bool IsConnected() const override
+    {
+        return  editable_connections_.audio_.input_.size() > 0
+        ||      editable_connections_.audio_.output_.size() > 0
+        ||      editable_connections_.midi_.input_.size() > 0
+        ||      editable_connections_.midi_.output_.size() > 0;
+    }
+    
+    // upstrea から downstream に対して、(間接的にでも) 接続が存在しているかどうか
+    template<class F>
+    static
+    bool HasPathImpl(GraphProcessor::Node const *upstream,
+                     GraphProcessor::Node const *downstream,
+                     F get_connections)
+    {
+        auto find_downstream = [get_connections](auto upstream, auto target, auto &hist, auto find_next) {
+            for(auto const &conn: get_connections(upstream)) {
+                if(conn->downstream_ == target) { return true; }
+                // ループを発見。
+                if(std::count(hist.begin(), hist.end(), conn) != 0) { return false; }
+                
+                hist.push_back(conn);
+                if(find_next(conn->downstream_, target, hist, find_next)) { return true; }
+                hist.pop_back();
+            }
+            
+            return false;
+        };
+        
+        std::vector<std::shared_ptr<GraphProcessor::Connection const>> hist;
+        return find_downstream(upstream, downstream, hist, find_downstream);
+    }
+    
+    bool HasAudioPathTo(Node const *downstream) const override
+    {
+        return HasPathImpl(this, downstream, [](auto node) {
+            return node->GetAudioConnections(BusDirection::kOutputSide);
+        });
+    }
+    
+    bool HasMidiPathTo(Node const *downstream) const override
+    {
+        return HasPathImpl(this, downstream, [](auto node) {
+            return node->GetMidiConnections(BusDirection::kOutputSide);
+        });
+    }
+    
+    bool HasPathTo(Node const *downstream) const override
+    {
+        auto result = HasPathImpl(this, downstream, [](auto stream) {
+            std::vector<ConnectionPtr> tmp;
+            auto audio_conns = stream->GetAudioConnections(BusDirection::kOutputSide);
+            tmp.insert(tmp.end(), audio_conns.begin(), audio_conns.end());
+            auto midi_conns = stream->GetMidiConnections(BusDirection::kOutputSide);
+            tmp.insert(tmp.end(), midi_conns.begin(), midi_conns.end());
+            return tmp;
+        });
+        
+        return result;
+    }
+    
     void AddConnection(GraphProcessor::AudioConnectionPtr conn, BusDirection dir)
     {
-        auto &list = (dir == BusDirection::kInputSide) ? input_audio_connections_ : output_audio_connections_;
+        auto &audio = editable_connections_.audio_;
+        auto &list = (dir == BusDirection::kInputSide) ? audio.input_ : audio.output_;
         list.push_back(conn);
     }
     
     void AddConnection(GraphProcessor::MidiConnectionPtr conn, BusDirection dir)
     {
-        auto &list = (dir == BusDirection::kInputSide) ? input_midi_connections_ : output_midi_connections_;
+        auto &midi = editable_connections_.midi_;
+        auto &list = (dir == BusDirection::kInputSide) ? midi.input_ : midi.output_;
         list.push_back(conn);
+    }
+    
+    bool HasAudioConnections(BusDirection dir) const
+    {
+        auto &audio = editable_connections_.audio_;
+        auto &list = (dir == BusDirection::kInputSide) ? audio.input_ : audio.output_;
+        return list.empty() == false;
+    }
+    
+    bool HasMidiConnections(BusDirection dir) const
+    {
+        auto &midi = editable_connections_.midi_;
+        auto &list = (dir == BusDirection::kInputSide) ? midi.input_ : midi.output_;
+        return list.empty() == false;
+    }
+    
+    bool HasConnections(BusDirection dir) const
+    {
+        return HasAudioConnections(dir) || HasMidiConnections(dir);
     }
     
     void RemoveConnection(GraphProcessor::ConnectionPtr conn)
@@ -492,10 +539,10 @@ public:
             if(found != list.end()) { list.erase(found); }
         };
         
-        remove(input_audio_connections_, conn);
-        remove(output_audio_connections_, conn);
-        remove(input_midi_connections_, conn);
-        remove(output_midi_connections_, conn);
+        remove(editable_connections_.audio_.input_, conn);
+        remove(editable_connections_.audio_.output_, conn);
+        remove(editable_connections_.midi_.input_, conn);
+        remove(editable_connections_.midi_.output_, conn);
         
         if(conn->downstream_ == this &&
            dynamic_cast<GraphProcessor::MidiConnection const *>(conn.get()))
@@ -505,32 +552,40 @@ public:
         }
     }
     
+    bool IsProcessingStarted() const { return process_started_.load(); }
+    
     void OnStartProcessing(double sample_rate, SampleCount block_size)
     {
-        // @todo バスの動的な変更をサポートするには、接続情報に持たせているチャンネルインデックスの仕組みを変更し、
-        // バスやチャンネルのIDを接続情報に持たせる必要がありそう。
+        process_started_.store(true);
         
-        auto const num_audio_inputs = processor_->GetAudioChannelCount(BusDirection::kInputSide);
-        auto const num_audio_outputs = processor_->GetAudioChannelCount(BusDirection::kOutputSide);
-        
-        input_audio_buffer_.resize(num_audio_inputs, block_size);
-        output_audio_buffer_.resize(num_audio_outputs, block_size);
-        
-        auto const num_event_inputs = processor_->GetMidiChannelCount(BusDirection::kInputSide);
-        auto const num_event_outputs = processor_->GetMidiChannelCount(BusDirection::kOutputSide);
-        
-        input_event_buffers_.SetNumBuffers(num_event_inputs);
-        output_event_buffers_.SetNumBuffers(num_event_outputs);
-        
+        sample_rate_ = sample_rate;
+        block_size_ = block_size;
         processor_->OnStartProcessing(sample_rate, block_size);
+        PrepareBuffers();
     }
     
     void ProcessOnce(SampleCount num_samples)
     {
+        if(process_started_.load() == false) { return; }
+        
         if(processed_) { return; }
         else { processed_ = true; }
         
-        auto callback = MakeTraversalCallback([this](TransportInfo const &ti) {
+        auto pconn = std::atomic_load(&playback_connections_);
+        if(!pconn) { return; }
+        
+        int num_processed = 0;
+        
+        auto callback = MakeTraversalCallback([&, this](TransportInfo const &ti) {
+            auto const len = (UInt32)ti.play_.duration_.sample_;
+            
+            auto process_upstream = [len](auto &upstream_conn) {
+                ToNodeImpl(upstream_conn->upstream_)->ProcessOnce(len);
+            };
+            
+            for_each(pconn->audio_.input_, process_upstream);
+            for_each(pconn->midi_.input_, process_upstream);
+            
             input_event_buffers_.ApplyCachedNoteOffs();
             
             output_event_buffers_.Clear();
@@ -543,14 +598,14 @@ public:
                 0,
                 input_audio_buffer_.channels(),
                 0,
-                (UInt32)ti.play_.duration_.sample_
+                len
             };
             pi.output_audio_buffer_ = BufferRef<float> {
                 output_audio_buffer_,
                 0,
                 output_audio_buffer_.channels(),
                 0,
-                (UInt32)ti.play_.duration_.sample_
+                len
             };
             
             pi.input_event_buffers_ = &input_event_buffers_;
@@ -558,7 +613,42 @@ public:
             
             processor_->Process(pi);
             
-            input_event_buffers_.Clear();
+            // ProcessOnceは、upstreamに遡るにつれてレイテンシの分だけ先読み量が増えるので、単にAddAudioするのでは足し合わせるオーディオの位置がずれる。
+            // なので、何らかの方法で先読み量を取得できるようにし、AddAudio/AddMidiにその量を渡せるようにしたい。
+            // いまはレイテンシを補償する先読み再生が実装されていないので、とりあえずそのまま足し合わせる？
+            // それでも、フレーム分割再生処理によって問題が起きる。どうするか。
+            
+            auto process_audio_downstream
+            = [&](GraphProcessor::AudioConnectionPtr const &c) {
+                auto up = ToNodeImpl(c->upstream_);
+                auto down = ToNodeImpl(c->downstream_);
+
+                BufferRef<float const> ref {
+                    up->output_audio_buffer_, c->upstream_channel_index_,
+                    c->num_channels_, 0, len
+                };
+
+                down->AddAudio(ref,
+                               c->downstream_channel_index_,
+                               num_processed);
+            };
+            
+            auto process_midi_downstream
+            = [&](GraphProcessor::MidiConnectionPtr const &c) {
+                auto up = ToNodeImpl(c->upstream_);
+                auto down = ToNodeImpl(c->downstream_);
+                
+                down->AddMidi(up->output_event_buffers_.GetRef(c->upstream_channel_index_),
+                              c->downstream_channel_index_,
+                              num_processed);
+            };
+            
+            for_each(pconn->audio_.output_, process_audio_downstream);
+            for_each(pconn->midi_.output_, process_midi_downstream);
+            
+            PopInputData(len);
+            
+            num_processed += ti.play_.duration_.sample_;
         });
      
         Transporter::Traverser tv;
@@ -568,10 +658,43 @@ public:
     void OnStopProcessing()
     {
         processor_->OnStopProcessing();
-        input_audio_buffer_ = Buffer<float>();
-        output_audio_buffer_ = Buffer<float>();
-        input_event_buffers_ = EventBufferList();
-        output_event_buffers_ = EventBufferList();
+        sample_rate_ = 0;
+        block_size_ = 0;
+        process_started_.store(false);
+    }
+    
+    void PrepareBuffers()
+    {
+        assert(sample_rate_ > 0 && block_size_ > 0);
+        auto const num_audio_inputs = processor_->GetAudioChannelCount(BusDirection::kInputSide);
+        auto const num_audio_outputs = processor_->GetAudioChannelCount(BusDirection::kOutputSide);
+        
+        input_audio_buffer_.resize(num_audio_inputs, block_size_);
+        output_audio_buffer_.resize(num_audio_outputs, block_size_);
+        
+        auto const num_event_inputs = processor_->GetMidiChannelCount(BusDirection::kInputSide);
+        auto const num_event_outputs = processor_->GetMidiChannelCount(BusDirection::kOutputSide);
+        
+        input_event_buffers_.SetNumBuffers(num_event_inputs);
+        output_event_buffers_.SetNumBuffers(num_event_outputs);
+    }
+    
+    void PopInputData(SampleCount len)
+    {
+        auto const num_samples = input_audio_buffer_.samples();
+        if(len == num_samples) {
+            input_audio_buffer_.fill(0);
+        } else {
+            for(auto ch = 0; ch < input_audio_buffer_.channels(); ++ch) {
+                auto ch_data = input_audio_buffer_.data()[ch];
+                std::move(ch_data + len, ch_data + num_samples, ch_data);
+            }
+        }
+        
+        for(auto i = 0; i < input_event_buffers_.GetNumBuffers(); ++i) {
+            auto buf = input_event_buffers_.GetBuffer(i);
+            buf->PopFrontEvents(len);
+        }
     }
     
     void Clear()
@@ -585,28 +708,83 @@ public:
         processed_ = false;
     }
     
-    void AddAudio(BufferRef<float const> src, Int32 channel_to_write_from)
+    void AddAudio(BufferRef<float const> src, Int32 channel_to_write_from, SampleCount sample_to_write_from)
     {
         auto &dest = input_audio_buffer_;
+
+        auto end_index = sample_to_write_from + (src.samples() - src.sample_from());
+        if(input_audio_buffer_.samples() < end_index) {
+            dest.resize_samples(end_index);
+        }
         
         assert(dest.samples() >= src.samples());
         assert(dest.channels() >= src.channels() + channel_to_write_from);
 
+        auto const num_to_copy = src.samples() - src.sample_from();
         for(int ch = 0; ch < src.channels(); ++ch) {
             auto const ch_src = src.data()[ch + src.channel_from()] + src.sample_from();
-            auto *ch_dest = dest.data()[ch + channel_to_write_from];
-            for(int smp = 0; smp < src.samples(); ++smp) {
+            auto *ch_dest = dest.data()[ch + channel_to_write_from] + sample_to_write_from;
+            for(int smp = 0; smp < num_to_copy; ++smp) {
                 ch_dest[smp] += ch_src[smp];
             }
         }
     }
     
-    void AddMidi(ArrayRef<ProcessInfo::MidiMessage const> src, UInt32 dest_bus_index)
+    void AddMidi(ArrayRef<ProcessInfo::MidiMessage const> src, UInt32 dest_bus_index, SampleCount sample_to_write_from)
     {
         auto &dest = input_event_buffers_;
-        dest.GetBuffer(dest_bus_index)->AddEvents(src);
+        dest.GetBuffer(dest_bus_index)->AddEvents(src, sample_to_write_from);
     }
     
+    struct ConnectionSet;
+    
+    std::shared_ptr<ConnectionSet> DuplicateConnectionSet()
+    {
+        return editable_connections_.Duplicate();
+    }
+    
+    void ReplacePlaybackConnectionSet(std::shared_ptr<ConnectionSet> &&conn)
+    {
+        std::atomic_store(&playback_connections_, conn);
+    }
+    
+    std::shared_ptr<Processor> processor_;
+    
+    struct ConnectionSet {
+        template<class ConnectionPtrType>
+        struct TypedConnectionSet {
+            using this_type = TypedConnectionSet<ConnectionPtrType>;
+            using connection_type = typename ConnectionPtrType::element_type;
+            std::vector<ConnectionPtrType> input_;
+            std::vector<ConnectionPtrType> output_;
+            
+            auto Duplicate() const {
+                this_type tmp;
+                for(auto const &c: input_) { tmp.input_.push_back(std::make_shared<connection_type>(*c)); }
+                for(auto const &c: output_) { tmp.output_.push_back(std::make_shared<connection_type>(*c)); }
+                
+                return tmp;
+            }
+        };
+        
+        TypedConnectionSet<AudioConnectionPtr> audio_;
+        TypedConnectionSet<MidiConnectionPtr> midi_;
+        
+        std::shared_ptr<ConnectionSet> Duplicate() const {
+            auto tmp = std::make_shared<ConnectionSet>();
+            tmp->audio_ = audio_.Duplicate();
+            tmp->midi_ = midi_.Duplicate();
+            
+            return tmp;
+        }
+    };
+    
+    ConnectionSet editable_connections_;
+    std::shared_ptr<ConnectionSet> playback_connections_;
+    
+    std::atomic<bool> process_started_ = false;
+    double sample_rate_ = 0;
+    SampleCount block_size_ = 0;
     std::vector<RingBuffer> channel_delays_;
     Buffer<float> input_audio_buffer_;
     Buffer<float> output_audio_buffer_;
@@ -616,13 +794,13 @@ public:
     bool processed_ = false;
 };
 
-auto ToNodeImpl(GraphProcessor::Node *node)
+NodeImpl * ToNodeImpl(GraphProcessor::Node *node)
 {
     assert(node && dynamic_cast<NodeImpl *>(node));
     return static_cast<NodeImpl *>(node);
 }
 
-auto ToNodeImpl(GraphProcessor::Node const *node)
+NodeImpl const * ToNodeImpl(GraphProcessor::Node const *node)
 {
     assert(node && dynamic_cast<NodeImpl const *>(node));
     return static_cast<NodeImpl const *>(node);
@@ -635,7 +813,8 @@ auto ToNodeImpl(GraphProcessor::Node const *node)
 
 struct GraphProcessor::Impl
 {
-    std::vector<NodePtr> nodes_;
+    using NodeImplPtr = std::shared_ptr<NodeImpl>;
+    std::vector<NodeImplPtr> nodes_;
     std::vector<AudioInput *> audio_input_ptrs_;
     std::vector<AudioOutput *> audio_output_ptrs_;
     std::vector<MidiInput *> midi_input_ptrs_;
@@ -688,12 +867,15 @@ struct GraphProcessor::Impl
     
     LockFactory lf_;
     
-    using FrameProcedure = std::vector<ConnectionPtr>;
-    std::shared_ptr<FrameProcedure> frame_procedure_;
-    
-    std::shared_ptr<FrameProcedure> DuplicateFrameProcedure() const;
-    void ReplaceFrameProcedure(std::shared_ptr<FrameProcedure> p);
-    std::shared_ptr<FrameProcedure> CreateFrameProcedure() const;
+    void UpdatePlaybackGraph()
+    {
+        for(auto node: nodes_) {
+            node->ReplacePlaybackConnectionSet(node->DuplicateConnectionSet());
+        }
+        
+        //! make sure that Process() function is finished.
+        auto lock = lf_.make_lock();
+    }
     
     ListenerService<GraphProcessor::Listener> listeners_;
     
@@ -712,49 +894,6 @@ private:
         list.erase(found);
     }
 };
-
-std::shared_ptr<GraphProcessor::Impl::FrameProcedure> GraphProcessor::Impl::DuplicateFrameProcedure() const
-{
-    auto lock = lf_.make_lock();
-    auto p = frame_procedure_;
-    lock.unlock();
-    
-    if(!p) { return nullptr; }
-    return std::make_shared<FrameProcedure>(*p);
-}
-
-void GraphProcessor::Impl::ReplaceFrameProcedure(std::shared_ptr<FrameProcedure> p)
-{
-    auto lock = lf_.make_lock();
-    std::swap(frame_procedure_, p);
-    lock.unlock();
-}
-
-std::shared_ptr<GraphProcessor::Impl::FrameProcedure> GraphProcessor::Impl::CreateFrameProcedure() const
-{
-    auto copy = nodes_;
-    
-    // 接続のあるノードを、begin側が最上流になるように整列
-    // 接続のないノードは最下流にあるものとみなす。(これがないと、ソートの条件がStrict Weak Orderingを満たさないので、正しくソートできない）
-    std::stable_sort(copy.begin(), copy.end(), [](auto const &lhs, auto const &rhs) {
-        if(lhs->IsConnected() == false) { return false; }
-        return lhs->HasPathTo(rhs.get());
-    });
-    
-    auto procedure = std::make_shared<FrameProcedure>();
-    
-    for(auto node: copy) {
-        for(auto conn: node->GetAudioConnections(BusDirection::kOutputSide)) {
-            procedure->push_back(conn);
-        }
-        
-        for(auto conn: node->GetMidiConnections(BusDirection::kOutputSide)) {
-            procedure->push_back(conn);
-        }
-    }
-    
-    return procedure;
-}
 
 GraphProcessor::GraphProcessor()
 :   pimpl_(std::make_unique<Impl>())
@@ -861,7 +1000,7 @@ void GraphProcessor::StartProcessing(double sample_rate, SampleCount block_size)
     for(auto &node: pimpl_->nodes_) {
         ToNodeImpl(node.get())->OnStartProcessing(sample_rate, block_size);
     }
-    
+
     pimpl_->prepared_ = true;
 }
 
@@ -869,46 +1008,22 @@ void GraphProcessor::Process(SampleCount num_samples)
 {
     auto lock = pimpl_->lf_.make_lock();
     
-    if(!pimpl_->frame_procedure_) { return; }
-    
-    for(auto const &conn: *pimpl_->frame_procedure_) {
-        ToNodeImpl(conn->upstream_)->Clear();
-        ToNodeImpl(conn->downstream_)->Clear();
+    for(auto const &node: pimpl_->nodes_) {
+        node->Clear();
     }
     
-    for(auto const &conn: *pimpl_->frame_procedure_) {
-        auto up = ToNodeImpl(conn->upstream_);
-        auto down = ToNodeImpl(conn->downstream_);
-        
-        up->ProcessOnce(num_samples);
-        
-        if(auto ac = dynamic_cast<AudioConnection const *>(conn.get())) {
-            BufferRef<float const> ref {
-                up->output_audio_buffer_,
-                ac->upstream_channel_index_,
-                ac->num_channels_,
-                0,
-                (UInt32)num_samples
-            };
-            down->AddAudio(ref, ac->downstream_channel_index_);
-        } else if(auto mc = dynamic_cast<MidiConnection const *>(conn.get())) {
-            down->AddMidi(up->output_event_buffers_.GetRef(mc->upstream_channel_index_),
-                          mc->downstream_channel_index_);
-        } else {
-            assert(false);
+    for(auto const &node: pimpl_->nodes_) {
+        if(node->HasConnections(BusDirection::kOutputSide)) {
+            continue;
         }
-    }
-
-    //! 下流に接続していないNodeはProcessが呼ばれないので、ここで呼び出すようにする。
-    for(auto const &conn: *pimpl_->frame_procedure_) {
-        ToNodeImpl(conn->downstream_)->ProcessOnce(num_samples);
+        
+        node->ProcessOnce(num_samples);
     }
     
-    for(auto const &conn: *pimpl_->frame_procedure_) {
-        auto node = ToNodeImpl(conn->downstream_);
+    for(auto const &node: pimpl_->nodes_) {
         if(auto p = dynamic_cast<AudioOutputImpl *>(node->GetProcessor().get())) {
             p->ProcessPostFader();
-        }
+        }        
     }
 }
 
@@ -1004,7 +1119,9 @@ GraphProcessor::NodePtr GraphProcessor::GetNodeOf(Processor const *processor) co
 
 std::vector<GraphProcessor::NodePtr> GraphProcessor::GetNodes() const
 {
-    return pimpl_->nodes_;
+    std::vector<GraphProcessor::NodePtr> tmp;
+    std::copy(pimpl_->nodes_.begin(), pimpl_->nodes_.end(), std::back_inserter(tmp));
+    return tmp;
 }
 
 bool GraphProcessor::ConnectAudio(Node *upstream,
@@ -1057,8 +1174,7 @@ bool GraphProcessor::ConnectAudio(Node *upstream,
     ToNodeImpl(upstream)->AddConnection(c, BusDirection::kOutputSide);
     ToNodeImpl(downstream)->AddConnection(c, BusDirection::kInputSide);
     
-    auto new_procedure = pimpl_->CreateFrameProcedure();
-    pimpl_->ReplaceFrameProcedure(new_procedure);
+    pimpl_->UpdatePlaybackGraph();
     return true;
 }
 
@@ -1092,8 +1208,7 @@ bool GraphProcessor::ConnectMidi(Node *upstream, Node *downstream,
     ToNodeImpl(upstream)->AddConnection(c, BusDirection::kOutputSide);
     ToNodeImpl(downstream)->AddConnection(c, BusDirection::kInputSide);
     
-    auto new_procedure = pimpl_->CreateFrameProcedure();
-    pimpl_->ReplaceFrameProcedure(new_procedure);
+    pimpl_->UpdatePlaybackGraph();
     return true;
 }
 
@@ -1110,17 +1225,6 @@ void RemoveConnection(GraphProcessor::ConnectionPtr conn)
 //! このノードとの接続をすべて解除する
 bool GraphProcessor::Disconnect(Node const *node)
 {
-    if(auto procedure = pimpl_->DuplicateFrameProcedure()) {
-        auto removed = std::remove_if(procedure->begin(), procedure->end(),
-                                      [node](auto conn) {
-                                          return (conn->upstream_ == node || conn->downstream_ == node);
-                                      });
-        if(removed != procedure->end()) {
-            procedure->erase(removed, procedure->end());
-            pimpl_->ReplaceFrameProcedure(procedure);
-        }
-    }
-    
     auto found = std::find_if(pimpl_->nodes_.begin(), pimpl_->nodes_.end(),
                               [node](auto const &x) { return x.get() == node; });
     
@@ -1146,14 +1250,6 @@ bool GraphProcessor::Disconnect(Node const *node)
 //! この接続を解除する
 bool GraphProcessor::Disconnect(ConnectionPtr conn)
 {
-    if(auto procedure = pimpl_->DuplicateFrameProcedure()) {
-        auto removed = std::remove(procedure->begin(), procedure->end(), conn);
-        if(removed != procedure->end()) {
-            procedure->erase(removed, procedure->end());
-            pimpl_->ReplaceFrameProcedure(procedure);
-        }
-    }
-    
     auto as = conn->upstream_->GetAudioConnections(BusDirection::kOutputSide);
     auto ms = conn->upstream_->GetMidiConnections(BusDirection::kOutputSide);
     
@@ -1164,6 +1260,9 @@ bool GraphProcessor::Disconnect(ConnectionPtr conn)
     }
     
     RemoveConnection(conn);
+    
+    pimpl_->UpdatePlaybackGraph();
+    
     return true;
 }
 

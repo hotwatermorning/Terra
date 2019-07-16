@@ -168,57 +168,65 @@ public:
     class Node
     {
     protected:
-        Node(std::shared_ptr<Processor> processor)
-        :   processor_(std::move(processor))
-        {}
+        Node();
         
     public:
-        virtual ~Node() {}
+        virtual ~Node();
         
         UInt64 GetID() const { return reinterpret_cast<UInt64>(this); }
-        
-        std::shared_ptr<Processor> GetProcessor() const { return processor_; }
+
+        virtual
+        std::shared_ptr<Processor> GetProcessor() const = 0;
         
         //! get audio connection list to the specified direction
-        std::vector<AudioConnectionPtr> GetAudioConnections(BusDirection dir) const;
+        virtual
+        std::vector<AudioConnectionPtr> GetAudioConnections(BusDirection dir) const = 0;
         
         //! get midi connection list to the specified direction
-        std::vector<MidiConnectionPtr> GetMidiConnections(BusDirection dir) const;
+        virtual
+        std::vector<MidiConnectionPtr> GetMidiConnections(BusDirection dir) const = 0;
         
         //! get the audio connection to the specified target.
         /*! @return return the audio connection if found, nullptr otherwise.
          */
-        std::vector<AudioConnectionPtr> GetAudioConnectionsTo(BusDirection dir, Node const *target) const;
+        virtual
+        std::vector<AudioConnectionPtr> GetAudioConnectionsTo(BusDirection dir, Node const *target) const = 0;
         //! get the midi connection to the specified target.
         /*! @return return the midi connection if found, nullptr otherwise.
          */
-        std::vector<MidiConnectionPtr> GetMidiConnectionsTo(BusDirection dir, Node const *target) const;
+        virtual
+        std::vector<MidiConnectionPtr> GetMidiConnectionsTo(BusDirection dir, Node const *target) const = 0;
         
         //! @return true if this node is connected to the target directly with any audio connections.
-        bool HasAudioConnectionsTo(BusDirection dir, Node const *target) const;
+        virtual
+        bool HasAudioConnectionsTo(BusDirection dir, Node const *target) const = 0;
+        
         //! @return true if this node is connected to the target directly with any midi connections.
-        bool HasMidiConnectionsTo(BusDirection dir, Node const *target) const;
+        virtual
+        bool HasMidiConnectionsTo(BusDirection dir, Node const *target) const = 0;
+        
         //! @return true if this node is connected to the target directly with any connections.
-        bool HasConnectionsTo(BusDirection dir, Node const *target) const;
+        virtual
+        bool HasConnectionsTo(BusDirection dir, Node const *target) const = 0;
+        
         //! @return true if this node is connected to any targets.
-        bool IsConnected() const;
+        virtual
+        bool IsConnected() const = 0;
 
         //! check that this node is connected directly or indirectly to the specified node.
         //! @return true if the any downstream audio connections reach to the specified node.
-        bool HasAudioPathTo(Node const *downstream) const;
+        virtual
+        bool HasAudioPathTo(Node const *downstream) const = 0;
+        
         //! check that this node is connected directly or indirectly to the specified node.
         //! @return true if the any downstream midi connections reach to the specified node.
-        bool HasMidiPathTo(Node const *downstream) const;
+        virtual
+        bool HasMidiPathTo(Node const *downstream) const = 0;
+        
         //! check that this node is connected directly or indirectly to the specified node.
         //! @return true if the any downstream connections reach to the specified node.
-        bool HasPathTo(Node const *downstream) const;
-        
-    protected:
-        std::shared_ptr<Processor> processor_;
-        std::vector<AudioConnectionPtr> input_audio_connections_;
-        std::vector<AudioConnectionPtr> output_audio_connections_;
-        std::vector<MidiConnectionPtr> input_midi_connections_;
-        std::vector<MidiConnectionPtr> output_midi_connections_;
+        virtual
+        bool HasPathTo(Node const *downstream) const = 0;
     };
     
     //! don't call this function on the realtime thread.

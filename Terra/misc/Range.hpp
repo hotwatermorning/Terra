@@ -46,6 +46,13 @@ auto find_last_if(Range &range, Predicate pred)
     return (found != rend) ? (++found).base() : end;
 }
 
+template<class Range, class F>
+static constexpr
+auto for_each(Range &range, F f)
+{
+    return std::for_each(std::begin(range), std::end(range), f);
+}
+
 //! erase if found.
 /*! @return true if found and erased
  */

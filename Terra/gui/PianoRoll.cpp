@@ -184,6 +184,13 @@ public:
     
     bool const IsEditing() const { return em_ != EditMode::kNeutral; }
     
+    Tick quantize(Tick tick) const
+    {
+        // quantize tick position.
+        // TODO: quantize tick position strictly with IMusicalTimeService.
+        return (Tick)std::round(std::round(tick / 480.0) * 480);
+    }
+    
     /*
      LeftDown & ノートなし
         hasAlt => 選択解除 & ノート追加 & 長さ変更モード
@@ -239,6 +246,10 @@ public:
                 
                 auto nn = GetViewStatus()->GetNoteNumber(ev.GetY());
                 auto tick = GetViewStatus()->GetTick(ev.GetX());
+                
+                if(ev.ShiftDown() == false) {
+                    tick = quantize(tick);
+                }
                 auto note = std::make_shared<Sequence::Note>(tick, 480, nn);
                 
                 seq_->InsertSorted(note);
@@ -261,7 +272,7 @@ public:
                 if(note->IsSelected())  { note->SetNeutral(); }
                 else                    { note->SetSelected(); }
                 Refresh();
-            } else if(ev.ShiftDown()) {
+            } else if(ev.ShiftDown() && !note) {
                 em_ = EditMode::kCover;
             } else {
                 if(note->IsNeutral()) {
@@ -302,8 +313,13 @@ public:
             
             auto nn = GetViewStatus()->GetNoteNumber(ev.GetY());
             auto tick = GetViewStatus()->GetTick(ev.GetX());
+            if(ev.ShiftDown() == false) {
+                tick = quantize(tick);
+            }
+            
             auto note = std::make_shared<Sequence::Note>(tick, 480, nn);
             seq_->InsertSorted(note);
+            note->SetSelected();
             OnUpdateSequence();
         } else {
             ClearSelections();
@@ -460,11 +476,19 @@ public:
             
             Int32 const pitch_diff = v->GetNoteNumber(ev.GetY()) - v->GetNoteNumber(drag_from_.y);
             Int32 const tick_diff = v->GetTick(ev.GetX()) - v->GetTick(drag_from_.x);
+            assert(grabbing_note_);
+            
+            auto tick = grabbing_note_->prev_pos_ + tick_diff;
+            if(ev.ShiftDown() == false) {
+                tick = quantize(tick);
+            }
+            
+            Int32 const aligned_tick_diff = tick - grabbing_note_->prev_pos_;
             
             for(auto &note: seq_->notes_) {
                 if(note->IsSelected()) {
                     note->pitch_ = (UInt8)Clamp<Int32>(note->prev_pitch_ + pitch_diff, 0, 127);
-                    note->pos_ = std::max<Tick>(0, note->prev_pos_ + tick_diff);
+                    note->pos_ = std::max<Tick>(0, note->prev_pos_ + aligned_tick_diff);
                 }
             }
             
@@ -507,10 +531,18 @@ public:
         } else if(em_ == EditMode::kStretchHead) {
             auto vs = GetViewStatus();
             auto const new_drag_to = ev.GetPosition();
-            auto const dtick = (Tick)std::round(vs->GetTick(new_drag_to.x) - vs->GetTick(drag_from_.x));
+            auto const tick_diff = (Tick)std::round(vs->GetTick(new_drag_to.x) - vs->GetTick(drag_from_.x));
+            
+            auto tick = grabbing_note_->prev_pos_ + tick_diff;
+            if(ev.ShiftDown() == false) {
+                tick = std::min<Int32>(quantize(tick), grabbing_note_->GetPrevEndPos()-1);
+            }
+            
+            auto const aligned_tick_diff = tick - grabbing_note_->prev_pos_;
+            
             for(auto &note: seq_->notes_) {
                 if(note->IsSelected() == false) { continue; }
-                note->pos_ = Clamp<Tick>(note->prev_pos_ + dtick,
+                note->pos_ = Clamp<Tick>(note->prev_pos_ + aligned_tick_diff,
                                          0,
                                          note->GetPrevEndPos()-1);
                 note->length_ = note->GetPrevEndPos() - note->pos_;
@@ -523,10 +555,18 @@ public:
         } else if(em_ == EditMode::kStretchTail) {
             auto vs = GetViewStatus();
             auto const new_drag_to = ev.GetPosition();
-            auto const dtick = (Tick)std::round(vs->GetTick(new_drag_to.x) - vs->GetTick(drag_from_.x));
+            auto const tick_diff = (Tick)std::round(vs->GetTick(new_drag_to.x) - vs->GetTick(drag_from_.x));
+            
+            auto tick = grabbing_note_->GetPrevEndPos() + tick_diff;
+            if(ev.ShiftDown() == false) {
+                tick = std::max<Int32>(quantize(tick), grabbing_note_->prev_pos_ + 1);
+            }
+            
+            auto const aligned_tick_diff = tick - grabbing_note_->GetPrevEndPos();
+            
             for(auto &note: seq_->notes_) {
                 if(note->IsSelected() == false) { continue; }
-                note->length_ = std::max<Tick>(note->prev_length_ + dtick, 1);
+                note->length_ = std::max<Tick>(note->prev_length_ + aligned_tick_diff, 1);
             }
             
             SetCursor(cur_stretch_tail_);

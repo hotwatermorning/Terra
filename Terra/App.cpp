@@ -81,7 +81,9 @@ struct MyApp::Impl
 
 MyApp::MyApp()
 :   pimpl_(std::make_unique<Impl>())
-{}
+{
+    InitializeDefaultGlobalLogger();
+}
 
 MyApp::~MyApp()
 {}
@@ -96,7 +98,6 @@ bool MyApp::OnInit()
     assert(image.IsOk());
     pimpl_->splash_screen_ = CreateSplashScreen(image);
     
-    InitializeDefaultGlobalLogger();
     auto logger = GetGlobalLogger();
     auto st = std::make_shared<FileLoggingStrategy>(GetTerraDir() + L"/log/Terra.log");
     auto err = st->OpenPermanently();
@@ -694,6 +695,7 @@ namespace {
     wxCmdLineEntryDesc const cmdline_descs [] =
     {
         { wxCMD_LINE_SWITCH, "h", "help", "show help", wxCMD_LINE_VAL_NONE, wxCMD_LINE_OPTION_HELP },
+        { wxCMD_LINE_OPTION, "l", "logging-level", "set logging level to (Error|Warn|Info|Debug). the default value is \"Info\"", wxCMD_LINE_VAL_STRING, 0 },
         { wxCMD_LINE_NONE },
     };
 }
@@ -706,6 +708,12 @@ void MyApp::OnInitCmdLine(wxCmdLineParser& parser)
 
 bool MyApp::OnCmdLineParsed(wxCmdLineParser& parser)
 {
+    auto logger = GetGlobalLogger();
+    wxString level = "Info";
+    parser.Found("l", &level);
+    level = level.Capitalize();
+    logger->SetMostDetailedActiveLoggingLevel(level.ToStdWstring());
+    
     return true;
 }
 

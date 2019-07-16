@@ -225,10 +225,10 @@ namespace {
                 msg.data_ = ev.data_;
 
                 if(auto p = msg.As<MidiDataType::NoteOn>()) {
-                    hwm::dout << "note on [{}][{}]"_format(p->pitch_, ev.offset_) << std::endl;
+                    TERRA_DEBUG_LOG(L"note on [{}][{}]"_format(p->pitch_, ev.offset_));
                     playing_notes_.SetNoteOn(msg.channel_, p->pitch_, p->velocity_);
                 } else if(auto p = msg.As<MidiDataType::NoteOff>()) {
-                    hwm::dout << "note off [{}][{}]"_format(p->pitch_, ev.offset_) << std::endl;
+                    TERRA_DEBUG_LOG(L"note off [{}][{}]"_format(p->pitch_, ev.offset_));
                     playing_notes_.ClearNote(msg.channel_, p->pitch_);
                 }
                 

@@ -1,3 +1,7 @@
+trigger:
+- '*'
+pr:
+- '*'
 jobs:
 - job: build_osx_10_13
   pool:

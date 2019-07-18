@@ -9,6 +9,9 @@
 !*.in
 !*.proto
 !*.yml
+!*.icns
+!*.ico
+!*.rc
 !.gitignore
 !.gitmodules
 

@@ -84,7 +84,9 @@ endfunction()
 # set target extension list
 set(TARGET_EXTENSION_LIST "*.c" "*.cc" "*.cpp" "*.h" "*.hpp")
 
-if(IsXcode)
+if(IsMSVC)
+  list(APPEND TARGET_EXTENSION_LIST "*.rc")
+elseif(IsXcode)
   list(APPEND TARGET_EXTENSION_LIST "*.mm")
 endif()
 
@@ -122,6 +124,7 @@ if(TERRA_BUILD_TEST)
   if(IsMSVC)
     add_executable(${PROJECT_NAME} ${SOURCE_FILES})
   elseif(IsXcode)
+    # test executable will be built as a bundle to make resource files available.
     add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCE_FILES})
   endif()
 else()
@@ -250,10 +253,25 @@ if(IsXcode)
     get_filename_component(DIR ${RESOURCE_FILE} DIRECTORY)
     string(REGEX REPLACE "^${RESOURCE_DIR}" "" DIR_IN_RESOURCE ${DIR})
     target_sources(${PROJECT_NAME} PRIVATE ${RESOURCE_FILE})
+
+    message("resource: ${RESOURCE_FILE}")
+    message("dir in resouce: ${DIR_IN_RESOURCE}")
     set_source_files_properties(${RESOURCE_FILE} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources${DIR_IN_RESOURCE}")
     string(REPLACE "/" "\\" GROUP_NAME "Resources${DIR_IN_RESOURCE}")
     source_group(${GROUP_NAME} FILES "${RESOURCE_FILE}")
   endforeach()
+
+  set(ICON_FILE_NAME "app.icns")
+  set_target_properties(${PROJECT_NAME} PROPERTIES
+    MACOSX_BUNDLE_INFO_STRING "Copyright 2019, diatonic.jp"
+    MACOSX_BUNDLE_COPYRIGHT "Copyright 2019, diatonic.jp"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "jp.diatonic.terra"
+    MACOSX_BUNDLE_BUNDLE_NAME "${PROJECT_NAME}"
+    MACOSX_BUNDLE_BUNDLE_VERSION 0 0 1
+    MACOSX_BUNDLE_BUNDLE_SHORT_VERSION_STRING "0.0.1"
+    MACOSX_BUNDLE_BUNDLE_LONG_VERSION_STRING "0.0.1"
+    MACOSX_BUNDLE_ICON_FILE "${ICON_FILE_NAME}"
+    )
 endif()
 
 include_directories(

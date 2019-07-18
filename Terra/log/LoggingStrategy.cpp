@@ -166,11 +166,11 @@ Error FileLoggingStrategy::Rotate(String path, UInt64 size)
     src.close();
     
     if(wxRemoveFile(path) == false) {
-        return Error(std::string("failed to remove the existing log file: ") + wxSysErrorMsg());
+        return Error(std::wstring(L"failed to remove the existing log file: ") + wxSysErrorMsg());
     }
     
     if(wxCopyFile(tmp_file_path, path) == false) {
-        return Error(std::string("failed to move the rotated log file: ") + wxSysErrorMsg());
+        return Error(std::wstring(L"failed to move the rotated log file: ") + wxSysErrorMsg());
     }
     
     if(wxRemoveFile(tmp_file_path) == false) {

@@ -37,7 +37,7 @@ ext {
   isWindows = { return System.properties['os.name'].toLowerCase().startsWith("windows") }
   build_dir_name = "build_${project.config.toLowerCase()}"
   test_build_dir_name = "test_${project.config.toLowerCase()}"
-  enable_ccache = (project.use_ccache == "true" ? "which ccache".execute().waitFor() == 0 : false)
+  enable_ccache = ((project.use_ccache == "true" && isWindows() == false) ? "which ccache".execute().waitFor() == 0 : false)
   ccache_path = (enable_ccache ? "which ccache".execute().text.trim() : "")
   ccache_envvars = (enable_ccache ? [CC: "${ccache_path} clang", CXX: "${ccache_path} clang++"] : [CCACHE_DISABLE: "true"])
   should_renew_cache = (project.renew_cache == "true")

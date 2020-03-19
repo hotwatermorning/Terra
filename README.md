@@ -34,6 +34,10 @@ Currently Terra can be built on these platforms:
 * CMake 3.14.1 or later
 * Xcode 9.3.1 or later
 * Visual Studio 2017 or later
+* automake, libtool (macOS only)
+
+> automake and libtool can be installed with this command:
+> `brew install automake libtool`
 
 ### macOS
 

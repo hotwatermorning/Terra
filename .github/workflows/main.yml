@@ -52,10 +52,10 @@ jobs:
     # Runs a set of commands using the runners shell
     - name: Build
       run: |
-        set
+        "Get-ChildItem env: | Sort-Object Name"
         cd gradle
-        call gradlew test -Pconfig=Debug
-        call gradlew build_all -Pconfig=Release
+        ./gradlew test "-Pconfig=Debug"
+        ./gradlew build_all "-Pconfig=Release"
 
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v2

@@ -44,6 +44,9 @@ ext {
   getCMakeGenerator = {
     return isWindows() ? "-G \"${project.msvc_version}\" -A x64" : "-G Xcode"
   }
+  isGnuTar = {
+    return ("tar --version".execute().text.trim() ==~ /.*bsdtar.*/) == false
+  }
 }
 
 //! @param options is a map to customize getenv behavior.
@@ -362,7 +365,7 @@ def createAzureCacheStrategy = {
 
       // extract archive
       result = execute_may_fail(
-        "tar -xvf ${param.getArchiveFileName()}"
+        "tar ${isGnuTar() ? "--force-local" : ""} -xvf ${param.getArchiveFileName()}"
         , param.cache_dir)
 
       // remove downloaded archive
@@ -380,7 +383,7 @@ def createAzureCacheStrategy = {
 
       if(isWindows()) {
         def tar_result = execute_may_fail(
-            "tar --warning=no-file-changed -cjvhf ${param.getArchiveFileName()} ./"
+            "tar ${isGnuTar() ? "--warning=no-file-changed" : ""} -cjvhf ${param.getArchiveFileName()} ./"
             , param.cache_dir)
 
         if(tar_result.exitValue() >= 2) {

@@ -32,7 +32,7 @@ jobs:
         ./gradlew test -Pconfig=Debug
         ./gradlew build_all -Pconfig=Release
     - name: Upload a Build Artifact
-      uses: actions/update-artifact@v2
+      uses: actions/upload-artifact@v2
       with:
         name: release-mac-$GITHUB_SHA
         path: $GITHUB_WORKSPACE/build_release/Release
@@ -55,7 +55,7 @@ jobs:
         gradlew build_all -Pconfig=Release
         
     - name: Upload a Build Artifact
-      uses: actions/update-artifact@v2
+      uses: actions/upload-artifact@v2
       with:
         name: release-win-$GITHUB_SHA
         path: $GITHUB_WORKSPACE/build_release/Release

@@ -3,30 +3,6 @@ trigger:
 pr:
 - '*'
 jobs:
-- job: build_osx_10_13
-  pool:
-    vmImage: 'macOS-10.13'
-  variables:
-    DEVELOPER_DIR: "/Applications/Xcode_9.3.1.app"
-  steps:
-  - script: brew install libtool automake
-    displayName: brew install
-  - script: |
-      set -e
-      cd gradle
-      ./gradlew test -Pconfig=Debug -Pcache_title=macosx10.13-xcode9.3
-      ./gradlew build_all -Pconfig=Release -Pcache_title=macosx-10.13-xcode9.3
-    env:
-      AZURE_STORAGE_ACCOUNT: $(azure.storage.account)
-      AZURE_STORAGE_KEY: $(azure.storage.key)
-      AZURE_STORAGE_CONTAINER_NAME: $(azure.storage.container.name)
-      ORG_GRADLE_PROJECT_renew_cache: $(cache.renew)
-    displayName: build all
-  - task: PublishBuildArtifacts@1
-    inputs:
-      pathtoPublish: '$(System.DefaultWorkingDirectory)/build_release/Release'
-      artifactName: terra_release_osx_10_13_xcode9_3
-    displayName: publish
 - job: build_osx_10_14
   pool:
     vmImage: 'macOS-10.14'

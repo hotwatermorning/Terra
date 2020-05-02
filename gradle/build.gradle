@@ -503,7 +503,7 @@ task build_rtmidi {
           execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
           execute("cmake --build . -j --target INSTALL --config ${project.config}", build_dir)
         } else {
-          execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+          execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DRTMIDI_BUILD_STATIC_LIBS=ON -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
           execute("make -j", build_dir, ccache_envvars)
           execute("make install", build_dir)
         }

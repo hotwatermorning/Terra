@@ -128,10 +128,10 @@ public:
     protected:
         Connection(Node *upstream, Node *downstream,
                    UInt32 upstream_channel_index, UInt32 downstream_channel_index)
-        :   upstream_(upstream)
-        ,   downstream_(downstream)
-        ,   upstream_channel_index_(upstream_channel_index)
+        :   upstream_channel_index_(upstream_channel_index)
         ,   downstream_channel_index_(downstream_channel_index)
+        ,   upstream_(upstream)
+        ,   downstream_(downstream)
         {}
         
     public:

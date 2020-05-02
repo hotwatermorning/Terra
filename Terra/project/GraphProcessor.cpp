@@ -150,7 +150,11 @@ public:
         
         pi.output_audio_buffer_ = BufferRef<float>{ output_, 0, channels_to_copy, 0, samples_to_copy };
 
+        if(pi.time_info_) {
+            ti_ = *pi.time_info_;
+        }
         pi_ = pi;
+        pi_.time_info_ = &ti_;
         ref_ = BufferRef<float const>{ output_, 0, channels_to_copy, 0, samples_to_copy };
     }
     
@@ -193,6 +197,7 @@ private:
     BufferRef<float const> ref_;
     Buffer<float> output_;
     ProcessInfo pi_;
+    TransportInfo ti_;
 };
 
 class MidiInputImpl : public GraphProcessor::MidiInput

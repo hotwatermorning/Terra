@@ -27,25 +27,6 @@ jobs:
       pathtoPublish: '$(System.DefaultWorkingDirectory)/build_release/Release'
       artifactName: terra_release_osx_10_14_xcode10_2_1
     displayName: publish
-- job: build_win_msvc_2017
-  pool:
-    vmImage: 'vs2017-win2016'
-  steps:
-  - script: |
-      cd gradle
-      call gradlew test -Pconfig=Debug -Pmsvc_version="Visual Studio 15 2017" -Pcache_title=win2016-vs2017 || exit /b
-      call gradlew build_all -Pconfig=Release -Pmsvc_version="Visual Studio 15 2017" -Pcache_title=win2016-vs2017 || exit /b
-    env:
-      AZURE_STORAGE_ACCOUNT: $(azure.storage.account)
-      AZURE_STORAGE_KEY: $(azure.storage.key)
-      AZURE_STORAGE_CONTAINER_NAME: $(azure.storage.container.name)
-      ORG_GRADLE_PROJECT_renew_cache: $(cache.renew)
-    displayName: build all
-  - task: PublishBuildArtifacts@1
-    inputs:
-      pathtoPublish: '$(System.DefaultWorkingDirectory)/build_release/Release'
-      artifactName: terra_release_win_msvc2017
-    displayName: publish
 - job: build_win_msvc_2019
   pool:
     vmImage: 'windows-2019'

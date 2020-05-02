@@ -284,7 +284,7 @@ include_directories(
   "./ext/fmt/${BUILD_DIR_NAME}/install/include"
   "./ext/rtmidi/${BUILD_DIR_NAME}/install/include"
   "./ext/midifile/include"
-  "./ext/midifile/src-library"
+  "./ext/midifile/src"
   )
 
 if(TERRA_BUILD_TEST)

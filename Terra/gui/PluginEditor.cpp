@@ -14,7 +14,7 @@ namespace fmt {
         
         template <typename FormatContext>
         auto format(Steinberg::ViewRect const &rc, FormatContext &ctx) {
-            return format_to(ctx.begin(), "({}, {}, {}, {})", rc.left, rc.top, rc.right, rc.bottom);
+            return format_to(ctx.out(), "({}, {}, {}, {})", rc.left, rc.top, rc.right, rc.bottom);
         }
     };
 }

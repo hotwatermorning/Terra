@@ -383,7 +383,7 @@ def createAzureCacheStrategy = {
 
       if(isWindows()) {
         def tar_result = execute_may_fail(
-            "tar ${isGnuTar() ? "--warning=no-file-changed" : ""} -cjvhf ${param.getArchiveFileName()} ./"
+            "tar ${isGnuTar() ? "--warning=no-file-changed" : ""} --exclude=${param.getArchiveFileName()} -czvhf ${param.getArchiveFileName()} ."
             , param.cache_dir)
 
         if(tar_result.exitValue() >= 2) {
@@ -391,7 +391,7 @@ def createAzureCacheStrategy = {
           return false
         }
       } else {
-        execute("tar -cjvhf ${param.getArchiveFileName()} ./", param.cache_dir)
+        execute("tar -czvhf ${param.getArchiveFileName()} --exclude=${param.getArchiveFileName()} .", param.cache_dir)
       }
 
       def result = execute_may_fail(

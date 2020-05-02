@@ -99,7 +99,8 @@ public:
     }
 };
 
-struct TransportInfo {
+class TransportInfo {
+public:
     double sample_rate_ = 0;
     Tick tpqn_ = 0;
 

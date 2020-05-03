@@ -658,13 +658,9 @@ public:
     SettingFrame(wxWindow *parent)
     :   wxDialog(parent, wxID_ANY, "Setting")
     {
-        SetDoubleBuffered(true);
-        auto const size = kTabPanelRect.Union(kContentPanelRect).GetSize();
-        SetMaxSize(size);
-        SetMinSize(size);
-        SetClientSize(size);
-        
         tab_panel_ = new TabPanel(this, this);
+        
+        SetDoubleBuffered(true);
         
         for(int i = 0; i < (int)TabPanel::TabID::kNumIDs; ++i) {
             auto const id = (TabPanel::TabID)i;
@@ -673,6 +669,11 @@ public:
         }
         
         active_panel_ = panels_[TabPanel::TabID::kDevice];
+        
+        auto const size = kTabPanelRect.Union(kContentPanelRect).GetSize();
+        SetMaxSize(size);
+        SetMinSize(size);
+        SetClientSize(size);
         
         SetAutoLayout(true);
         

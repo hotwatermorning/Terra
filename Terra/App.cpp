@@ -39,7 +39,7 @@ std::string GetPluginDescFileName() {
     return "plugin_list.bin";
 }
 
-struct MyApp::Impl
+struct App::Impl
 {
     struct PluginListExporter
     :   PluginScanner::Listener
@@ -79,16 +79,16 @@ struct MyApp::Impl
     }
 };
 
-MyApp::MyApp()
+App::App()
 :   pimpl_(std::make_unique<Impl>())
 {
     InitializeDefaultGlobalLogger();
 }
 
-MyApp::~MyApp()
+App::~App()
 {}
 
-bool MyApp::OnInit()
+bool App::OnInit()
 {
     if(!wxApp::OnInit()) { return false; }
     
@@ -149,7 +149,7 @@ bool MyApp::OnInit()
     return true;
 }
 
-void MyApp::OnInitImpl()
+void App::OnInitImpl()
 {
     auto dummy_wait = [](int milliseconds = 10) {
         std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
@@ -260,7 +260,7 @@ void MyApp::OnInitImpl()
     });
 }
 
-int MyApp::OnExit()
+int App::OnExit()
 {
     if(pimpl_->initialization_thread_.joinable()) {
         pimpl_->initialization_thread_.join();
@@ -277,16 +277,16 @@ int MyApp::OnExit()
     return 0;
 }
 
-void MyApp::BeforeExit()
+void App::BeforeExit()
 {
 }
 
-MyApp::ChangeProjectListenerService & MyApp::GetChangeProjectListeners()
+App::ChangeProjectListenerService & App::GetChangeProjectListeners()
 {
     return pimpl_->cp_listeners_;
 }
 
-std::unique_ptr<Vst3Plugin> MyApp::CreateVst3Plugin(schema::PluginDescription const &desc)
+std::unique_ptr<Vst3Plugin> App::CreateVst3Plugin(schema::PluginDescription const &desc)
 {
     hwm::dout << "Load VST3 Module: " << desc.vst3info().filepath() << std::endl;
     
@@ -326,18 +326,18 @@ std::unique_ptr<Vst3Plugin> MyApp::CreateVst3Plugin(schema::PluginDescription co
     }
 }
 
-void MyApp::RescanPlugins()
+void App::RescanPlugins()
 {
     pimpl_->plugin_scanner_.ScanAsync();
 }
 
-void MyApp::ForceRescanPlugins()
+void App::ForceRescanPlugins()
 {
     pimpl_->plugin_scanner_.ClearPluginDescriptions();
     pimpl_->plugin_scanner_.ScanAsync();
 }
 
-std::vector<Project *> MyApp::GetProjectList()
+std::vector<Project *> App::GetProjectList()
 {
     std::vector<Project *> ret;
     std::transform(pimpl_->projects_.begin(),
@@ -354,7 +354,7 @@ auto contains(Container const &c, T const &t)
     return std::find(std::begin(c), std::end(c), t) != std::end(c);
 }
 
-void MyApp::SetCurrentProject(Project *pj)
+void App::SetCurrentProject(Project *pj)
 {
     assert(pj == nullptr || contains(GetProjectList(), pj));
  
@@ -377,12 +377,12 @@ void MyApp::SetCurrentProject(Project *pj)
     }
 }
 
-Project * MyApp::GetCurrentProject()
+Project * App::GetCurrentProject()
 {
     return pimpl_->current_project_;
 }
 
-std::unique_ptr<Project> MyApp::CreateInitialProject()
+std::unique_ptr<Project> App::CreateInitialProject()
 {
     auto pj = std::make_unique<Project>();
     pj->AddSequence(L"Sequence");
@@ -443,7 +443,7 @@ std::unique_ptr<Project> MyApp::CreateInitialProject()
     return pj;
 }
 
-void MyApp::ReplaceProject(std::unique_ptr<Project> pj)
+void App::ReplaceProject(std::unique_ptr<Project> pj)
 {
     SetCurrentProject(nullptr);
     pimpl_->projects_.clear();
@@ -487,7 +487,7 @@ void MyApp::ReplaceProject(std::unique_ptr<Project> pj)
     }
 }
 
-void MyApp::OnFileNew()
+void App::OnFileNew()
 {
     bool const saved = OnFileSave(false, true);
     if(!saved) { return; }
@@ -497,7 +497,7 @@ void MyApp::OnFileNew()
     ReplaceProject(CreateInitialProject());
 }
 
-void MyApp::OnFileOpen()
+void App::OnFileOpen()
 {
     bool const saved = OnFileSave(false, true);
     if(!saved) { return; }
@@ -561,7 +561,7 @@ wxFileName SelectFileToSave(Project const *pj)
     return wxFileName(dlg.GetPath());
 }
 
-bool MyApp::OnFileSave(bool force_save_as, bool need_to_confirm_for_closing)
+bool App::OnFileSave(bool force_save_as, bool need_to_confirm_for_closing)
 {
     auto pj = Project::GetCurrentProject();
     if(!pj) { return true; }
@@ -626,7 +626,7 @@ bool MyApp::OnFileSave(bool force_save_as, bool need_to_confirm_for_closing)
     return true;
 }
 
-void MyApp::LoadProject(String path)
+void App::LoadProject(String path)
 {
 #if defined(_MSC_VER)
     std::ifstream is(path.c_str());
@@ -658,7 +658,7 @@ void MyApp::LoadProject(String path)
     ReplaceProject(std::move(new_pj));
 }
 
-void MyApp::ImportFile(String path)
+void App::ImportFile(String path)
 {
 #if defined(_MSC_VER)
     std::ifstream is(path.c_str());
@@ -679,7 +679,7 @@ void MyApp::ImportFile(String path)
     }
 }
 
-void MyApp::ShowSettingDialog()
+void App::ShowSettingDialog()
 {
     auto dialog = CreateSettingDialog(wxGetActiveWindow());
     dialog->ShowModal();
@@ -700,13 +700,13 @@ namespace {
     };
 }
 
-void MyApp::OnInitCmdLine(wxCmdLineParser& parser)
+void App::OnInitCmdLine(wxCmdLineParser& parser)
 {
     parser.SetDesc(cmdline_descs);
     parser.SetSwitchChars("-");
 }
 
-bool MyApp::OnCmdLineParsed(wxCmdLineParser& parser)
+bool App::OnCmdLineParsed(wxCmdLineParser& parser)
 {
     auto logger = GetGlobalLogger();
     wxString level = "Info";
@@ -720,5 +720,5 @@ bool MyApp::OnCmdLineParsed(wxCmdLineParser& parser)
 NS_HWM_END
 
 #if !defined(TERRA_BUILD_TEST)
-wxIMPLEMENT_APP(hwm::MyApp);
+wxIMPLEMENT_APP(hwm::App);
 #endif

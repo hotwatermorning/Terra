@@ -605,7 +605,7 @@ GraphEditor::~GraphEditor()
 class GraphEditorImpl
 :   public GraphEditor
 ,   public NodeComponent::Callback
-,   public MyApp::ChangeProjectListener
+,   public App::ChangeProjectListener
 ,   public GraphProcessor::Listener
 {
     struct DropTarget
@@ -653,7 +653,7 @@ public:
         Bind(wxEVT_KEY_UP, [this](auto &ev) { OnKeyUp(ev); ev.ResumePropagation(100); ev.Skip(); });
         Bind(wxEVT_KILL_FOCUS, [this](auto &ev) { OnKillFocus(); });
         Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](auto &ev) { OnReleaseMouse(); });
-        slr_change_project_.reset(MyApp::GetInstance()->GetChangeProjectListeners(), this);
+        slr_change_project_.reset(App::GetInstance()->GetChangeProjectListeners(), this);
 
         SetBackgroundColour(kGraphBackground);
         SetAutoLayout(true);
@@ -908,7 +908,7 @@ public:
     
     void AddNode(schema::PluginDescription const &desc, wxPoint pt)
     {
-        auto app = MyApp::GetInstance();
+        auto app = App::GetInstance();
         std::unique_ptr<Vst3Plugin> plugin = app->CreateVst3Plugin(desc);
         
         if(!plugin) {
@@ -1142,7 +1142,7 @@ private:
     using NodeComponentPtr = std::unique_ptr<NodeComponent>;
     std::vector<NodeComponentPtr> node_components_;
     GraphProcessor *graph_ = nullptr;
-    ScopedListenerRegister<MyApp::ChangeProjectListener> slr_change_project_;
+    ScopedListenerRegister<App::ChangeProjectListener> slr_change_project_;
     //ForegroundScreen *screen_;
     
     struct LineSetting {
@@ -1265,7 +1265,7 @@ private:
     {
         if(filenames.size() == 1 && wxFileName(filenames[0]).GetExt() == ".trproj") {
             CallAfter([path = filenames[0]] {
-                auto app = MyApp::GetInstance();
+                auto app = App::GetInstance();
                 app->LoadProject(path.ToStdWstring());
             });
             
@@ -1280,7 +1280,7 @@ private:
         bool const all_smf = std::all_of(filenames.begin(), filenames.end(), pred);
         if(all_smf) {
             CallAfter([paths = filenames] {
-                auto app = MyApp::GetInstance();
+                auto app = App::GetInstance();
                 for(auto path: paths) {
                     app->ImportFile(path.ToStdWstring());
                 }

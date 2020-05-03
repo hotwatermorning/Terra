@@ -510,7 +510,7 @@ wxFileName Project::GetFullPath() const
 
 Project * Project::GetCurrentProject()
 {
-    auto app = MyApp::GetInstance();
+    auto app = App::GetInstance();
     return app->GetCurrentProject();
 }
 

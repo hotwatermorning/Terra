@@ -113,7 +113,7 @@ IPianoRollViewStatus * IPianoRollWindowComponent::GetViewStatus() const
 
 class PianoRollEditor
 :   public IPianoRollWindowComponent
-,   public MyApp::ChangeProjectListener
+,   public App::ChangeProjectListener
 {
 public:
     SequencePtr seq_;
@@ -147,7 +147,7 @@ public:
         cur_eraser_ = img_eraser;
         cur_knife_ = img_knife;
         
-        slr_change_project_.reset(MyApp::GetInstance()->GetChangeProjectListeners(), this);
+        slr_change_project_.reset(App::GetInstance()->GetChangeProjectListeners(), this);
         OnChangeCurrentProject(nullptr, Project::GetCurrentProject());
         
         Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent &ev) { OnLeftDown(ev); });
@@ -894,7 +894,7 @@ public:
 private:
     wxTimer timer_;
     SampleCount last_pos_ = 0;
-    ScopedListenerRegister<MyApp::ChangeProjectListener> slr_change_project_;
+    ScopedListenerRegister<App::ChangeProjectListener> slr_change_project_;
     
     void OnChangeCurrentProject(Project *old_pj, Project *new_pj) override
     {

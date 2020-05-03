@@ -11,17 +11,17 @@
 
 NS_HWM_BEGIN
 
-class MyApp
+class App
 :   public wxApp
-,   public SingleInstance<MyApp>
+,   public SingleInstance<App>
 {
 public:
-    MyApp();
+    App();
     
     virtual
-    ~MyApp();
+    ~App();
     
-    using SingleInstance<MyApp>::GetInstance;
+    using SingleInstance<App>::GetInstance;
     
     bool OnInit() override;
     int OnExit() override;

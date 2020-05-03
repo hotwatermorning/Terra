@@ -203,7 +203,7 @@ PluginAudioProcessor::LoadResult Vst3AudioProcessor::doLoad()
         if(plugin_) { return LoadResult{}; }
     }
     
-    auto app = MyApp::GetInstance();
+    auto app = App::GetInstance();
     auto p = app->CreateVst3Plugin(GetDescription());
     
     assert(schema_.has_vst3_data());

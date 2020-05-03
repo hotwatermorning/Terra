@@ -44,7 +44,7 @@ enum
 
 class TransportPanel
 :   public wxPanel
-,   MyApp::ChangeProjectListener
+,   App::ChangeProjectListener
 ,   Transporter::ITransportStateListener
 {
     static
@@ -87,7 +87,7 @@ public:
         btn_loop_->Bind(wxEVT_TOGGLEBUTTON, [this](auto &ev) { OnLoop(); });
         //btn_metronome_->Bind(wxEVT_TOGGLEBUTTON, [this](auto &ev) { OnMetronome(); });
         
-        slr_change_project_.reset(MyApp::GetInstance()->GetChangeProjectListeners(), this);
+        slr_change_project_.reset(App::GetInstance()->GetChangeProjectListeners(), this);
         
         auto pj = Project::GetCurrentProject();
         assert(pj);
@@ -110,7 +110,7 @@ private:
     ImageButton     *btn_forward_;
     ImageButton     *btn_loop_;
     ImageButton     *btn_metronome_;
-    ScopedListenerRegister<MyApp::ChangeProjectListener> slr_change_project_;
+    ScopedListenerRegister<App::ChangeProjectListener> slr_change_project_;
     ScopedListenerRegister<Transporter::ITransportStateListener> slr_transporter_;
     
     void OnRewind()
@@ -196,7 +196,7 @@ private:
 
 class TimeIndicator
 :   public wxPanel
-,   public MyApp::ChangeProjectListener
+,   public App::ChangeProjectListener
 ,   public Transporter::ITransportStateListener
 {
 public:
@@ -226,7 +226,7 @@ public:
         
         Layout();
         
-        slr_change_project_.reset(MyApp::GetInstance()->GetChangeProjectListeners(), this);
+        slr_change_project_.reset(App::GetInstance()->GetChangeProjectListeners(), this);
         
         auto pj = Project::GetCurrentProject();
         assert(pj);
@@ -247,7 +247,7 @@ private:
     wxTimer timer_;
     TransportInfo last_info_;
     wxStaticText *text_;
-    ScopedListenerRegister<MyApp::ChangeProjectListener> slr_change_project_;
+    ScopedListenerRegister<App::ChangeProjectListener> slr_change_project_;
     ScopedListenerRegister<Transporter::ITransportStateListener> slr_transporter_;
 
     void OnChangeCurrentProject(Project *old_pj, Project *new_pj) override
@@ -460,7 +460,7 @@ IMainFrame::IMainFrame()
 
 class MainFrame
 :   public IMainFrame
-,   MyApp::ChangeProjectListener
+,   App::ChangeProjectListener
 {
 public:
     MainFrame(wxSize initial_size);
@@ -479,7 +479,7 @@ private:
     std::string msg_;
     wxTimer timer_;
     MyPanel *my_panel_;
-    ScopedListenerRegister<MyApp::ChangeProjectListener> slr_change_project_;
+    ScopedListenerRegister<App::ChangeProjectListener> slr_change_project_;
 };
 
 MainFrame::MainFrame(wxSize initial_size)
@@ -521,13 +521,13 @@ MainFrame::MainFrame(wxSize initial_size)
     
     Bind(wxEVT_MENU, [this](auto &ev) { OnExit(); }, wxID_EXIT);
     //Bind(wxEVT_CLOSE_WINDOW, [this](auto &ev) { OnExit(); });
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { MyApp::GetInstance()->OnFileNew(); }, ID_File_New);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { MyApp::GetInstance()->OnFileOpen(); }, ID_File_Open);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { MyApp::GetInstance()->OnFileSave(false, false); }, ID_File_Save);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { MyApp::GetInstance()->OnFileSave(true, false); }, ID_File_SaveAs);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { MyApp::GetInstance()->RescanPlugins(); }, ID_RescanPlugin);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { MyApp::GetInstance()->ForceRescanPlugins(); }, ID_ForceRescanPlugin);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { MyApp::GetInstance()->ShowSettingDialog(); }, ID_Setting);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->OnFileNew(); }, ID_File_New);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->OnFileOpen(); }, ID_File_Open);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->OnFileSave(false, false); }, ID_File_Save);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->OnFileSave(true, false); }, ID_File_SaveAs);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->RescanPlugins(); }, ID_RescanPlugin);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->ForceRescanPlugins(); }, ID_ForceRescanPlugin);
+    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->ShowSettingDialog(); }, ID_Setting);
     Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { OnPlay(ev); }, ID_Play);
     
     Bind(wxEVT_MENU, [this](auto &ev) { OnAbout(ev); }, wxID_ABOUT);
@@ -538,7 +538,7 @@ MainFrame::MainFrame(wxSize initial_size)
     
     my_panel_ = new MyPanel(this, GetClientSize());
     
-    slr_change_project_.reset(MyApp::GetInstance()->GetChangeProjectListeners(), this);
+    slr_change_project_.reset(App::GetInstance()->GetChangeProjectListeners(), this);
     
     PCKeyboardInput::GetInstance()->ApplyTo(this);
 }
@@ -549,7 +549,7 @@ MainFrame::~MainFrame()
 
 bool MainFrame::Destroy()
 {
-    MyApp::GetInstance()->BeforeExit();
+    App::GetInstance()->BeforeExit();
     RemoveChild(my_panel_);
     my_panel_->Destroy();
     return wxFrame::Destroy();
@@ -557,7 +557,7 @@ bool MainFrame::Destroy()
 
 void MainFrame::OnExit()
 {
-    auto app = MyApp::GetInstance();
+    auto app = App::GetInstance();
     auto saved = app->OnFileSave(false, true);
     if(!saved) { return; }
     

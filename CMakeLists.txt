@@ -262,6 +262,10 @@ if(IsXcode)
   endforeach()
 
   set(ICON_FILE_NAME "app.icns")
+  get_filename_component(INFO_PLIST_PATH "./Terra/Info.plist" ABSOLUTE)
+
+  message("PLIST PATH: ${INFO_PLIST_PATH}")
+
   set_target_properties(${PROJECT_NAME} PROPERTIES
     MACOSX_BUNDLE_INFO_STRING "Copyright 2019, diatonic.jp"
     MACOSX_BUNDLE_COPYRIGHT "Copyright 2019, diatonic.jp"
@@ -271,6 +275,7 @@ if(IsXcode)
     MACOSX_BUNDLE_BUNDLE_SHORT_VERSION_STRING "0.0.1"
     MACOSX_BUNDLE_BUNDLE_LONG_VERSION_STRING "0.0.1"
     MACOSX_BUNDLE_ICON_FILE "${ICON_FILE_NAME}"
+    MACOSX_BUNDLE_INFO_PLIST "${INFO_PLIST_PATH}"
     )
 endif()
 

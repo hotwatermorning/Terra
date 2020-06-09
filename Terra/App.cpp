@@ -35,8 +35,8 @@ SampleCount const kBlockSize = 256;
 wxSize const kMinimumWindowSize = { 450, 300 };
 wxSize const kDefaultWindowSize = { 640, 500 };
 
-std::string GetPluginDescFileName() {
-    return "plugin_list.bin";
+String GetPluginDescFileName() {
+    return GetResourcePath(L"plugin_list.bin");
 }
 
 struct App::Impl
@@ -46,7 +46,11 @@ struct App::Impl
     {
         void OnScanningFinished(PluginScanner *ps)
         {
+#if defined(_MSC_VER)
             std::ofstream ofs(GetPluginDescFileName(), std::ios::out|std::ios::binary);
+#else
+            std::ofstream ofs(to_utf8(GetPluginDescFileName()), std::ios::out|std::ios::binary);
+#endif
             auto str = ps->Export();
             ofs.write(str.data(), str.length());
         }

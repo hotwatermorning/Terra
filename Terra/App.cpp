@@ -9,9 +9,11 @@
 #include <wx/cmdline.h>
 #include <wx/stdpaths.h>
 #include <wx/splash.h>
+#include <wx/dir.h>
 #include <google/protobuf/util/message_differencer.h>
 
 #include "./misc/StrCnv.hpp"
+#include "./misc/FileStream.hpp"
 #include "./gui/Util.hpp"
 #include "./plugin/PluginScanner.hpp"
 #include "./plugin/vst3/Vst3PluginFactory.hpp"
@@ -26,6 +28,8 @@
 #include "file/MidiFile.hpp"
 #include "log/LoggingSupport.hpp"
 #include "log/LoggingStrategy.hpp"
+
+#include <config.pb.h>
 
 NS_HWM_BEGIN
 
@@ -71,15 +75,86 @@ struct App::Impl
     ISplashScreen *splash_screen_ = nullptr;
     wxFrame *main_frame_ = nullptr;
     std::thread initialization_thread_;
+    std::vector<String> vst3_paths_;
     
     Impl()
     {
         plugin_scanner_.GetListeners().AddListener(&plugin_list_exporter_);
+        vst3_paths_ = App::GetDefaultVst3PluginSearchPaths();
     }
     
     ~Impl()
     {
         plugin_scanner_.GetListeners().RemoveListener(&plugin_list_exporter_);
+    }
+    
+    void LoadConfigImpl(schema::Config const &conf)
+    {
+        if(conf.has_vst3()) {
+            auto &vst3 = conf.vst3();
+            
+            vst3_paths_.clear();
+            for(auto &entry: vst3.paths()) {
+                vst3_paths_.push_back(to_wstr(entry));
+            }
+        }
+    }
+    
+    schema::Config SaveConfigImpl()
+    {
+        schema::Config conf;
+        auto vst3 = conf.mutable_vst3();
+        auto paths = vst3->mutable_paths();
+        for(auto &entry: vst3_paths_) {
+            paths->Add(to_utf8(entry));
+        }
+        
+        return conf;
+    }
+    
+    bool LoadConfig()
+    {
+        // コンフィグファイルなし
+        if(wxFileExists(GetConfigFilePath()) == false) {
+            return false;
+        }
+        
+        auto ifs = open_ifstream(GetConfigFilePath(), std::ios::in|std::ios::binary);
+        if(!ifs) {
+            wxMessageBox("Failed to open the config file", "Error", wxOK);
+            return false;
+        }
+        
+        schema::Config conf;
+        auto const parsed_successfully = conf.ParseFromIstream(&ifs);
+        if(parsed_successfully == false) {
+            wxMessageBox("Failed to load config data", "Error", wxOK);
+            return false;
+        }
+
+        LoadConfigImpl(conf);
+        return true;
+    }
+    
+    bool SaveConfig()
+    {
+        auto conf = SaveConfigImpl();
+        wxFileName config_file(GetConfigFilePath());
+        wxDir::Make(config_file.GetPath(), wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+        
+        auto ofs = open_ofstream(GetConfigFilePath(), std::ios::binary);
+        if(!ofs) {
+            wxMessageBox("Failed to open the config file", "Error", wxOK);
+            return false;
+        }
+            
+        auto const serialized_successfully = conf.SerializeToOstream(&ofs);
+        if(serialized_successfully == false) {
+            wxMessageBox("Failed to save config data", "Error", wxOK);
+            return false;
+        }
+        
+        return true;
     }
 };
 
@@ -118,26 +193,21 @@ bool App::OnInit()
     String version_string = L"0.0.1.0";
     TERRA_INFO_LOG(L"Startup Terra (version: " << version_string << L").");
     
-    pimpl_->plugin_scanner_.AddDirectories({
-#if defined(_MSC_VER)
-		L"C:/Program Files/Common Files/VST3",
-#else
-        L"/Library/Audio/Plug-Ins/VST3",
-        wxStandardPaths::Get().GetDocumentsDir().ToStdWstring() + L"/../Library/Audio/Plug-Ins/VST3",
-        L"../../ext/vst3sdk/build_debug/VST3/Debug",
-#endif
-    });
+    // コンフィグデータの読み込み
+    pimpl_->LoadConfig();
+    
+    pimpl_->plugin_scanner_.AddDirectories(GetVst3PluginSearchPaths());
     
     TERRA_DEBUG_LOG(L"Add plugin directories.");
     
-    std::ifstream ifs(GetPluginDescFileName(), std::ios::in|std::ios::binary);
-    if(ifs) {
-        ifs.seekg(0, std::ios::end);
-        auto const end = ifs.tellg();
-        ifs.seekg(0, std::ios::beg);
+    auto ifs_plugins = open_ifstream(GetPluginDescFileName(), std::ios::binary);
+    if(ifs_plugins) {
+        ifs_plugins.seekg(0, std::ios::end);
+        auto const end = ifs_plugins.tellg();
+        ifs_plugins.seekg(0, std::ios::beg);
 
         std::string dump_data;
-        std::copy_n(std::istreambuf_iterator<char>(ifs), end, std::back_inserter(dump_data));
+        std::copy_n(std::istreambuf_iterator<char>(ifs_plugins), end, std::back_inserter(dump_data));
         
         pimpl_->plugin_scanner_.Import(dump_data);
         
@@ -332,11 +402,13 @@ std::unique_ptr<Vst3Plugin> App::CreateVst3Plugin(schema::PluginDescription cons
 
 void App::RescanPlugins()
 {
+    pimpl_->plugin_scanner_.Abort();
     pimpl_->plugin_scanner_.ScanAsync();
 }
 
 void App::ForceRescanPlugins()
 {
+    pimpl_->plugin_scanner_.Abort();
     pimpl_->plugin_scanner_.ClearPluginDescriptions();
     pimpl_->plugin_scanner_.ScanAsync();
 }
@@ -693,6 +765,33 @@ void App::ShowSettingDialog()
     if(adm->IsOpened()) {
         adm->GetDevice()->Start();
     }
+}
+
+std::vector<String> App::GetDefaultVst3PluginSearchPaths()
+{
+#if defined(_MSC_VER)
+    return {
+        L"C:/Program Files/Common Files/VST3"
+    };
+#else
+    auto user_vst3_dir = wxFileName(wxStandardPaths::Get().GetDocumentsDir().ToStdWstring() + L"/../Library/Audio/Plug-Ins/VST3");
+    user_vst3_dir.Normalize();
+    return {
+        L"/Library/Audio/Plug-Ins/VST3",
+        user_vst3_dir.GetFullPath().ToStdWstring()
+    };
+#endif
+}
+
+std::vector<String> App::GetVst3PluginSearchPaths() const
+{
+    return pimpl_->vst3_paths_;
+}
+
+void App::SetVst3PluginSearchPaths(std::vector<String> new_list)
+{
+    pimpl_->vst3_paths_ = new_list;
+    pimpl_->SaveConfig();
 }
 
 namespace {

@@ -494,9 +494,6 @@ MainFrame::MainFrame(wxSize initial_size)
     menuFile->Append(ID_File_Save, "&Save\tCTRL-S", "Save File");
     menuFile->Append(ID_File_SaveAs, "&Save As\tCTRL-SHIFT-S", "Save File As");
     menuFile->AppendSeparator();
-    menuFile->Append(ID_RescanPlugin, "&Rescan Plugins", "Rescan Plugins");
-    menuFile->Append(ID_ForceRescanPlugin, "&Clear and Rescan Plugins", "Clear and Rescan Plugins");
-    menuFile->AppendSeparator();
     menuFile->Append(wxID_EXIT);
     
     wxMenu *menuEdit = new wxMenu;
@@ -525,8 +522,6 @@ MainFrame::MainFrame(wxSize initial_size)
     Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->OnFileOpen(); }, ID_File_Open);
     Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->OnFileSave(false, false); }, ID_File_Save);
     Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->OnFileSave(true, false); }, ID_File_SaveAs);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->RescanPlugins(); }, ID_RescanPlugin);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->ForceRescanPlugins(); }, ID_ForceRescanPlugin);
     Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->ShowSettingDialog(); }, ID_Setting);
     Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { OnPlay(ev); }, ID_Play);
     

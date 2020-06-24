@@ -1,11 +1,13 @@
 #include "SettingDialog.hpp"
 
 #include <unordered_map>
+#include <wx/dirdlg.h>
 
 #include "Util.hpp"
 #include "../device/AudioDeviceManager.hpp"
 #include "../project/Project.hpp"
 #include "../resource/ResourceHelper.hpp"
+#include "../App.hpp"
 
 NS_HWM_BEGIN
 
@@ -467,6 +469,49 @@ public:
     :   wxPanel(parent)
     {
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(); });
+        
+        st_dir_list_ = new wxStaticText(this, wxID_ANY, "VST3 Plugin Directories");
+        lb_dir_list_ = new wxListBox(this, wxID_ANY);
+        btn_plus_ = new wxButton(this, wxID_ANY, "+");
+        btn_minus_ = new wxButton(this, wxID_ANY, "-");
+        btn_list_operation_ = new wxButton(this, wxID_ANY, "▼");
+        
+        st_dir_list_->SetForegroundColour(HSVToColour(0.0, 0.0, 0.9));
+        st_dir_list_->SetBackgroundColour(kPanelBackgroundColour.brush_.GetColour());
+        
+        auto vbox = new wxBoxSizer(wxVERTICAL);
+        st_dir_list_->SetMaxSize({1000, 50});
+        lb_dir_list_->SetMaxSize({1000, 300});
+        vbox->Add(st_dir_list_, wxSizerFlags(0).Expand().Border());
+        vbox->Add(lb_dir_list_, wxSizerFlags(1).Expand().Border());
+        
+        {
+            auto hbox = new wxBoxSizer(wxHORIZONTAL);
+            hbox->AddStretchSpacer(1);
+            btn_plus_->SetMaxSize({50, 50});
+            btn_minus_->SetMaxSize({50, 50});
+            hbox->Add(btn_plus_, wxSizerFlags(1).Expand());
+            hbox->Add(btn_minus_, wxSizerFlags(1).Expand());
+            vbox->Add(hbox, wxSizerFlags(0).Expand().Border());
+        }
+        
+        {
+            auto hbox = new wxBoxSizer(wxHORIZONTAL);
+            hbox->AddStretchSpacer(1);
+            btn_list_operation_->SetMaxSize({100, 50});
+            hbox->Add(btn_list_operation_, wxSizerFlags(1).Expand());
+            vbox->Add(hbox, wxSizerFlags(0).Expand().Border());
+        }
+        
+        btn_plus_->Bind(wxEVT_BUTTON, [this](auto &) { OnAddDirectory(); });
+        btn_minus_->Bind(wxEVT_BUTTON, [this](auto &) { OnRemoveDirectory(); });
+        btn_list_operation_->Bind(wxEVT_BUTTON, [this](auto &) { OnShowListOperationMenu(); });
+        lb_dir_list_->Bind(wxEVT_LISTBOX, [this](auto &) { OnListboxChanged(); });
+        
+        OnRestoreList();
+        OnListboxChanged();
+        
+        SetSizer(vbox);
     }
     
     void OnPaint()
@@ -477,6 +522,134 @@ public:
         kPanelBackgroundColour.ApplyTo(dc);
         dc.DrawRectangle(GetClientRect());
     }
+    
+    void OnAddDirectory()
+    {
+        wxDirDialog dlg(this, "Select VST3 Directory", "",
+                        wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
+        
+        if(dlg.ShowModal() == wxID_CANCEL) {
+            return;
+        }
+        
+        auto const dir = dlg.GetPath();
+        
+        if(wxDirExists(dir) == false) {
+            return;
+        }
+        
+        for(int i = 0, end = lb_dir_list_->GetCount(); i < end; ++i) {
+            auto const entry = lb_dir_list_->GetString(i);
+            if(wxFileName(dir, "").SameAs(wxFileName(entry, ""))) {
+                return;
+            }
+        }
+        
+        lb_dir_list_->Append(dir);
+        OnListboxChanged();
+    }
+    
+    void OnRemoveDirectory()
+    {
+        auto selected = lb_dir_list_->GetSelection();
+        if(selected == wxNOT_FOUND) { return; }
+        
+        lb_dir_list_->Delete(selected);
+        OnListboxChanged();
+    }
+    
+    void OnShowListOperationMenu()
+    {
+        wxMenu m;
+         
+        static constexpr int kRescan = 1000;
+        static constexpr int kRescanAll = 1001;
+        static constexpr int kRestoreList = 1002;
+        
+        wxMenu menu;
+        auto item_rescan        = menu.Append(kRescan, "Apply and Rescan", "Apply list changes and rescan plugins.");
+        auto item_rescan_all    = menu.Append(kRescanAll, "Apply and Rescan All", "Apply list changes and rescan plugins. All pre-scanned plugins will be rescanned again.");
+        auto item_restore       = menu.Append(kRestoreList, "Restore list changes", "Restore list changes");
+        
+        auto const dir_list_changed = GetCurrentDirectoryList() != GetAppliedDirectoryList();
+        if(dir_list_changed == false) {
+            item_rescan->Enable(false);
+            item_restore->Enable(false);
+        }
+                    
+        menu.Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) {
+            switch(ev.GetId()) {
+                case kRescan: { OnApplyAndRescanPlugins(RescanMode::kNormal); break; }
+                case kRescanAll: { OnApplyAndRescanPlugins(RescanMode::kForce); break; }
+                case kRestoreList: { OnRestoreList(); break; }
+            }
+        });
+        
+        PopupMenu(&menu, btn_list_operation_->GetPosition());
+    }
+    
+    std::vector<String> GetCurrentDirectoryList() const
+    {
+        std::vector<String> tmp;
+        for(int i = 0, end = lb_dir_list_->GetCount(); i < end; ++i) {
+            tmp.push_back(lb_dir_list_->GetString(i));
+        }
+        
+        return tmp;
+    }
+    
+    std::vector<String> GetAppliedDirectoryList() const
+    {
+        auto app = App::GetInstance();
+        return app->GetVst3PluginSearchPaths();
+    }
+    
+    enum class RescanMode {
+        kNormal,
+        kForce,
+    };
+    
+    void OnApplyAndRescanPlugins(RescanMode mode)
+    {
+        auto app = App::GetInstance();
+        auto list = GetCurrentDirectoryList();
+        assert(list.empty() == false);
+        
+        app->SetVst3PluginSearchPaths(list);
+        
+        if(mode == RescanMode::kNormal) {
+            app->RescanPlugins();
+        } else if(mode == RescanMode::kForce) {
+            app->ForceRescanPlugins();
+        }
+    }
+    
+    void OnRestoreList()
+    {
+        lb_dir_list_->Clear();
+        for(auto const &entry: GetAppliedDirectoryList()) {
+            lb_dir_list_->Append(entry);
+        }
+        
+        lb_dir_list_->Select(wxNOT_FOUND);
+    }
+    
+    void OnListboxChanged()
+    {
+        auto const selected_any = lb_dir_list_->GetSelection() != wxNOT_FOUND;
+        btn_minus_->Enable(selected_any);
+
+        if(lb_dir_list_->IsEmpty()) {
+            OnRestoreList();
+        }
+    }
+    
+private:
+    wxStaticText *st_dir_list_ = nullptr;
+    wxListBox *lb_dir_list_ = nullptr;
+    wxButton *btn_plus_ = nullptr;
+    wxButton *btn_minus_ = nullptr;
+    wxButton *btn_list_operation_ = nullptr;
 };
 
 class LocationSettingPanel

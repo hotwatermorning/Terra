@@ -62,7 +62,9 @@ public:
      */
     std::unique_ptr<Vst3Plugin> CreateVst3Plugin(schema::PluginDescription const &desc);
 
+    //! プラグインをスキャンする（一度スキャン済みのものはスキップする）
     void RescanPlugins();
+    //! プラグインをスキャンする（一度スキャン済みのものも含めてすべて再スキャンする）
     void ForceRescanPlugins();
     
     //! get added project list.
@@ -82,6 +84,12 @@ public:
     
     //! modal
     void ShowSettingDialog();
+    
+    static
+    std::vector<String> GetDefaultVst3PluginSearchPaths();
+
+    std::vector<String> GetVst3PluginSearchPaths() const;
+    void SetVst3PluginSearchPaths(std::vector<String> new_list);
     
 private:
     struct Impl;

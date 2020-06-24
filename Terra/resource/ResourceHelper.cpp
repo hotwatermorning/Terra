@@ -18,7 +18,8 @@ String GetConfigFilePath()
 {
     auto path = wxFileName(GetTerraDir(), "");
     path.AppendDir("Config");
-    path.AppendDir("terra.conf");
+    path.SetName("terra");
+    path.SetExt("conf");
     return path.GetFullPath().ToStdWstring();
 }
 

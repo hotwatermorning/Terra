@@ -35,6 +35,7 @@ struct PluginScanner::Impl
     Impl()
     {
         scanning_ = false;
+        should_abort_ = false;
     }
     
     std::vector<String> path_to_scan_;
@@ -42,6 +43,7 @@ struct PluginScanner::Impl
     std::vector<schema::PluginDescription> pds_;
     std::thread th_;
     std::atomic<bool> scanning_;
+    std::atomic<bool> should_abort_;
     ListenerService<PluginScanner::Listener> listeners_;
 };
 
@@ -55,6 +57,10 @@ public:
     
 	void LoadFactory(wxString const &FileorDirName)
 	{
+        if(FileorDirName.Contains("EQuivocate")) {
+            return;
+        }
+        
 		auto factory_list = Vst3PluginFactoryList::GetInstance();
 		auto factory = factory_list->FindOrCreateFactory(FileorDirName.ToStdWstring());
 
@@ -213,6 +219,7 @@ PluginScanner::IListenerService & PluginScanner::GetListeners()
 
 void PluginScanner::ScanAsync()
 {
+    pimpl_->should_abort_ = false;
     bool expected = false;
     if(pimpl_->scanning_.compare_exchange_strong(expected, true) == false) {
         return;
@@ -229,6 +236,10 @@ void PluginScanner::ScanAsync()
         
         Traverser tr(*this);
         for(auto path: path_to_scan) {
+            if(pimpl_->should_abort_.load()) {
+                break;
+            }
+            
 			if(wxDir::Exists(path) == false) { continue; }
 
             wxDir dir(path);
@@ -253,6 +264,12 @@ void PluginScanner::Wait()
     if(pimpl_->th_.joinable()) {
         pimpl_->th_.join();
     }
+}
+
+void PluginScanner::Abort()
+{
+    pimpl_->should_abort_ = true;
+    Wait();
 }
 
 bool HasPluginCategory(schema::PluginDescription const &desc, std::string category_name)

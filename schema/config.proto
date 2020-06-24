@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package hwm.schema;
+
+message Config {
+  message Vst3Setting {
+    repeated string paths = 1;
+  }
+
+  message AudioDeviceSetting {
+    double sampling_rate = 1;
+    double block_size = 2;
+    string input_device_name = 3;
+    string output_device_name = 4;
+    string driver_name = 5;
+  }
+
+  Vst3Setting vst3 = 1;
+
+  // todo: デバイス設定を保存／読込できるようにする
+  // AudioDeviceSetting audio_device = 2;
+}
+

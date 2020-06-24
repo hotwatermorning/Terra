@@ -261,7 +261,7 @@ if(IsXcode)
     source_group(${GROUP_NAME} FILES "${RESOURCE_FILE}")
   endforeach()
 
-  set(ICON_FILE_NAME "app.icns")
+  set(ICON_FILE_NAME "app-icon.icns")
   get_filename_component(INFO_PLIST_PATH "./Terra/Info.plist" ABSOLUTE)
 
   message("PLIST PATH: ${INFO_PLIST_PATH}")

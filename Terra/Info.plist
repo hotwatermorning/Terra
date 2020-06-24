@@ -11,7 +11,7 @@
 	<key>CFBundleGetInfoString</key>
 	<string>Copyright 2019, diatonic.jp</string>
 	<key>CFBundleIconFile</key>
-	<string>app.icns</string>
+	<string>app-icon.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>jp.diatonic.terra</string>
 	<key>CFBundleInfoDictionaryVersion</key>

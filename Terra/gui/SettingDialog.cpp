@@ -592,7 +592,7 @@ public:
     {
         std::vector<String> tmp;
         for(int i = 0, end = lb_dir_list_->GetCount(); i < end; ++i) {
-            tmp.push_back(lb_dir_list_->GetString(i));
+            tmp.push_back(lb_dir_list_->GetString(i).ToStdWstring());
         }
         
         return tmp;

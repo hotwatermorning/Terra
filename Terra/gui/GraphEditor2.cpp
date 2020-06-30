@@ -434,6 +434,7 @@ public:
         Bind(wxEVT_LEFT_UP, [this](wxMouseEvent &ev) { OnLeftUp(ev); });
         Bind(wxEVT_MOTION, [this](wxMouseEvent &ev) { OnMouseMove(ev); });
         Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent &ev) { OnRightUp(ev); });
+        Bind(wxEVT_MOUSEWHEEL, [this](wxMouseEvent &ev) { OnMouseWheel(ev); });
         Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](wxMouseCaptureLostEvent &ev) { OnCaptureLost(ev); });
 
         //Bind(wxEVT_SIZING, [this](wxSizeEvent &ev) { ResizeGraphicsBuffer(ev.GetSize()); });
@@ -522,9 +523,9 @@ public:
             path.AddCurveToPoint(pt1, pt2, pt_e);
 
             if(conn.selected_) {
-                gc->SetPen(wxPen(HSVToColour(0.2, 0.6, 0.8, 0.6), 3.0));
+                gc->SetPen(wxPen(HSVToColour(0.3, 0.9, 0.9, 0.9), 4.0));
             } else {
-                gc->SetPen(wxPen(HSVToColour(0.2, 0.6, 0.8, 0.6), 2.0));
+                gc->SetPen(wxPen(HSVToColour(0.3, 0.7, 0.8, 0.7), 2.0));
             }
             gc->DrawPath(path);
         };
@@ -547,7 +548,7 @@ public:
         }
 
         if(cut_mode_) {
-            auto pen = wxPen(HSVToColour(0.7, 0.2, 0.95, 0.4), 2, wxPENSTYLE_DOT);
+            auto pen = wxPen(HSVToColour(0.7, 0.2, 0.95, 0.6), 2, wxPENSTYLE_DOT);
             gc->SetPen(pen);
             gc->StrokeLine(saved_logical_mouse_down_pos_.x, saved_logical_mouse_down_pos_.y,
                            latest_logical_mouse_pos_.x, latest_logical_mouse_pos_.y);
@@ -803,9 +804,14 @@ public:
 
         if(cut_mode_) {
             auto new_logical_mouse_pos = ClientToLogical(FPoint(ev.GetPosition()));
-            // ベジエ曲線との交差を検知する。
 
+            std::vector<NodeConnectionInfo> tmp;
+            std::copy_if(conns_.begin(), conns_.end(), std::back_inserter(tmp),
+                         [](auto const &conn) { return conn.selected_ == false; });
+
+            std::swap(tmp, conns_);
             cut_mode_ = false;
+            Refresh();
         }
     }
 
@@ -955,6 +961,24 @@ public:
         PopupMenu(&menu);
     }
 
+    void OnMouseWheel(wxMouseEvent &ev)
+    {
+        double const kMouseZoomChangeRatio = pow(1.5, 1/9.0);
+        if(ev.GetWheelRotation() > 0) {
+            auto const new_scale = zoom_factor_ * pow(kMouseZoomChangeRatio, fabs(ev.GetWheelRotation() / (double)ev.GetWheelDelta()));
+            if(new_scale < 5.0) {
+                zoom_factor_ = new_scale;
+            }
+        } else {
+            auto const new_scale = zoom_factor_ / pow(kMouseZoomChangeRatio, fabs(ev.GetWheelRotation() / (double)ev.GetWheelDelta()));
+            if(new_scale > 0.03) {
+                zoom_factor_ = new_scale;
+            }
+        }
+
+        Refresh();
+    }
+
     void OnCaptureLost(wxMouseCaptureLostEvent &ev)
     {
         being_pressed_ = false;
@@ -1003,8 +1027,8 @@ public:
         ss << L"Node[" << num << L"]";
         auto node = std::make_unique<NodeComponent2>(this, num, ss.str());
         num++;
-        node->SetInputs(num + 1);
-        node->SetOutput(num + 2);
+        node->SetInputs(3);
+        node->SetOutput(4);
 
         node->SetPosition(ClientToLogical(FPoint(pt)));
         node->SetSize(FSize{180, 60});
@@ -1013,8 +1037,8 @@ public:
             NodeConnectionInfo ci;
             ci.upstream_ = node.get();
             ci.downstream_ = downstream_node;
-            ci.output_pin_ = downstream_node->GetNumInputs() - 1;
-            ci.input_pin_ = (ci.output_pin_ + node->GetNumOutputs()) % downstream_node->GetNumInputs();
+            ci.output_pin_ = num % ci.upstream_->GetNumOutputs();
+            ci.input_pin_ = num % ci.downstream_->GetNumInputs();
 
             conns_.push_back(ci);
         }

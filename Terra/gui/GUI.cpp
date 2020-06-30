@@ -18,7 +18,7 @@
 #include "./PluginEditor.hpp"
 #include "./Keyboard.hpp"
 #include "./UnitData.hpp"
-#include "./GraphEditor.hpp"
+#include "./GraphEditor2.hpp"
 #include "../resource/ResourceHelper.hpp"
 #include "./PianoRoll.hpp"
 #include "./PCKeyboardInput.hpp"
@@ -345,7 +345,7 @@ public:
         header_panel_ = new HeaderPanel(this);
         
         auto pj = Project::GetCurrentProject();
-        graph_panel_ = CreateGraphEditorComponent(this, pj->GetGraph()).release();
+        graph_panel_ = CreateGraphEditor2Component(this, pj->GetGraph()).release();
         graph_panel_->Show();
         
         pianoroll_ = CreatePianoRollWindow(this);
@@ -447,7 +447,7 @@ private:
     
     wxWindow        *keyboard_ = nullptr;
     wxPanel         *header_panel_ = nullptr;
-    GraphEditor     *graph_panel_ = nullptr;
+    IGraphEditor    *graph_panel_ = nullptr;
     wxWindow        *pianoroll_ = nullptr;
     MainPanelPianoRollViewStatus pianoroll_view_status_;
 };

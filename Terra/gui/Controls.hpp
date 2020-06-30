@@ -1,5 +1,7 @@
 #pragma once
 
+#include "./Button.hpp"
+
 NS_HWM_BEGIN
 
 class IRenderableWindowBase

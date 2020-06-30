@@ -402,7 +402,7 @@ public:
 
         Raise();
         Refresh();
-        CaptureMouse();
+        //CaptureMouse();
         
         if(selected_pin_) {
             pin_drag_begin_ = ev.GetPosition() + GetPosition();
@@ -417,15 +417,15 @@ public:
     
     void OnLeftUp(wxMouseEvent& ev)
     {
-        if (HasCapture()) {
-            ReleaseMouse();
-            OnCaptureLost();
-            
-            if(pin_drag_begin_) {
-                auto pt = ev.GetPosition() + GetPosition();
-                callback_->OnReleaseMouse(this, *pin_drag_begin_, pt);
-            }
-        }
+//        if (HasCapture()) {
+//            ReleaseMouse();
+//            OnCaptureLost();
+//
+//            if(pin_drag_begin_) {
+//                auto pt = ev.GetPosition() + GetPosition();
+//                callback_->OnReleaseMouse(this, *pin_drag_begin_, pt);
+//            }
+//        }
     }
     
     void OnMouseMove(wxMouseEvent& ev)
@@ -596,7 +596,7 @@ bool Intersect(wxPoint a1, wxPoint a2, wxPoint b1, wxPoint b2)
 
 template<class... Args>
 GraphEditor::GraphEditor(Args&&... args)
-:   wxPanel(std::forward<Args>(args)...)
+:   wxWindow(std::forward<Args>(args)...)
 {}
 
 GraphEditor::~GraphEditor()
@@ -608,6 +608,10 @@ class GraphEditorImpl
 ,   public App::ChangeProjectListener
 ,   public GraphProcessor::Listener
 {
+    Button *btn1_;
+    Button *btn2_;
+    Button *btn3_;
+
     struct DropTarget
     :    public wxFileDropTarget
     {
@@ -626,7 +630,7 @@ class GraphEditorImpl
 public:
     wxCursor knife_;
     GraphEditorImpl(wxWindow *parent)
-        : GraphEditor()
+    :   GraphEditor()
     {
         SetBackgroundStyle(wxBG_STYLE_PAINT);
         Create(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize);
@@ -643,6 +647,31 @@ public:
         img.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_Y, 5);
 
         knife_ = wxCursor(img);
+
+        btn1_ = new Button(this, wxID_ANY, 0.0f);
+        btn2_ = new Button(this, wxID_ANY, 0.33f);
+        btn3_ = new Button(this, wxID_ANY, 0.66f);
+
+        btn1_->SetLabel("red");
+        btn2_->SetLabel("green");
+        btn3_->SetLabel("blue");
+
+        wxSize sz_button = { 100, 50 };
+        btn1_->SetSize(sz_button);
+        btn2_->SetSize(sz_button);
+        btn3_->SetSize(sz_button);
+
+        btn1_->Bind(wxEVT_BUTTON, [this](wxCommandEvent &ev) {
+            assert(ev.GetEventObject() == btn1_);
+            std::cout << "Button1 pushed." << std::endl;
+        });
+
+        btn2_->EnableToggleMode(true);
+        btn2_->Bind(wxEVT_TOGGLEBUTTON, [this](wxCommandEvent &ev) {
+            assert(ev.GetEventObject() == btn2_);
+            std::string state = btn2_->IsPushed() ? "Down" : "Up";
+            std::cout << ("Button2 is " + state) << std::endl;
+        });
 
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(); });
         Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { OnLeftDown(ev); });
@@ -678,6 +707,14 @@ public:
     
     bool Layout() override
     {
+        auto center = GetCenter(GetClientRect());
+        btn2_->CenterOnParent();
+        auto rc1 = btn2_->GetRect();
+        auto rc3 = btn2_->GetRect();
+        rc1.Offset(-rc1.GetWidth() - 10, 0);
+        rc3.Offset(rc3.GetWidth() + 10, 0);
+        btn1_->Move(rc1.GetTopLeft());
+        btn3_->Move(rc3.GetTopLeft());
         back_buffer_ = GraphicsBuffer(GetClientSize());
         return GraphEditor::Layout();
     }
@@ -762,7 +799,7 @@ public:
             ls.end_ = ls.begin_;
             ls.pen_ = kCuttingLine;
             dragging_line_ = ls;
-            CaptureMouse();
+            //CaptureMouse();
             SetCursor(knife_);
         }
     }
@@ -1181,7 +1218,7 @@ private:
         DrawGrid(dc);
 
         for(auto &nc: node_components_) {
-            nc->RenderWithParentDC(dc);
+            // nc->RenderWithParentDC(dc);
         }
 
         PaintOverChildren(dc); 
@@ -1196,15 +1233,15 @@ private:
     void DrawGrid(wxDC &dc)
     {
         auto const size = GetClientSize();
-        BrushPen bg(HSVToColour(0, 0, 0.9, 0.1));
+        BrushPen bg(HSVToColour(0, 0, 0.2, 1.0));
         bg.ApplyTo(dc);
         dc.DrawRectangle(GetClientRect());
         dc.SetPen(wxPen(HSVToColour(0.0, 0.0, 0.9, 0.2)));
-        for(int x = kNodeAlignmentSize; x < size.x; x += kNodeAlignmentSize) {
-            for(int y = kNodeAlignmentSize; y < size.y; y += kNodeAlignmentSize) {
-                dc.DrawPoint(x, y);
-            }
-        }
+//        for(int x = kNodeAlignmentSize; x < size.x; x += kNodeAlignmentSize) {
+//            for(int y = kNodeAlignmentSize; y < size.y; y += kNodeAlignmentSize) {
+//                dc.DrawPoint(x, y);
+//            }
+//        }
     }
     
     void DrawConnection(wxDC &dc,

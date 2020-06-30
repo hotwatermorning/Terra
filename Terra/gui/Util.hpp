@@ -43,6 +43,7 @@ public:
     GraphicsBuffer()
     {}
 
+    explicit
     GraphicsBuffer(wxSize size)
     {
         wxImage image(size);

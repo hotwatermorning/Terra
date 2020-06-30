@@ -5,21 +5,21 @@
 
 NS_HWM_BEGIN
 
-class GraphEditor
+class IGraphEditor
 :   public wxWindow
 {
 protected:
     template<class... Args>
-    GraphEditor(Args&&...);
-    
+    IGraphEditor(Args&&...);
+
 public:
     virtual
-    ~GraphEditor();
-    
+    ~IGraphEditor();
+
     virtual
     void RearrangeNodes() = 0;
 };
 
-std::unique_ptr<GraphEditor> CreateGraphEditorComponent(wxWindow *parent, GraphProcessor &graph);
+std::unique_ptr<IGraphEditor> CreateGraphEditor2Component(wxWindow *parent, GraphProcessor &graph);
 
 NS_HWM_END

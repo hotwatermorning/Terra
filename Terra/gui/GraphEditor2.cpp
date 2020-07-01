@@ -152,14 +152,34 @@ private:
     double saved_scale_y_ = 1.0;
 };
 
+class NodeComponent2;
+
+class INodeOwner
+{
+public:
+    virtual ~INodeOwner() {}
+
+    virtual
+    void TryToConnect(NodeComponent2 *node, bool is_input_pin, int pin_index) = 0;
+
+    virtual
+    void DeleteNode(NodeComponent2 *node) = 0;
+
+    virtual
+    bool ShowNodePopup(wxMenu &menu) = 0;
+};
+
 class NodeComponent2
+:   public wxObject
 {
     constexpr static int kShadowRadius = 3;
+    constexpr static float kPinRadius = 4;
+
 public:
-    NodeComponent2(wxWindow *parent, int id, String const &name,
+    NodeComponent2(INodeOwner *owner, int id, String const &name,
                    FPoint pos = {-1, -1},
                    FSize size = {-1, -1})
-    :   parent_(parent)
+    :   owner_(owner)
     ,   id_(id)
     ,   name_(name)
     ,   rc_()
@@ -182,6 +202,42 @@ public:
 
     int GetNumInputs() const { return num_inputs_; }
     int GetNumOutputs() const { return num_outputs_; }
+
+    FPoint GetPinPosition(bool is_input, int index) const
+    {
+        FPoint pin_center;
+        auto const rc = GetClientRect();
+        auto const pin_count = is_input ? GetNumInputs() : GetNumOutputs();
+        float const pin_x = rc.GetWidth() * (index + 1) / (pin_count + 1.0);
+        pin_center.x = pin_x;
+        if(is_input) {
+            pin_center.y = kPinRadius + 1; // +1 は pin の枠の分
+        } else {
+            pin_center.y = rc.GetHeight() - kPinRadius - 2;
+        }
+
+        return pin_center;
+    }
+
+    int GetPinIndex(bool is_input, FPoint pos) const
+    {
+        auto contains = [](FPoint pin_center, float radius, FPoint pos) {
+            auto dx = (pos.x - pin_center.x);
+            auto dy = (pos.y - pin_center.y);
+
+            return sqrt(dx * dx + dy * dy) <= (radius + 1); // pin の枠も pin の範囲内として扱う（pin のサイズが小さいのでそのほうが便利なため）
+        };
+
+        auto const pin_count = is_input ? GetNumInputs() : GetNumOutputs();
+        for(int i = 0, end = pin_count; i < end; ++i) {
+            auto center = GetPinPosition(is_input, i);
+            if(contains(center, kPinRadius, pos)) {
+                return i;
+            }
+        }
+
+        return -1;
+    }
 
     void OnPaint(wxDC &dc)
     {
@@ -243,8 +299,6 @@ public:
         auto rc_text = rc;
         dc.DrawLabel(GetLabel(), rc_text, wxALIGN_CENTER);
 
-        float const kPinRadius = 4;
-
         // draw input pins
         for(int i = 0, end = num_inputs_; i < end; ++i) {
             float const pin_x = rc.GetWidth() * (i+1) / (end + 1.0);
@@ -304,46 +358,135 @@ public:
         UpdateShadowBuffer();
     }
 
-    void OnLeftDown(FPoint pt, wxKeyboardState const &key)
+    struct MouseEvent
     {
+        MouseEvent()
+        {}
+
+        MouseEvent(FPoint pt, wxKeyboardState key_state)
+        :   pt_(pt)
+        ,   key_state_(key_state)
+        {}
+
+        MouseEvent(FPoint pt, wxKeyboardState key_state, int wheel_delta, int wheel_rotation)
+        :   pt_(pt)
+        ,   key_state_(key_state)
+        ,   wheel_delta_(wheel_delta)
+        ,   wheel_rotation_(wheel_rotation)
+        {}
+
+        FPoint pt_;
+        int wheel_delta_ = 0;
+        int wheel_rotation_ = 0;
+        wxKeyboardState key_state_;
+    };
+
+    void OnLeftDown(MouseEvent const &ev)
+    {
+        {
+            auto const pi = GetPinIndex(true, ev.pt_);
+            if(pi != -1) {
+                owner_->TryToConnect(this, true, pi);
+                return;
+            }
+
+        }
+
+        {
+            auto const pi = GetPinIndex(false, ev.pt_);
+            if(pi != -1) {
+                owner_->TryToConnect(this, false, pi);
+                return;
+            }
+
+        }
+
         being_pushed_ = true;
     }
 
-    void OnLeftUp(FPoint pt, wxKeyboardState const &key)
+    void OnLeftUp(MouseEvent const &ev)
     {
         being_pushed_ = false;
     }
 
-    void OnRightDown(FPoint pt, wxKeyboardState const &key)
+    void OnRightDown(MouseEvent const &ev)
     {
 
     }
 
-    void OnRightUp(FPoint pt, wxKeyboardState const &key)
+    void OnRightUp(MouseEvent const &ev)
     {
+        wxMenu menu;
+        constexpr int kDeleteNode = 1000;
 
+        menu.Append(kDeleteNode, "&Delete This Node", "Delete this node.", false);
+
+        menu.Bind(wxEVT_MENU, [this](wxCommandEvent const &ev) {
+            switch(ev.GetId()) {
+                case kDeleteNode:
+                    owner_->DeleteNode(this); // Undo が実装されるまでは、ここで即座に NodeComponent が削除される。
+                    break;
+                default:
+                    assert(false && "not implemented yet.");
+            }
+        });
+
+        // ここはもう少し設計をなんとかしたい。
+        // Node が PopupMenu を表示するのに 明示的に NodeOwner に依頼する必要があるのは不自然。
+        // コード上は自分で直接 PopupMenu を表示できるようにしたい。
+        owner_->ShowNodePopup(menu);
     }
 
-    void OnMouseMove(FPoint pt, wxKeyboardState const &key)
+    void OnMouseMove(MouseEvent const &ev)
     {
-        hover_ = (GetClientRect().Contain(pt));
+        hover_ = (GetClientRect().Contain(ev.pt_));
     }
 
-    void OnMouseEnter(FPoint pt, wxKeyboardState const &key)
+    void OnMouseEnter(MouseEvent const &ev)
     {
         hover_ = true;
     }
 
-    void OnMouseLeave(FPoint pt, wxKeyboardState const &key)
+    void OnMouseLeave(MouseEvent const &evy)
     {
         hover_ = false;
     }
 
+    void OnMouseWheel(MouseEvent const &ev)
+    {
+
+    }
+
     int GetId() const noexcept { return id_; }
+
+    void OnMouseEventFromParent(MouseEvent const &ev, void(NodeComponent2::* mem_fun)(MouseEvent const &ev))
+    {
+        auto tmp = ev;
+        tmp.pt_ = ParentToChild(tmp.pt_);
+        (this->*mem_fun)(tmp);
+    }
+
+    FPoint ChildToParent(FPoint pt) const
+    {
+        auto node_pos = GetPosition();
+        pt.x += node_pos.x;
+        pt.y += node_pos.y;
+
+        return pt;
+    }
+
+    FPoint ParentToChild(FPoint pt) const
+    {
+        auto node_pos = GetPosition();
+        pt.x -= node_pos.x;
+        pt.y -= node_pos.y;
+
+        return pt;
+    }
 
 private:
     double hue_ = 0.3;
-    wxWindow *parent_ = nullptr;
+    INodeOwner *owner_ = nullptr;
     String name_;
     FRect rc_; // 親ウィンドウ上での位置
     FRect rc_shadow_;
@@ -410,19 +553,27 @@ class GraphEditor2
 //,   public NodeComponent::Callback
 //,   public App::ChangeProjectListener
 ,   public GraphProcessor::Listener
+,   public INodeOwner
 {
 public:
     using NodeComponent2Ptr = std::unique_ptr<NodeComponent2>;
 
     struct NodeConnectionInfo
     {
-        NodeComponent2 *upstream_;
-        NodeComponent2 *downstream_;
+        NodeComponent2 *upstream_ = nullptr;
+        NodeComponent2 *downstream_ = nullptr;
 
-        int output_pin_; // upstream から出力するピンの番号
-        int input_pin_;  // downtream から出力するピンの番号
+        int output_pin_ = -1; // upstream から出力するピンの番号
+        int input_pin_ = -1;  // downtream から出力するピンの番号
 
         bool selected_ = false;
+    };
+
+    struct TryToConnectInfo
+    {
+        NodeComponent2 *from_ = nullptr;
+        bool is_input_pin_ = false;
+        int pin_index_ = -1;
     };
 
     GraphEditor2(wxWindow *parent, wxWindowID id)
@@ -504,8 +655,6 @@ public:
             auto &un = conn.upstream_;
             auto &dn = conn.downstream_;
 
-            auto path = gc->CreatePath();
-
             wxPoint2DDouble pt_b {
                 un->GetPosition().x + un->GetSize().w * (conn.output_pin_ + 1) / (un->GetNumOutputs() + 1.0),
                 un->GetPosition().y + un->GetSize().h
@@ -519,6 +668,7 @@ public:
             wxPoint2DDouble pt1 { pt_b.m_x, (pt_b.m_y + pt_e.m_y) / 2.0 };
             wxPoint2DDouble pt2 { pt_e.m_x, (pt_b.m_y + pt_e.m_y) / 2.0 };
 
+            auto path = gc->CreatePath();
             path.MoveToPoint(pt_b);
             path.AddCurveToPoint(pt1, pt2, pt_e);
 
@@ -554,58 +704,29 @@ public:
                            latest_logical_mouse_pos_.x, latest_logical_mouse_pos_.y);
         }
 
-//        for(int i = 0, end = nodes_.size(); i < end; ++i) {
-//            auto &node = nodes_[end - i - 1];
-//
-//            auto pair_node = find_node(node->GetId() + 1);
-//            if(pair_node == nullptr) { continue; }
-//
-//            auto path = gc->CreatePath();
-//
-//            wxPoint2DDouble pt_b {
-//                node->GetPosition().x + node->GetSize().w / 2,
-//                node->GetPosition().y + node->GetSize().h
-//            };
-//
-//            wxPoint2DDouble pt_e {
-//                pair_node->GetPosition().x + pair_node->GetSize().w / 2,
-//                pair_node->GetPosition().y
-//            };
-//
-//            wxPoint2DDouble pt1 { pt_b.m_x, (pt_b.m_y + pt_e.m_y) / 2.0 };
-//            wxPoint2DDouble pt2 { pt_e.m_x, (pt_b.m_y + pt_e.m_y) / 2.0 };
-//
-//            path.MoveToPoint(pt_b);
-//            path.AddCurveToPoint(pt1, pt2, pt_e);
-//
-//            gc->SetPen(wxPen(HSVToColour(0.2, 0.6, 0.8, 0.6), 2.0));
-//            gc->DrawPath(path);
-//
-//            // 自前でベジエ曲線を描画
-//
-//            Bezier b;
-//            b.pt_begin_     = FPoint(pt_b.m_x, pt_b.m_y);
-//            b.pt_end_       = FPoint(pt_e.m_x, pt_e.m_y);
-//            b.pt_control1_  = FPoint(pt1.m_x, pt1.m_y);
-//            b.pt_control2_  = FPoint(pt2.m_x, pt2.m_y);
-//
-//            int const kNumCompletion = 3000;
-//            auto last_pt = b.get(0);
-//            for(int ti = 1; ti <= kNumCompletion; ++ti) {
-//                auto bezier_pt1 = last_pt;
-//                auto bezier_pt2 = b.get(ti / (double)kNumCompletion);
-//
-//                wxPoint2DDouble points[2] = {
-//                    { bezier_pt1.x + 4, bezier_pt1.y },
-//                    { bezier_pt2.x + 4, bezier_pt2.y }
-//                };
-//
-//                gc->SetPen(wxPen(HSVToColour(0.7, 0.6, 0.8, 0.6), 2.0, wxPENSTYLE_SOLID));
-//                gc->StrokeLine(points[0].m_x, points[0].m_y, points[1].m_x, points[1].m_y);
-//
-//                last_pt = bezier_pt2;
-//            }
-//        }
+        if(try_conn_) {
+            auto node = try_conn_->from_;
+            auto pin_pos = node->GetPinPosition(try_conn_->is_input_pin_, try_conn_->pin_index_);
+
+            wxPoint2DDouble pt_b {
+                node->GetPosition().x + pin_pos.x,
+                node->GetPosition().y + pin_pos.y
+            };
+
+            wxPoint2DDouble pt_e {
+                latest_logical_mouse_pos_.x, latest_logical_mouse_pos_.y
+            };
+
+            wxPoint2DDouble pt1 { pt_b.m_x, (pt_b.m_y + pt_e.m_y) / 2.0 };
+            wxPoint2DDouble pt2 { pt_e.m_x, (pt_b.m_y + pt_e.m_y) / 2.0 };
+
+            auto path = gc->CreatePath();
+            path.MoveToPoint(pt_b);
+            path.AddCurveToPoint(pt1, pt2, pt_e);
+
+            gc->SetPen(wxPen(HSVToColour(0.3, 0.9, 0.9, 0.9), 2.0, wxPENSTYLE_DOT));
+            gc->DrawPath(path);
+        }
 
         tdc.reset();
         sdc.reset();
@@ -761,12 +882,9 @@ public:
         if(captured_node_ != nullptr) {
             BringToFront(captured_node_);
 
-            auto pos_in_node = FPoint {
-                lp.x - captured_node_->GetPosition().x,
-                lp.y - captured_node_->GetPosition().y
-            };
+            NodeComponent2::MouseEvent nev(lp, ev);
+            captured_node_->OnMouseEventFromParent(nev, &NodeComponent2::OnLeftDown);
 
-            captured_node_->OnLeftDown(pos_in_node, ev);
             saved_captured_node_pos_ = captured_node_->GetPosition();
 
             Refresh();
@@ -789,14 +907,49 @@ public:
     {
         being_pressed_ = false;
 
-        if(captured_node_ != nullptr) {
+        if(try_conn_) {
+            HWM_SCOPE_EXIT([&] {
+                try_conn_.reset();
+                Refresh();
+            });
+
             auto const lp = ClientToLogical(FPoint(ev.GetPosition()));
+            auto const found_node = GetNodeByPosition(lp);
+            if(found_node == nullptr) { return; }
+
             auto pos_in_node = FPoint {
-                lp.x - captured_node_->GetPosition().x,
-                lp.y - captured_node_->GetPosition().y
+                lp.x - found_node->GetPosition().x,
+                lp.y - found_node->GetPosition().y
             };
 
-            captured_node_->OnLeftUp(pos_in_node, ev);
+            if(found_node != nullptr && found_node != try_conn_->from_) {
+                bool const is_input = !try_conn_->is_input_pin_;
+                auto pin = found_node->GetPinIndex(is_input, pos_in_node);
+                if(pin != -1) {
+                    NodeConnectionInfo conn;
+                    if(try_conn_->is_input_pin_) {
+                        conn.upstream_ = found_node;
+                        conn.downstream_ = try_conn_->from_;
+                        conn.output_pin_ = pin;
+                        conn.input_pin_ = try_conn_->pin_index_;
+                    } else {
+                        conn.upstream_ = try_conn_->from_;
+                        conn.downstream_ = found_node;
+                        conn.output_pin_ = try_conn_->pin_index_;
+                        conn.input_pin_ = pin;
+                    }
+                    conns_.push_back(conn);
+                }
+            }
+
+            return;
+        }
+
+        if(captured_node_ != nullptr) {
+            auto const lp = ClientToLogical(FPoint(ev.GetPosition()));
+
+            NodeComponent2::MouseEvent nev(lp, ev);
+            captured_node_->OnMouseEventFromParent(nev, &NodeComponent2::OnLeftUp);
 
             Refresh();
             return;
@@ -854,7 +1007,7 @@ public:
             return;
         }
 
-        if(being_pressed_ && captured_node_ == nullptr) {
+        if(!try_conn_ && being_pressed_ && captured_node_ == nullptr) {
             auto new_mouse_down_pos = ClientToLogical(FPoint(ev.GetPosition()), saved_view_origin_);
             auto new_view_origin = saved_view_origin_ + (new_mouse_down_pos - saved_logical_mouse_down_pos_);
             if(new_view_origin != view_origin_) {
@@ -865,7 +1018,7 @@ public:
             return;
         }
 
-        if(being_pressed_ && captured_node_) {
+        if(!try_conn_ && being_pressed_ && captured_node_) {
             // Node を移動する。
             auto new_mouse_down_pos = ClientToLogical(FPoint(ev.GetPosition()), saved_view_origin_);
             auto new_node_pos = saved_captured_node_pos_ + (new_mouse_down_pos - saved_logical_mouse_down_pos_);
@@ -885,32 +1038,23 @@ public:
         }
 
         if(last_hover_target_ && last_hover_target_ != hover_target) {
-            auto pos_in_node = FPoint {
-                lp.x - last_hover_target_->GetPosition().x,
-                lp.y - last_hover_target_->GetPosition().y
-            };
+            NodeComponent2::MouseEvent nev(lp, ev);
+            last_hover_target_->OnMouseEventFromParent(nev, &NodeComponent2::OnMouseLeave);
 
-            last_hover_target_->OnMouseLeave(pos_in_node, ev);
             Refresh(); // TODO: node 側でやる
         }
 
         if(hover_target && hover_target != last_hover_target_) {
-            auto pos_in_node = FPoint {
-                lp.x - hover_target->GetPosition().x,
-                lp.y - hover_target->GetPosition().y
-            };
+            NodeComponent2::MouseEvent nev(lp, ev);
+            hover_target->OnMouseEventFromParent(nev, &NodeComponent2::OnMouseEnter);
 
-            hover_target->OnMouseEnter(pos_in_node, ev);
             Refresh(); // TODO: node 側でやる
         }
 
         if(hover_target) {
-            auto pos_in_node = FPoint {
-                lp.x - hover_target->GetPosition().x,
-                lp.y - hover_target->GetPosition().y
-            };
+            NodeComponent2::MouseEvent nev(lp, ev);
+            hover_target->OnMouseEventFromParent(nev, &NodeComponent2::OnMouseMove);
 
-            hover_target->OnMouseMove(pos_in_node, ev);
             Refresh(); // TODO: node 側でやる
         }
 
@@ -945,16 +1089,24 @@ public:
 
     void OnRightUp(wxMouseEvent &ev)
     {
-        auto pos = ev.GetPosition();
+        auto cp = ev.GetPosition();
+        auto lp = ClientToLogical(FPoint(cp.x, cp.y));
+
+        if(auto node = GetNodeByPosition(lp)) {
+            NodeComponent2::MouseEvent nev(lp, ev);
+            node->OnMouseEventFromParent(nev, &NodeComponent2::OnRightUp);
+            return;
+        }
+
         wxMenu menu;
 
         static int const kAddNode = 1000;
 
         menu.Append(kAddNode, "&AddNode\tCTRL-a", "Add a node");
 
-        menu.Bind(wxEVT_MENU, [pos, this](wxCommandEvent &ev) {
+        menu.Bind(wxEVT_MENU, [cp, this](wxCommandEvent &ev) {
             if(ev.GetId() == kAddNode) {
-                AddNode(pos);
+                AddNode(cp);
             }
         });
 
@@ -963,6 +1115,15 @@ public:
 
     void OnMouseWheel(wxMouseEvent &ev)
     {
+        auto cp = ev.GetPosition();
+        auto lp = ClientToLogical(FPoint(cp.x, cp.y));
+
+        if(auto node = GetNodeByPosition(lp)) {
+            NodeComponent2::MouseEvent nev(lp, ev, ev.GetWheelDelta(), ev.GetWheelRotation());
+            node->OnMouseEventFromParent(nev, &NodeComponent2::OnMouseWheel);
+            return;
+        }
+
         double const kMouseZoomChangeRatio = pow(1.5, 1/9.0);
         if(ev.GetWheelRotation() > 0) {
             auto const new_scale = zoom_factor_ * pow(kMouseZoomChangeRatio, fabs(ev.GetWheelRotation() / (double)ev.GetWheelDelta()));
@@ -1033,16 +1194,6 @@ public:
         node->SetPosition(ClientToLogical(FPoint(pt)));
         node->SetSize(FSize{180, 60});
 
-        if(auto downstream_node = GetNodeById(node->GetId() / 2)) {
-            NodeConnectionInfo ci;
-            ci.upstream_ = node.get();
-            ci.downstream_ = downstream_node;
-            ci.output_pin_ = num % ci.upstream_->GetNumOutputs();
-            ci.input_pin_ = num % ci.downstream_->GetNumInputs();
-
-            conns_.push_back(ci);
-        }
-
         nodes_.insert(nodes_.begin(), std::move(node));
 
         Refresh();
@@ -1070,6 +1221,16 @@ public:
         return ret;
     }
 
+    void TryToConnect(NodeComponent2 *node, bool is_input_pin, int pin_index) override
+    {
+        TryToConnectInfo tci;
+        tci.from_ = node;
+        tci.is_input_pin_ = is_input_pin;
+        tci.pin_index_ = pin_index;
+
+        try_conn_ = tci;
+    }
+
     void SetGraph(GraphProcessor &graph)
     {
         graph_ = &graph;
@@ -1077,6 +1238,34 @@ public:
 
     double GetZoomFactor() const noexcept { return zoom_factor_; }
     FPoint GetViewOrigin() const noexcept { return view_origin_; }
+
+    void DeleteNode(NodeComponent2 *node) override
+    {
+        assert(node != nullptr);
+
+        auto found = std::find_if(nodes_.begin(),
+                                  nodes_.end(),
+                                  [node](auto &n) { return n.get() == node; });
+
+        assert(found != nodes_.end());
+
+        std::vector<NodeConnectionInfo> tmp;
+        std::copy_if(conns_.begin(),
+                     conns_.end(),
+                     std::back_inserter(tmp),
+                     [node](auto &info) { return (info.upstream_ != node && info.downstream_ != node); });
+
+        std::swap(tmp, conns_);
+
+        nodes_.erase(found);
+
+        Refresh();
+    }
+
+    bool ShowNodePopup(wxMenu &menu) override
+    {
+        return PopupMenu(&menu);
+    }
 
 private:
     GraphProcessor *graph_ = nullptr;
@@ -1087,6 +1276,7 @@ private:
     bool cut_mode_ = false;
     NodeComponent2 *captured_node_ = nullptr;
     NodeComponent2 *last_hover_target_ = nullptr;
+    std::optional<TryToConnectInfo> try_conn_;
 
     //! view origin position at dragging started.
     FPoint saved_view_origin_;

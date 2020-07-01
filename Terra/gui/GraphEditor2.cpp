@@ -77,82 +77,42 @@ struct Bezier
     FPoint pt_control2_;
 };
 
-struct [[nodiscard]] ScopedTranslateDC
-{
-    ScopedTranslateDC(wxDC &dc, FSize size, bool device_origin = false)
-    :   dc_(&dc)
-    {
-        if(device_origin) {
-            dc_->GetDeviceOrigin(&saved_pos_x_, &saved_pos_y_);
-            dc_->SetDeviceOrigin(saved_pos_x_ + size.w,
-                                  saved_pos_y_ + size.h);
-        } else {
-            dc_->GetLogicalOrigin(&saved_pos_x_, &saved_pos_y_);
-            dc_->SetLogicalOrigin(saved_pos_x_ + size.w,
-                                  saved_pos_y_ + size.h);
-        }
-    }
-
-    ScopedTranslateDC(ScopedTranslateDC const &rhs) = delete;
-    ScopedTranslateDC & operator=(ScopedTranslateDC const &rhs) = delete;
-    ScopedTranslateDC(ScopedTranslateDC &&rhs) = delete;
-    ScopedTranslateDC & operator=(ScopedTranslateDC &&rhs) = delete;
-
-    ~ScopedTranslateDC()
-    {
-        reset();
-    }
-
-    void reset()
-    {
-        if(!dc_) { return; }
-        dc_->SetLogicalOrigin(saved_pos_x_, saved_pos_y_);
-        dc_ = nullptr;
-    }
-
-private:
-    wxDC *dc_ = nullptr;
-    int saved_pos_x_ = 0;
-    int saved_pos_y_ = 0;
-};
-
-struct [[nodiscard]] ScopedScaleDC
-{
-    ScopedScaleDC(wxDC &dc, double scale)
-    :   ScopedScaleDC(dc, scale, scale)
-    {}
-
-    ScopedScaleDC(wxDC &dc, double scale_x, double scale_y)
-    :   dc_(&dc)
-    {
-        dc_->GetUserScale(&saved_scale_x_, &saved_scale_y_);
-        dc_->SetUserScale(scale_x, scale_y);
-    }
-
-    ScopedScaleDC(ScopedScaleDC const &rhs) = delete;
-    ScopedScaleDC & operator=(ScopedScaleDC const &rhs) = delete;
-    ScopedScaleDC(ScopedScaleDC &&rhs) = delete;
-    ScopedScaleDC & operator=(ScopedScaleDC &&rhs) = delete;
-
-    ~ScopedScaleDC()
-    {
-        reset();
-    }
-
-    void reset()
-    {
-        if(!dc_) { return; }
-        dc_->SetUserScale(saved_scale_x_, saved_scale_y_);
-        dc_ = nullptr;
-    }
-
-private:
-    wxDC *dc_ = nullptr;
-    double saved_scale_x_ = 1.0;
-    double saved_scale_y_ = 1.0;
-};
-
 class NodeComponent2;
+
+struct Node
+{
+    Node(String name, int num_inputs, int num_outputs)
+    :   name_(name)
+    ,   num_inputs_(num_inputs)
+    ,   num_outputs_(num_outputs)
+    {
+        hwm::dout << "Node (" << to_utf8(name_) << ") is created." << std::endl;
+    }
+
+    Node(Node const &rhs) = delete;
+    Node & operator=(Node const &rhs) = delete;
+    Node(Node &&rhs) = delete;
+    Node & operator=(Node &&rhs) = delete;
+
+    ~Node()
+    {
+        hwm::dout << "Node (" << to_utf8(name_) << ") is deleted." << std::endl;
+    }
+
+    String const & GetName() const { return name_; }
+    void SetName(String const &name) { name_ = name; }
+
+    int GetNumInputs() const noexcept { return num_inputs_; }
+    int GetNumOutputs() const noexcept { return num_outputs_; }
+
+    void SetNumInputs(int num) noexcept { num_inputs_ = num; }
+    void SetNumOutputs(int num) noexcept { num_outputs_ = num; }
+
+private:
+    String name_;
+    int num_inputs_ = -1;
+    int num_outputs_ = -1;
+};
 
 class INodeOwner
 {
@@ -176,14 +136,15 @@ class NodeComponent2
     constexpr static float kPinRadius = 4;
 
 public:
-    NodeComponent2(INodeOwner *owner, int id, String const &name,
+    NodeComponent2(INodeOwner *owner, Node *node,
                    FPoint pos = {-1, -1},
                    FSize size = {-1, -1})
     :   owner_(owner)
-    ,   id_(id)
-    ,   name_(name)
+    ,   node_(node)
     ,   rc_()
     {
+        assert(node_);
+
         theme_ = Button::getDefaultButtonTheme();
 
         SetPosition(pos);
@@ -192,16 +153,16 @@ public:
 
     void SetInputs(int num)
     {
-        num_inputs_ = num;
+        node_->SetNumInputs(num);
     }
 
     void SetOutput(int num)
     {
-        num_outputs_ = num;
+        node_->SetNumOutputs(num);
     }
 
-    int GetNumInputs() const { return num_inputs_; }
-    int GetNumOutputs() const { return num_outputs_; }
+    int GetNumInputs() const { return node_->GetNumInputs(); }
+    int GetNumOutputs() const { return node_->GetNumOutputs(); }
 
     FPoint GetPinPosition(bool is_input, int index) const
     {
@@ -300,7 +261,7 @@ public:
         dc.DrawLabel(GetLabel(), rc_text, wxALIGN_CENTER);
 
         // draw input pins
-        for(int i = 0, end = num_inputs_; i < end; ++i) {
+        for(int i = 0, end = GetNumInputs(); i < end; ++i) {
             float const pin_x = rc.GetWidth() * (i+1) / (end + 1.0);
             brush = gc->CreateBrush(HSVToColour(0.1, 0.0, 0.0));
             gc->SetBrush(brush);
@@ -318,7 +279,7 @@ public:
         }
 
         // draw output pins
-        for(int i = 0, end = num_outputs_; i < end; ++i) {
+        for(int i = 0, end = GetNumOutputs(); i < end; ++i) {
             float const pin_x = rc.GetWidth() * (i+1) / (end + 1.0);
             brush = gc->CreateBrush(HSVToColour(0.1, 0.0, 0.0));
             gc->SetBrush(brush);
@@ -340,7 +301,7 @@ public:
         }
     }
 
-    wxString GetLabel() const { return name_; }
+    wxString GetLabel() const { return node_->GetName(); }
 
     FRect GetClientRect() const noexcept { return rc_.WithPosition(0, 0); }
     FRect GetRect() const noexcept { return rc_; }
@@ -457,7 +418,7 @@ public:
 
     }
 
-    int GetId() const noexcept { return id_; }
+    Node * GetNode() const noexcept { return node_; }
 
     void OnMouseEventFromParent(MouseEvent const &ev, void(NodeComponent2::* mem_fun)(MouseEvent const &ev))
     {
@@ -487,21 +448,16 @@ public:
 private:
     double hue_ = 0.3;
     INodeOwner *owner_ = nullptr;
-    String name_;
+    Node *node_ = nullptr;
     FRect rc_; // 親ウィンドウ上での位置
     FRect rc_shadow_;
     Button::ButtonTheme theme_;
     //GraphicsBuffer gb_shadow_;
     wxImage img_shadow_;
 
-    int num_inputs_ = 0;
-    int num_outputs_ = 0;
-
     bool being_pushed_ = false;
     bool pushed_ = false;
     bool hover_ = false;
-
-    int id_ = -1;
 
     void UpdateShadowBuffer()
     {
@@ -560,8 +516,8 @@ public:
 
     struct NodeConnectionInfo
     {
-        NodeComponent2 *upstream_ = nullptr;
-        NodeComponent2 *downstream_ = nullptr;
+        Node *upstream_ = nullptr;
+        Node *downstream_ = nullptr;
 
         int output_pin_ = -1; // upstream から出力するピンの番号
         int input_pin_ = -1;  // downtream から出力するピンの番号
@@ -574,6 +530,44 @@ public:
         NodeComponent2 *from_ = nullptr;
         bool is_input_pin_ = false;
         int pin_index_ = -1;
+    };
+
+    struct NodeContainer
+    {
+        using NodePtr = std::unique_ptr<Node>;
+        std::vector<NodePtr> list_;
+
+        struct Pred {
+            explicit
+            Pred(Node const *p) : p_(p) {}
+            bool operator()(NodePtr const &p) const { return p.get() == p_; }
+        private:
+            Node const *p_ = nullptr;
+        };
+
+        Node * AddNode(NodePtr p)
+        {
+            assert(p);
+            assert(std::none_of(list_.begin(), list_.end(), Pred(p.get())));
+
+            list_.push_back(std::move(p));
+            return list_.back().get();
+        }
+
+        NodePtr RemoveNode(Node const *p)
+        {
+            assert(p);
+
+            auto found = std::find_if(list_.begin(), list_.end(), Pred(p));
+            if(found == list_.end()) {
+                return nullptr;
+            }
+
+            auto ret = std::move(*found);
+            list_.erase(found);
+
+            return ret;
+        }
     };
 
     GraphEditor2(wxWindow *parent, wxWindowID id)
@@ -651,9 +645,9 @@ public:
         auto gc = wxGraphicsContext::CreateFromUnknownDC(dc);
         HWM_SCOPE_EXIT([gc] { delete gc; });
 
-        auto draw_connection = [&](NodeConnectionInfo const &conn) {
-            auto &un = conn.upstream_;
-            auto &dn = conn.downstream_;
+        auto draw_connection = [&, this](NodeConnectionInfo const &conn) {
+            auto un = GetNodeComponentByPointer(conn.upstream_);
+            auto dn = GetNodeComponentByPointer(conn.downstream_);
 
             wxPoint2DDouble pt_b {
                 un->GetPosition().x + un->GetSize().w * (conn.output_pin_ + 1) / (un->GetNumOutputs() + 1.0),
@@ -878,7 +872,7 @@ public:
         saved_view_origin_ = view_origin_;
 
         auto const lp = ClientToLogical(FPoint(ev.GetPosition()));
-        captured_node_ = GetNodeByPosition(lp);
+        captured_node_ = GetNodeComponentByPosition(lp);
         if(captured_node_ != nullptr) {
             BringToFront(captured_node_);
 
@@ -914,7 +908,7 @@ public:
             });
 
             auto const lp = ClientToLogical(FPoint(ev.GetPosition()));
-            auto const found_node = GetNodeByPosition(lp);
+            auto const found_node = GetNodeComponentByPosition(lp);
             if(found_node == nullptr) { return; }
 
             auto pos_in_node = FPoint {
@@ -928,13 +922,13 @@ public:
                 if(pin != -1) {
                     NodeConnectionInfo conn;
                     if(try_conn_->is_input_pin_) {
-                        conn.upstream_ = found_node;
-                        conn.downstream_ = try_conn_->from_;
+                        conn.upstream_ = found_node->GetNode();
+                        conn.downstream_ = try_conn_->from_->GetNode();
                         conn.output_pin_ = pin;
                         conn.input_pin_ = try_conn_->pin_index_;
                     } else {
-                        conn.upstream_ = try_conn_->from_;
-                        conn.downstream_ = found_node;
+                        conn.upstream_ = try_conn_->from_->GetNode();
+                        conn.downstream_ = found_node->GetNode();
                         conn.output_pin_ = try_conn_->pin_index_;
                         conn.input_pin_ = pin;
                     }
@@ -974,8 +968,8 @@ public:
 
         if(cut_mode_) {
             auto select_if_intersected = [this](auto &conn) {
-                auto &un = conn.upstream_;
-                auto &dn = conn.downstream_;
+                auto un = GetNodeComponentByPointer(conn.upstream_);
+                auto dn = GetNodeComponentByPointer(conn.downstream_);
 
                 FPoint pt_b {
                     float(un->GetPosition().x + un->GetSize().w * (conn.output_pin_ + 1) / (un->GetNumOutputs() + 1.0)),
@@ -1034,7 +1028,7 @@ public:
         if(captured_node_ && being_pressed_) {
             hover_target = captured_node_;
         } else {
-            hover_target = GetNodeByPosition(lp);
+            hover_target = GetNodeComponentByPosition(lp);
         }
 
         if(last_hover_target_ && last_hover_target_ != hover_target) {
@@ -1061,7 +1055,7 @@ public:
         last_hover_target_ = hover_target;
     }
 
-    NodeComponent2 * GetNodeByPosition(FPoint logical_pos) const noexcept
+    NodeComponent2 * GetNodeComponentByPosition(FPoint logical_pos) const noexcept
     {
         auto found = std::find_if(nodes_.begin(),
                                   nodes_.end(),
@@ -1074,11 +1068,11 @@ public:
         return nullptr;
     }
 
-    NodeComponent2 * GetNodeById(int id) const noexcept
+    NodeComponent2 * GetNodeComponentByPointer(Node *node) const noexcept
     {
         auto found = std::find_if(nodes_.begin(),
                                   nodes_.end(),
-                                  [id](auto &node) { return node->GetId() == id; });
+                                  [node](auto &nc) { return nc->GetNode() == node; });
 
         if(found != nodes_.end()) {
             return found->get();
@@ -1092,7 +1086,7 @@ public:
         auto cp = ev.GetPosition();
         auto lp = ClientToLogical(FPoint(cp.x, cp.y));
 
-        if(auto node = GetNodeByPosition(lp)) {
+        if(auto node = GetNodeComponentByPosition(lp)) {
             NodeComponent2::MouseEvent nev(lp, ev);
             node->OnMouseEventFromParent(nev, &NodeComponent2::OnRightUp);
             return;
@@ -1118,7 +1112,7 @@ public:
         auto cp = ev.GetPosition();
         auto lp = ClientToLogical(FPoint(cp.x, cp.y));
 
-        if(auto node = GetNodeByPosition(lp)) {
+        if(auto node = GetNodeComponentByPosition(lp)) {
             NodeComponent2::MouseEvent nev(lp, ev, ev.GetWheelDelta(), ev.GetWheelRotation());
             node->OnMouseEventFromParent(nev, &NodeComponent2::OnMouseWheel);
             return;
@@ -1186,15 +1180,16 @@ public:
         static int num;
         std::wstringstream ss;
         ss << L"Node[" << num << L"]";
-        auto node = std::make_unique<NodeComponent2>(this, num, ss.str());
+
+        auto node = std::make_unique<Node>(ss.str(), 3, 4);
+        auto p = node_container_.AddNode(std::move(node));
+        auto nc = std::make_unique<NodeComponent2>(this, p);
         num++;
-        node->SetInputs(3);
-        node->SetOutput(4);
 
-        node->SetPosition(ClientToLogical(FPoint(pt)));
-        node->SetSize(FSize{180, 60});
+        nc->SetPosition(ClientToLogical(FPoint(pt)));
+        nc->SetSize(FSize{180, 60});
 
-        nodes_.insert(nodes_.begin(), std::move(node));
+        nodes_.insert(nodes_.begin(), std::move(nc));
 
         Refresh();
     }
@@ -1205,7 +1200,7 @@ public:
         std::copy_if(conns_.begin(),
                      conns_.end(),
                      std::back_inserter(ret),
-                     [p](auto const &conn) { return conn.upstream_ == p; });
+                     [p](auto const &conn) { return conn.upstream_ == p->GetNode(); });
 
         return ret;
     }
@@ -1216,7 +1211,7 @@ public:
         std::copy_if(conns_.begin(),
                      conns_.end(),
                      std::back_inserter(ret),
-                     [p](auto const &conn) { return conn.downstream_ == p; });
+                     [p](auto const &conn) { return conn.downstream_ == p->GetNode(); });
 
         return ret;
     }
@@ -1239,15 +1234,17 @@ public:
     double GetZoomFactor() const noexcept { return zoom_factor_; }
     FPoint GetViewOrigin() const noexcept { return view_origin_; }
 
-    void DeleteNode(NodeComponent2 *node) override
+    void DeleteNode(NodeComponent2 *nc) override
     {
-        assert(node != nullptr);
+        assert(nc != nullptr);
 
         auto found = std::find_if(nodes_.begin(),
                                   nodes_.end(),
-                                  [node](auto &n) { return n.get() == node; });
+                                  [nc](auto &n) { return n.get() == nc; });
 
         assert(found != nodes_.end());
+
+        auto node = nc->GetNode();
 
         std::vector<NodeConnectionInfo> tmp;
         std::copy_if(conns_.begin(),
@@ -1258,6 +1255,7 @@ public:
         std::swap(tmp, conns_);
 
         nodes_.erase(found);
+        node_container_.RemoveNode(node);
 
         Refresh();
     }
@@ -1288,6 +1286,7 @@ private:
     GraphicsBuffer gb_;
 
     std::vector<NodeConnectionInfo> conns_;
+    NodeContainer node_container_;
 
     void RearrangeNodes() override
     {}

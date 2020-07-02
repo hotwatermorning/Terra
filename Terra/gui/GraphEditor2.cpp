@@ -1010,6 +1010,7 @@ public:
 
             NodeComponent2::MouseEvent nev(lp, ev);
             captured_node_->OnMouseEventFromParent(nev, &NodeComponent2::OnLeftUp);
+            Refresh();
 
             return;
         }

@@ -5,7 +5,8 @@
 #include "./DataType.hpp"
 #include "./Button.hpp"
 #include "./Util.hpp"
-#include "../Misc/ScopeExit.hpp"
+#include "../misc/ScopeExit.hpp"
+#include "../misc/UndoManager.hpp"
 
 NS_HWM_BEGIN
 
@@ -513,6 +514,7 @@ class GraphEditor2
 {
 public:
     using NodeComponent2Ptr = std::unique_ptr<NodeComponent2>;
+    using NodePtr = std::unique_ptr<Node>;
 
     struct NodeConnectionInfo
     {
@@ -523,6 +525,20 @@ public:
         int input_pin_ = -1;  // downtream から出力するピンの番号
 
         bool selected_ = false;
+
+        //! compare NodeConnectionInfo and return true if equals.
+        /*! @note selected_ member does not perticipate in this comparison.
+         */
+        bool operator==(NodeConnectionInfo const &rhs) const
+        {
+            auto const to_tuple = [](NodeConnectionInfo const &x) {
+                return std::tie(x.upstream_, x.downstream_, x.output_pin_, x.input_pin_);
+            };
+
+            return to_tuple(*this) == to_tuple(rhs);
+        }
+
+        bool operator!=(NodeConnectionInfo const &rhs) const { return !(*this == rhs); }
     };
 
     struct TryToConnectInfo
@@ -534,7 +550,6 @@ public:
 
     struct NodeContainer
     {
-        using NodePtr = std::unique_ptr<Node>;
         std::vector<NodePtr> list_;
 
         struct Pred {
@@ -573,6 +588,8 @@ public:
     GraphEditor2(wxWindow *parent, wxWindowID id)
     :   IGraphEditor(parent, id)
     {
+        node_container_ = std::make_unique<NodeContainer>();
+
         Bind(wxEVT_PAINT, [this](wxPaintEvent &ev) { OnPaint(); });
         Bind(wxEVT_KEY_UP, [this](wxKeyEvent &ev) { OnKeyUp(ev); });
         Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent &ev) { OnLeftDown(ev); });
@@ -675,16 +692,16 @@ public:
         };
 
         for(int i = 0, end = nodes_.size(); i < end; ++i) {
-            auto *node = nodes_[end - i - 1].get();
-            auto const node_shift = node->GetPosition();
+            auto *nc = nodes_[end - i - 1].get();
+            auto const node_shift = nc->GetPosition();
 
             ScopedTranslateDC tdc(dc, FSize { -node_shift.x, -node_shift.y });
 
-            node->OnPaint(dc);
+            nc->OnPaint(dc);
 
             tdc.reset();
 
-            auto conns = GetUpstreamSideConnections(node);
+            auto conns = GetUpstreamSideConnections(nc->GetNode());
 
             for(auto const &conn: conns) {
                 draw_connection(conn);
@@ -897,6 +914,104 @@ public:
         }
     }
 
+    struct ConnectNodeAction
+    :   IUndoable
+    {
+        ConnectNodeAction(NodeConnectionInfo conn,
+                          GraphEditor2 *owner)
+        :   conn_(conn)
+        ,   owner_(owner)
+        {
+            conn_.selected_ = false;
+        }
+
+        void perform() override
+        {
+            owner_->conns_.push_back(conn_);
+            owner_->Refresh();
+        }
+
+        void undo() override
+        {
+            auto found = std::find(owner_->conns_.begin(),
+                                   owner_->conns_.end(),
+                                   conn_);
+
+            assert(found != owner_->conns_.end());
+            owner_->conns_.erase(found);
+            owner_->Refresh();
+        }
+
+    private:
+        NodeConnectionInfo conn_;
+        GraphEditor2 *owner_ = nullptr;
+    };
+
+    struct DisconnectNodesAction
+    :   IUndoable
+    {
+        DisconnectNodesAction(NodeConnectionInfo conn,
+                             GraphEditor2 *owner)
+        :   conn_(conn)
+        ,   owner_(owner)
+        {
+            conn_.selected_ = false;
+        }
+
+        void perform() override
+        {
+            auto found = std::find(owner_->conns_.begin(),
+                                   owner_->conns_.end(),
+                                   conn_);
+
+            assert(found != owner_->conns_.end());
+            owner_->conns_.erase(found);
+            owner_->Refresh();
+        }
+
+        void undo() override
+        {
+            owner_->conns_.push_back(conn_);
+            owner_->Refresh();
+        }
+
+    private:
+        NodeConnectionInfo conn_;
+        GraphEditor2 *owner_ = nullptr;
+    };
+
+    struct MoveNodeComponentAction
+    :   public IUndoable
+    {
+        MoveNodeComponentAction(NodeComponent2 *nc,
+                                FPoint old_logical_pos,
+                                FPoint new_logical_pos,
+                                GraphEditor2 *owner)
+        :   nc_(nc)
+        ,   old_pos_(old_logical_pos)
+        ,   new_pos_(new_logical_pos)
+        ,   owner_(owner)
+        {}
+
+        void perform()
+        {
+            nc_->SetPosition(new_pos_);
+            owner_->Refresh();
+        }
+
+        void undo()
+        {
+            nc_->SetPosition(old_pos_);
+            owner_->Refresh();
+        }
+
+    private:
+        NodeComponent2 *nc_ = nullptr;
+        FPoint new_pos_;
+        FPoint old_pos_;
+        GraphEditor2 *owner_ = nullptr;
+    };
+
     void OnLeftUp(wxMouseEvent &ev)
     {
         being_pressed_ = false;
@@ -904,7 +1019,6 @@ public:
         if(try_conn_) {
             HWM_SCOPE_EXIT([&] {
                 try_conn_.reset();
-                Refresh();
             });
 
             auto const lp = ClientToLogical(FPoint(ev.GetPosition()));
@@ -932,7 +1046,16 @@ public:
                         conn.output_pin_ = try_conn_->pin_index_;
                         conn.input_pin_ = pin;
                     }
-                    conns_.push_back(conn);
+
+                    if(std::find(conns_.begin(), conns_.end(), conn) == conns_.end()) {
+                        auto name = L"Connect Nodes [{}({}) -> {}({})]"_format(conn.upstream_->GetName(),
+                                                                               conn.output_pin_,
+                                                                               conn.downstream_->GetName(),
+                                                                               conn.input_pin_);
+                        ScopedUndoTransaction sut(name);
+
+                        PerformAndAdd<ConnectNodeAction>(conn, this);
+                    }
                 }
             }
 
@@ -940,23 +1063,41 @@ public:
         }
 
         if(captured_node_ != nullptr) {
+            HWM_SCOPE_EXIT([this] { captured_node_ == nullptr; });
+
             auto const lp = ClientToLogical(FPoint(ev.GetPosition()));
+
+            auto new_mouse_down_pos = ClientToLogical(FPoint(ev.GetPosition()), saved_view_origin_);
+            auto new_node_pos = saved_captured_node_pos_ + (new_mouse_down_pos - saved_logical_mouse_down_pos_);
+
+            if(saved_captured_node_pos_ != new_node_pos) {
+                ScopedUndoTransaction sut(L"Move Node [" + captured_node_->GetNode()->GetName() + L"]");
+                PerformAndAdd<MoveNodeComponentAction>(captured_node_, saved_captured_node_pos_, new_node_pos, this);
+            }
 
             NodeComponent2::MouseEvent nev(lp, ev);
             captured_node_->OnMouseEventFromParent(nev, &NodeComponent2::OnLeftUp);
 
-            Refresh();
             return;
         }
 
         if(cut_mode_) {
+            ScopedUndoTransaction sut(L"Disconnect Nodes");
             auto new_logical_mouse_pos = ClientToLogical(FPoint(ev.GetPosition()));
 
-            std::vector<NodeConnectionInfo> tmp;
-            std::copy_if(conns_.begin(), conns_.end(), std::back_inserter(tmp),
-                         [](auto const &conn) { return conn.selected_ == false; });
+            std::vector<NodeConnectionInfo> to_remove;
+            std::copy_if(conns_.begin(), conns_.end(), std::back_inserter(to_remove),
+                         [](auto const &conn) { return conn.selected_; });
 
-            std::swap(tmp, conns_);
+            for(auto const &conn: to_remove) {
+                auto name = L"Disconnect Node [{}({}) -> {}({})]"_format(conn.upstream_->GetName(),
+                                                                         conn.output_pin_,
+                                                                         conn.downstream_->GetName(),
+                                                                         conn.input_pin_);
+                ScopedUndoTransaction sut(name);
+                PerformAndAdd<DisconnectNodesAction>(conn, this);
+            }
+
             cut_mode_ = false;
             Refresh();
         }
@@ -1175,43 +1316,97 @@ public:
         Refresh();
     }
 
+    struct AddNodeAction
+    :   public IUndoable
+    {
+        AddNodeAction(NodePtr p,
+                      FPoint logical_point,
+                      GraphEditor2 *owner)
+        :   p_(std::move(p))
+        ,   logical_point_(logical_point)
+        ,   owner_(owner)
+        {
+            p_raw_ = p_.get();
+
+            nc_ = std::make_unique<NodeComponent2>(owner_, p_raw_);
+            nc_->SetPosition(logical_point_);
+            nc_->SetSize(FSize{180, 60});
+
+            nc_raw_ = nc_.get();
+        }
+
+        void perform() override
+        {
+            owner_->node_container_->AddNode(std::move(p_));
+            owner_->nodes_.insert(owner_->nodes_.begin(), std::move(nc_));
+
+            owner_->Refresh();
+        }
+
+        void undo() override
+        {
+            assert(owner_->GetUpstreamSideConnections(p_raw_).empty());
+            assert(owner_->GetDownstreamSideConnections(p_raw_).empty());
+
+            auto found_nc = std::find_if(owner_->nodes_.begin(),
+                                         owner_->nodes_.end(),
+                                         [nc_raw = nc_raw_](auto const &nc) { return nc.get() == nc_raw; }
+                                         );
+
+            assert(found_nc != owner_->nodes_.end());
+
+            nc_ = std::move(*found_nc);
+            owner_->nodes_.erase(found_nc);
+            p_ = owner_->node_container_->RemoveNode(p_raw_);
+            assert(p_);
+
+            if(owner_->captured_node_ == nc_raw_) { owner_->captured_node_ = nullptr; }
+            if(owner_->last_hover_target_ == nc_raw_) { owner_->last_hover_target_ = nullptr; }
+            owner_->Refresh();
+        }
+
+    private:
+        NodePtr p_;
+        Node *p_raw_ = nullptr;
+        NodeComponent2Ptr nc_;
+        NodeComponent2 *nc_raw_ = nullptr;
+        FPoint logical_point_;
+        GraphEditor2 *owner_ = nullptr;
+    };
+
     void AddNode(wxPoint pt)
     {
+        ScopedUndoTransaction sut(L"Add Node");
         static int num;
         std::wstringstream ss;
         ss << L"Node[" << num << L"]";
-
-        auto node = std::make_unique<Node>(ss.str(), 3, 4);
-        auto p = node_container_.AddNode(std::move(node));
-        auto nc = std::make_unique<NodeComponent2>(this, p);
         num++;
 
-        nc->SetPosition(ClientToLogical(FPoint(pt)));
-        nc->SetSize(FSize{180, 60});
+        auto node = std::make_unique<Node>(ss.str(), 3, 4);
 
-        nodes_.insert(nodes_.begin(), std::move(nc));
-
-        Refresh();
+        PerformAndAdd<AddNodeAction>(std::move(node),
+                                     ClientToLogical(FPoint(pt)),
+                                     this);
     }
 
-    std::vector<NodeConnectionInfo> GetUpstreamSideConnections(NodeComponent2 *p) const
+    std::vector<NodeConnectionInfo> GetUpstreamSideConnections(Node const *p) const
     {
         std::vector<NodeConnectionInfo> ret;
         std::copy_if(conns_.begin(),
                      conns_.end(),
                      std::back_inserter(ret),
-                     [p](auto const &conn) { return conn.upstream_ == p->GetNode(); });
+                     [p](auto const &conn) { return conn.upstream_ == p; });
 
         return ret;
     }
 
-    std::vector<NodeConnectionInfo> GetDownstreamSideConnections(NodeComponent2 *p) const
+    std::vector<NodeConnectionInfo> GetDownstreamSideConnections(Node const *p) const
     {
         std::vector<NodeConnectionInfo> ret;
         std::copy_if(conns_.begin(),
                      conns_.end(),
                      std::back_inserter(ret),
-                     [p](auto const &conn) { return conn.downstream_ == p->GetNode(); });
+                     [p](auto const &conn) { return conn.downstream_ == p; });
 
         return ret;
     }
@@ -1234,30 +1429,88 @@ public:
     double GetZoomFactor() const noexcept { return zoom_factor_; }
     FPoint GetViewOrigin() const noexcept { return view_origin_; }
 
+    auto FindNodeComponent(NodeComponent2 *p) {
+        return std::find_if(nodes_.begin(),
+                            nodes_.end(),
+                            [p](auto const &nc) { return nc.get() == p; });
+    }
+
+    auto FindNodeComponent(NodeComponent2 *p) const {
+        return std::find_if(nodes_.begin(),
+                            nodes_.end(),
+                            [p](auto const &nc) { return nc.get() == p; });
+    }
+
+    struct DeleteNodeAction
+    :   public IUndoable
+    {
+        DeleteNodeAction(Node *node,
+                         GraphEditor2 *owner)
+        :   p_raw_(node)
+        ,   owner_(owner)
+        {
+            nc_raw_ = owner_->GetNodeComponentByPointer(p_raw_);
+            auto up_conns = owner_->GetUpstreamSideConnections(p_raw_);
+            auto down_conns = owner_->GetDownstreamSideConnections(p_raw_);
+
+            stored_conns_.insert(stored_conns_.end(), up_conns.begin(), up_conns.end());
+            stored_conns_.insert(stored_conns_.end(), down_conns.begin(), down_conns.end());
+        }
+
+        void perform() override
+        {
+            std::vector<NodeConnectionInfo> tmp;
+            std::copy_if(owner_->conns_.begin(),
+                         owner_->conns_.end(),
+                         std::back_inserter(tmp),
+                         [p = p_raw_](auto const &conn) { return conn.upstream_ != p && conn.downstream_ != p; }
+                         );
+
+            std::swap(tmp, owner_->conns_);
+
+            auto nc_found = owner_->FindNodeComponent(nc_raw_);
+            assert(nc_found != owner_->nodes_.end());
+
+            nc_ = std::move(*nc_found);
+            owner_->nodes_.erase(nc_found);
+
+            p_ = owner_->node_container_->RemoveNode(p_raw_);
+            if(owner_->captured_node_ == nc_raw_) { owner_->captured_node_ = nullptr; }
+            if(owner_->last_hover_target_ == nc_raw_) { owner_->last_hover_target_ = nullptr; }
+
+            owner_->Refresh();
+        }
+
+        void undo() override
+        {
+            owner_->node_container_->AddNode(std::move(p_));
+            owner_->nodes_.insert(owner_->nodes_.begin(), std::move(nc_));
+            std::copy(stored_conns_.begin(), stored_conns_.end(), std::back_inserter(owner_->conns_));
+
+            owner_->Refresh();
+        }
+
+    private:
+        Node *p_raw_ = nullptr;
+        NodePtr p_;
+        NodeComponent2 *nc_raw_ = nullptr;
+        NodeComponent2Ptr nc_;
+        GraphEditor2 *owner_ = nullptr;
+        std::vector<NodeConnectionInfo> stored_conns_;
+    };
+
     void DeleteNode(NodeComponent2 *nc) override
     {
         assert(nc != nullptr);
 
-        auto found = std::find_if(nodes_.begin(),
-                                  nodes_.end(),
-                                  [nc](auto &n) { return n.get() == nc; });
+        ScopedUndoTransaction sut(L"Delete Node");
 
-        assert(found != nodes_.end());
+        PerformAndAdd<DeleteNodeAction>(nc->GetNode(), this);
+    }
 
-        auto node = nc->GetNode();
+    void ConnectNodes(Node *upstream, Node *downstream)
+    {
 
-        std::vector<NodeConnectionInfo> tmp;
-        std::copy_if(conns_.begin(),
-                     conns_.end(),
-                     std::back_inserter(tmp),
-                     [node](auto &info) { return (info.upstream_ != node && info.downstream_ != node); });
-
-        std::swap(tmp, conns_);
-
-        nodes_.erase(found);
-        node_container_.RemoveNode(node);
-
-        Refresh();
     }
 
     bool ShowNodePopup(wxMenu &menu) override
@@ -1286,7 +1539,7 @@ private:
     GraphicsBuffer gb_;
 
     std::vector<NodeConnectionInfo> conns_;
-    NodeContainer node_container_;
+    std::unique_ptr<NodeContainer> node_container_;
 
     void RearrangeNodes() override
     {}

@@ -1017,7 +1017,8 @@ public:
         being_pressed_ = false;
 
         if(try_conn_) {
-            HWM_SCOPE_EXIT([&] {
+            HWM_SCOPE_EXIT([&, this] {
+                Refresh(); // Need to refresh to erase provisional connection curve.
                 try_conn_.reset();
             });
 

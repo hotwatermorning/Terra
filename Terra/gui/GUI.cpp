@@ -22,6 +22,7 @@
 #include "../resource/ResourceHelper.hpp"
 #include "./PianoRoll.hpp"
 #include "./PCKeyboardInput.hpp"
+#include "../misc/UndoManager.hpp"
 
 #if !defined(_MSC_VER)
 #include "./OSXMenuBar.h"
@@ -35,6 +36,8 @@ enum
     ID_RescanPlugin,
     ID_ForceRescanPlugin,
     ID_Setting,
+    ID_Edit_Undo,
+    ID_Edit_Redo,
     ID_File_New,
     ID_File_Open,
     ID_File_Save,
@@ -497,6 +500,9 @@ MainFrame::MainFrame(wxSize initial_size)
     menuFile->Append(wxID_EXIT);
     
     wxMenu *menuEdit = new wxMenu;
+    menuEdit->Append(ID_Edit_Undo, "&Undo\tCTRL-Z", "Undo");
+    menuEdit->Append(ID_Edit_Redo, "&Redo\tCTRL-SHIFT-Z", "Undo");
+    menuEdit->AppendSeparator();
     menuEdit->Append(ID_Setting, "&Setting\tCTRL-,", "Open Setting Dialog");
     
     wxMenu *menuView = new wxMenu;
@@ -515,15 +521,35 @@ MainFrame::MainFrame(wxSize initial_size)
     menuBar->Append( menuPlay, "&Play" );
     menuBar->Append( menuHelp, "&Help" );
     SetMenuBar( menuBar );
-    
+
+    menuBar->Bind(wxEVT_UPDATE_UI, [](wxUpdateUIEvent &ev) {
+        auto um = UndoManager::GetInstance();
+        auto const undoable = um->IsUndoable();
+        ev.Enable(undoable);
+        if(undoable) {
+            ev.SetText(L"&Undo | " + *um->GetLatestUndoTransactionName() + L"\tCTRL-Z");
+        }
+    }, ID_Edit_Undo);
+
+    menuBar->Bind(wxEVT_UPDATE_UI, [](wxUpdateUIEvent &ev) {
+        auto um = UndoManager::GetInstance();
+        auto const redoable = um->IsRedoable();
+        ev.Enable(redoable);
+        if(redoable) {
+            ev.SetText(L"&Redo | " + *um->GetLatestRedoTransactionName() + L"\tCTRL-SHIFT-Z");
+        }
+    }, ID_Edit_Redo);
+
     Bind(wxEVT_MENU, [this](auto &ev) { OnExit(); }, wxID_EXIT);
     //Bind(wxEVT_CLOSE_WINDOW, [this](auto &ev) { OnExit(); });
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->OnFileNew(); }, ID_File_New);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->OnFileOpen(); }, ID_File_Open);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->OnFileSave(false, false); }, ID_File_Save);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->OnFileSave(true, false); }, ID_File_SaveAs);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [](auto &ev) { App::GetInstance()->ShowSettingDialog(); }, ID_Setting);
-    Bind(wxEVT_COMMAND_MENU_SELECTED, [this](auto &ev) { OnPlay(ev); }, ID_Play);
+    Bind(wxEVT_MENU, [](auto &ev) { App::GetInstance()->OnFileNew(); }, ID_File_New);
+    Bind(wxEVT_MENU, [](auto &ev) { App::GetInstance()->OnFileOpen(); }, ID_File_Open);
+    Bind(wxEVT_MENU, [](auto &ev) { App::GetInstance()->OnFileSave(false, false); }, ID_File_Save);
+    Bind(wxEVT_MENU, [](auto &ev) { App::GetInstance()->OnFileSave(true, false); }, ID_File_SaveAs);
+    Bind(wxEVT_MENU, [](auto &ev) { auto um = UndoManager::GetInstance(); if(um->IsUndoable()) { um->Undo(); } }, ID_Edit_Undo);
+    Bind(wxEVT_MENU, [](auto &ev) { auto um = UndoManager::GetInstance(); if(um->IsRedoable()) { um->Redo(); } }, ID_Edit_Redo);
+    Bind(wxEVT_MENU, [](auto &ev) { App::GetInstance()->ShowSettingDialog(); }, ID_Setting);
+    Bind(wxEVT_MENU, [this](auto &ev) { OnPlay(ev); }, ID_Play);
     
     Bind(wxEVT_MENU, [this](auto &ev) { OnAbout(ev); }, wxID_ABOUT);
     

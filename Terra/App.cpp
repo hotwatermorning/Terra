@@ -28,6 +28,7 @@
 #include "file/MidiFile.hpp"
 #include "log/LoggingSupport.hpp"
 #include "log/LoggingStrategy.hpp"
+#include "misc/UndoManager.hpp"
 
 #include <config.pb.h>
 
@@ -76,6 +77,8 @@ struct App::Impl
     wxFrame *main_frame_ = nullptr;
     std::thread initialization_thread_;
     std::vector<String> vst3_paths_;
+
+    UndoManager undo_manager_;
     
     Impl()
     {

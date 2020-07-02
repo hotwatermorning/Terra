@@ -298,6 +298,12 @@ public:
         being_pushed_ = true;
     }
 
+    void OnLeftDoubleClick(MouseEvent const &ev)
+    {
+        // show plugin editor.
+        wxMessageBox("Show plugin editor.");
+    }
+
     void OnLeftUp(MouseEvent const &ev)
     {
         being_pushed_ = false;
@@ -532,6 +538,7 @@ public:
         Bind(wxEVT_MOTION, [this](wxMouseEvent &ev) { OnMouseMove(ev); });
         Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent &ev) { OnRightUp(ev); });
         Bind(wxEVT_MOUSEWHEEL, [this](wxMouseEvent &ev) { OnMouseWheel(ev); });
+        Bind(wxEVT_LEFT_DCLICK, [this](wxMouseEvent &ev) { OnLeftDoubleClick(ev); });
         Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](wxMouseCaptureLostEvent &ev) { OnCaptureLost(ev); });
 
         //Bind(wxEVT_SIZING, [this](wxSizeEvent &ev) { ResizeGraphicsBuffer(ev.GetSize()); });
@@ -1214,6 +1221,18 @@ public:
         view_origin_ += (new_lp - lp);
 
         Refresh();
+    }
+
+    void OnLeftDoubleClick(wxMouseEvent const &ev)
+    {
+        auto cp = ev.GetPosition();
+        auto lp = ClientToLogical(FPoint(cp.x, cp.y));
+
+        if(auto node = GetNodeComponentByPosition(lp)) {
+            NodeComponent2::MouseEvent nev(lp, ev);
+            node->OnMouseEventFromParent(nev, &NodeComponent2::OnLeftDoubleClick);
+            return;
+        }
     }
 
     void OnCaptureLost(wxMouseCaptureLostEvent &ev)

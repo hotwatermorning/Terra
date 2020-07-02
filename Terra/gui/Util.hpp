@@ -186,5 +186,75 @@ private:
     double saved_scale_y_ = 1.0;
 };
 
+inline
+bool isLinesIntersected(FPoint line1_begin, FPoint line1_end,
+                        FPoint line2_begin, FPoint line2_end)
+{
+    auto const &a = line1_begin;
+    auto const &b = line1_end;
+    auto const &c = line2_begin;
+    auto const &d = line2_end;
+
+    auto const ta = (c.x - d.x) * (a.y - c.y) + (c.y - d.y) * (c.x - a.x);
+    auto const tb = (c.x - d.x) * (b.y - c.y) + (c.y - d.y) * (c.x - b.x);
+    auto const tc = (a.x - b.x) * (c.y - a.y) + (a.y - b.y) * (a.x - c.x);
+    auto const td = (a.x - b.x) * (d.y - a.y) + (a.y - b.y) * (a.x - d.x);
+
+    return tc * td < 0 && ta * tb < 0;
+}
+
+//! cubic bezier curve class.
+struct Bezier
+{
+    Bezier()
+    {}
+
+    FPoint get(float t) const
+    {
+        assert(0.0 <= t && t <= 1.0);
+        auto const &p1 = pt_begin_;
+        auto const &p2 = pt_control1_;
+        auto const &p3 = pt_control2_;
+        auto const &p4 = pt_end_;
+
+        auto cube = [](auto x) { return x * x * x; };
+        auto square = [](auto x) { return x * x; };
+        return FPoint {
+            cube(1 - t) * p1.x + 3 * square(1 - t) * t * p2.x + 3 * (1 - t) * square(t) * p3.x + cube(t) * p4.x,
+            cube(1 - t) * p1.y + 3 * square(1 - t) * t * p2.y + 3 * (1 - t) * square(t) * p3.y + cube(t) * p4.y,
+        };
+    }
+
+    bool isIntersected(FPoint line_begin, FPoint line_end) const
+    {
+        int const kNumMaxCompletion = 3000;
+
+        // pt1 と pt2 で表す直線がベジエ曲線の凸包と交差するかどうか。
+        bool is_intersected_convex_hull = true;
+
+        if(is_intersected_convex_hull == false) { return false; }
+
+        auto diff = line_end - line_begin;
+        auto const num_compl = std::min<int>(std::max<int>(fabs(diff.w), fabs(diff.h)), kNumMaxCompletion);
+
+        auto pt_last = get(0);
+        for(int i = 1; i <= num_compl; ++i) {
+            auto pt = get(i / (double)num_compl);
+
+            if(isLinesIntersected(line_begin, line_end, pt_last, pt)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    FPoint pt_begin_;
+    FPoint pt_end_;
+
+    FPoint pt_control1_;
+    FPoint pt_control2_;
+};
+
 NS_HWM_END
 

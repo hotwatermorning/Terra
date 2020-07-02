@@ -448,6 +448,9 @@ public:
     using NodeComponent2Ptr = std::unique_ptr<NodeComponent2>;
     using NodePtr = std::unique_ptr<Node>;
 
+    static
+    FSize GetDefaultNodeSize() { return FSize { 180, 60 }; }
+
     struct NodeConnectionInfo
     {
         Node *upstream_ = nullptr;
@@ -1264,7 +1267,7 @@ public:
 
             nc_ = std::make_unique<NodeComponent2>(owner_, p_raw_);
             nc_->SetPosition(logical_point_);
-            nc_->SetSize(FSize{180, 60});
+            nc_->SetSize(GetDefaultNodeSize());
 
             nc_raw_ = nc_.get();
         }
@@ -1318,8 +1321,13 @@ public:
 
         auto node = std::make_unique<Node>(ss.str(), 3, 4);
 
+        auto lp = ClientToLogical(FPoint(pt));
+        auto const def = GetDefaultNodeSize();
+        lp.x -= def.w / 2;
+        lp.y -= def.h / 2;
+
         PerformAndAdd<AddNodeAction>(std::move(node),
-                                     ClientToLogical(FPoint(pt)),
+                                     lp,
                                      this);
     }
 

@@ -1187,8 +1187,7 @@ public:
 
     void OnMouseWheel(wxMouseEvent &ev)
     {
-        auto cp = ev.GetPosition();
-        auto lp = ClientToLogical(FPoint(cp.x, cp.y));
+        auto const lp = ClientToLogical(FPoint(ev.GetPosition()));
 
         if(auto node = GetNodeComponentByPosition(lp)) {
             NodeComponent2::MouseEvent nev(lp, ev, ev.GetWheelDelta(), ev.GetWheelRotation());
@@ -1198,16 +1197,21 @@ public:
 
         double const kMouseZoomChangeRatio = pow(1.5, 1/9.0);
         if(ev.GetWheelRotation() > 0) {
+            // zoom in
             auto const new_scale = zoom_factor_ * pow(kMouseZoomChangeRatio, fabs(ev.GetWheelRotation() / (double)ev.GetWheelDelta()));
             if(new_scale < 5.0) {
                 zoom_factor_ = new_scale;
             }
         } else {
+            // zoom out
             auto const new_scale = zoom_factor_ / pow(kMouseZoomChangeRatio, fabs(ev.GetWheelRotation() / (double)ev.GetWheelDelta()));
             if(new_scale > 0.03) {
                 zoom_factor_ = new_scale;
             }
         }
+
+        auto const new_lp = ClientToLogical(FPoint(ev.GetPosition()));
+        view_origin_ += (new_lp - lp);
 
         Refresh();
     }

@@ -1048,7 +1048,7 @@ public:
                     }
 
                     if(std::find(conns_.begin(), conns_.end(), conn) == conns_.end()) {
-                        auto name = L"Connect Nodes [{}({}) -> {}({})]"_format(conn.upstream_->GetName(),
+                        auto name = L"Connect nodes [{}({}) -> {}({})]"_format(conn.upstream_->GetName(),
                                                                                conn.output_pin_,
                                                                                conn.downstream_->GetName(),
                                                                                conn.input_pin_);
@@ -1071,7 +1071,7 @@ public:
             auto new_node_pos = saved_captured_node_pos_ + (new_mouse_down_pos - saved_logical_mouse_down_pos_);
 
             if(saved_captured_node_pos_ != new_node_pos) {
-                ScopedUndoTransaction sut(L"Move Node [" + captured_node_->GetNode()->GetName() + L"]");
+                ScopedUndoTransaction sut(L"Move node [" + captured_node_->GetNode()->GetName() + L"]");
                 PerformAndAdd<MoveNodeComponentAction>(captured_node_, saved_captured_node_pos_, new_node_pos, this);
             }
 
@@ -1082,7 +1082,7 @@ public:
         }
 
         if(cut_mode_) {
-            ScopedUndoTransaction sut(L"Disconnect Nodes");
+            ScopedUndoTransaction sut(L"Disconnect nodes");
             auto new_logical_mouse_pos = ClientToLogical(FPoint(ev.GetPosition()));
 
             std::vector<NodeConnectionInfo> to_remove;
@@ -1090,7 +1090,7 @@ public:
                          [](auto const &conn) { return conn.selected_; });
 
             for(auto const &conn: to_remove) {
-                auto name = L"Disconnect Node [{}({}) -> {}({})]"_format(conn.upstream_->GetName(),
+                auto name = L"Disconnect node [{}({}) -> {}({})]"_format(conn.upstream_->GetName(),
                                                                          conn.output_pin_,
                                                                          conn.downstream_->GetName(),
                                                                          conn.input_pin_);
@@ -1376,7 +1376,7 @@ public:
 
     void AddNode(wxPoint pt)
     {
-        ScopedUndoTransaction sut(L"Add Node");
+        ScopedUndoTransaction sut(L"Add node");
         static int num;
         std::wstringstream ss;
         ss << L"Node[" << num << L"]";
@@ -1503,7 +1503,7 @@ public:
     {
         assert(nc != nullptr);
 
-        ScopedUndoTransaction sut(L"Delete Node");
+        ScopedUndoTransaction sut(L"Delete node");
 
         PerformAndAdd<DeleteNodeAction>(nc->GetNode(), this);
     }

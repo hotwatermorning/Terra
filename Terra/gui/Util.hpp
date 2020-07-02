@@ -225,14 +225,49 @@ struct Bezier
         };
     }
 
-    bool isIntersected(FPoint line_begin, FPoint line_end) const
+    bool isIntersected(FPoint const line_begin, FPoint const line_end) const
     {
         int const kNumMaxCompletion = 3000;
 
-        // pt1 と pt2 で表す直線がベジエ曲線の凸包と交差するかどうか。
-        bool is_intersected_convex_hull = true;
+        wxRegion r_ch;
+        wxPoint pt_ch[4];
+        pt_ch[0] = wxPoint { (int)pt_begin_.x, (int)pt_begin_.y };
+        pt_ch[1] = wxPoint { (int)pt_control1_.x, (int)pt_control1_.y };
+        pt_ch[2] = wxPoint { (int)pt_end_.x, (int)pt_end_.y };
+        pt_ch[3] = wxPoint { (int)pt_control2_.x, (int)pt_control2_.y };
 
-        if(is_intersected_convex_hull == false) { return false; }
+        for(int i = 0; i < 4; ++i) {
+            wxPoint tmp_pts[3] { pt_ch[i], pt_ch[(i+1)%4], pt_ch[(i+2)%4] };
+            wxRegion tmp(3, tmp_pts);
+            r_ch.Union(tmp);
+        }
+
+        wxPoint pt_line[4];
+        pt_line[0] = wxPoint { (int)line_begin.x, (int)line_begin.y };
+        pt_line[1] = wxPoint { (int)line_end.x, (int)line_begin.y };
+        pt_line[2] = wxPoint { (int)line_end.x, (int)line_end.y };
+        pt_line[3] = wxPoint { (int)line_begin.x, (int)line_end.y };
+
+        bool const dx = (line_begin.x < line_end.x) ? 1 : -1;
+        bool const dy = (line_begin.y < line_end.y) ? 1 : -1;
+
+        pt_line[0].x -= dx;
+        pt_line[3].x -= dx;
+        pt_line[1].x += dx;
+        pt_line[2].x += dx;
+
+        pt_line[0].y -= dy;
+        pt_line[1].y -= dy;
+        pt_line[2].y += dy;
+        pt_line[3].y += dy;
+
+        wxRegion line(4, pt_line);
+        r_ch.Intersect(line);
+        bool is_intersected_with_convex_hull = !r_ch.IsEmpty();
+
+        // 指定した直線がベジエ曲線の凸包と交差するかどうか。
+
+        if(is_intersected_with_convex_hull == false) { return false; }
 
         auto diff = line_end - line_begin;
         auto const num_compl = std::min<int>(std::max<int>(fabs(diff.w), fabs(diff.h)), kNumMaxCompletion);
@@ -244,6 +279,8 @@ struct Bezier
             if(isLinesIntersected(line_begin, line_end, pt_last, pt)) {
                 return true;
             }
+
+            pt_last = pt;
         }
 
         return false;

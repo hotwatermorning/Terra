@@ -8,39 +8,26 @@
 #include "Button.hpp"
 #include "Util.hpp"
 #include <wx/graphics.h>
+#include "../misc/ScopeExit.hpp"
 
 NS_HWM_BEGIN
 
 Button::ButtonTheme Button::getDefaultButtonTheme() noexcept
 {
     return {
-        3.0f, 1.0f,
-        { 0.5f, 0.4f, 0.1f, 0.78f, 0.72f, 0.66f, 0.15f, 0.9f },
-        { 0.5f, 0.4f, 0.1f, 0.88f, 0.82f, 0.76f, 0.15f, 0.9f },
+        5.0f, 1.0f,
+        { 0.5f, 0.4f, 0.1f, 0.92f, 0.72f, 0.66f, 0.15f, 0.9f },
+        { 0.5f, 0.4f, 0.1f, 0.97f, 0.82f, 0.76f, 0.15f, 0.9f },
         { 0.5f, 0.4f, 0.1f, 0.32f, 0.54f, 0.48f, 0.15f, 0.9f },
     };
 }
 
-Button::Button(wxWindow *parent,
-               wxWindowID id,
-               float hue,
-               ButtonTheme theme,
-               wxPoint pos,
-               wxSize size)
-:   wxWindow(parent, id, pos, size)
+Button::Button(FPoint pos,
+               FSize size,
+               ButtonTheme theme)
+:   IWidget(pos, size)
 ,   theme_(theme)
-{
-    setHue(hue);
-
-    Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent &ev) { OnLeftDown(ev); });
-    Bind(wxEVT_LEFT_UP, [this](wxMouseEvent &ev) { OnLeftUp(ev); });
-    Bind(wxEVT_ENTER_WINDOW, [this](wxMouseEvent &ev) { OnMouseEnter(ev); });
-    Bind(wxEVT_LEAVE_WINDOW, [this](wxMouseEvent &ev) { OnMouseLeave(ev); });
-    Bind(wxEVT_PAINT, [this](wxPaintEvent &) { OnPaint(); });
-    Bind(wxEVT_MOTION, [this](wxMouseEvent &ev) { OnMouseMove(ev); });
-    Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](wxMouseCaptureLostEvent &ev) { OnCaptureLost(ev); });
-    Bind(wxEVT_MOUSE_CAPTURE_CHANGED, [this](wxMouseCaptureChangedEvent &ev) { std::cout << "Capture Changed." << std::endl; });
-}
+{}
 
 void Button::setHue(float hue) noexcept
 {
@@ -69,9 +56,9 @@ void Button::EnableToggleMode(bool to_enable) noexcept
     if(to_enable == false && IsPushed()) {
         pushed_ = false;
 
-        wxCommandEvent evt(wxEVT_TOGGLEBUTTON, GetId());
+        wxCommandEvent evt(wxEVT_TOGGLEBUTTON);
         evt.SetEventObject(this);
-        ProcessWindowEvent(evt);
+        ProcessEvent(evt);
     }
 
     toggle_mode_ = to_enable;
@@ -99,6 +86,8 @@ void Button::paintButton (wxDC &dc,
 {
     auto rc = GetClientRect();
 
+    assert(rc.GetX() == 0 && rc.GetY() == 0);
+
     ButtonTheme::ColourSetting const *c = &theme_.normal_;
     if(shouldDrawButtonAsDown) {
         c = &theme_.down_;
@@ -109,52 +98,66 @@ void Button::paintButton (wxDC &dc,
     auto const round = theme_.sz_round_;
     auto const edge = theme_.sz_edge_;
 
-    BrushPen bp { HSVToColour(0.0f, 0.0f, c->br_background_edge_) };
-    bp.ApplyTo(dc);
-    dc.DrawRoundedRectangle(rc, round);
+    auto const tr = wxTransparentColour;
 
-    bp = BrushPen { HSVToColour(hue_, 0.0, c->br_background_) };
-    bp.ApplyTo(dc);
-    dc.DrawRoundedRectangle(0, 0, rc.width, rc.height - edge, round);
+    BrushPen bp { tr };
+    if(shouldDrawButtonAsDown == false || true) {
+        // draw background edge
+        bp = BrushPen { HSVToColour(0.0f, 0.0f, c->br_background_edge_, 0.6), tr };
+        bp.ApplyTo(dc);
+        auto tmp = rc;
+        // tmp.Deflate(1);
+        dc.DrawRoundedRectangle(tmp, round);
+    }
 
-    bp = BrushPen { HSVToColour(hue_, c->sa_front_, c->br_front_edge_) };
-    bp.ApplyTo(dc);
-    dc.DrawRoundedRectangle(edge, edge, rc.width - (edge * 2), rc.height - (edge * 3), round);
+    if(1) {
+        // draw background
+        bp = BrushPen { HSVToColour(hue_, 0.0, c->br_background_, 0.6), tr };
+        bp.ApplyTo(dc);
+        dc.DrawRoundedRectangle(0, 0, rc.GetWidth(), rc.GetHeight() - edge, round);
+    }
 
+    // draw front edge
+    bp = BrushPen { HSVToColour(hue_, c->sa_front_, c->br_front_edge_), tr };
+    bp.ApplyTo(dc);
+    dc.DrawRoundedRectangle(edge, edge, rc.GetWidth() - (edge * 2)-1, rc.GetHeight() - (edge * 3), round);
+
+    // draw front
     auto const col_top = HSVToColour(hue_, c->sa_front_, c->br_front_grad_top_);
     auto const col_bottom = HSVToColour(hue_, c->sa_front_, c->br_front_grad_bottom_);
 
     wxGraphicsContext *gc = wxGraphicsContext::CreateFromUnknownDC(dc);
+    HWM_SCOPE_EXIT([gc] { delete gc; });
     assert(gc);
-    if(gc) {
-        auto brush = gc->CreateLinearGradientBrush(0, 0, 0, rc.height, col_top, col_bottom);
-        gc->SetBrush(brush);
-        gc->DrawRoundedRectangle(edge, edge * 2, rc.width - (edge * 2), rc.height - (edge * 4), round);
+    if(!gc) { return; }
 
-        delete gc;
-    }
+    auto brush = gc->CreateLinearGradientBrush(0, 0, 0, rc.GetHeight(), col_top, col_bottom);
+    gc->SetBrush(brush);
+    gc->DrawRoundedRectangle(edge, edge * 2, rc.GetWidth() - (edge * 2)-1, rc.GetHeight() - (edge * 5), round);
 
+    // draw text highlight
     auto col_text_highlight = HSVToColour(hue_, 0.0, c->br_text_edge_);
     dc.SetTextForeground(col_text_highlight);
     auto rc_text_highlight = rc;
     rc_text_highlight.Deflate(0, 1);
-    rc_text_highlight.Offset(0, -1);
+    rc_text_highlight.Translate(0, -1);
     dc.DrawLabel(GetLabel(), rc_text_highlight, wxALIGN_CENTER);
 
+    // draw text
     auto col_text = HSVToColour(hue_, 0.0, c->br_text_);
     dc.SetTextForeground(col_text);
     auto rc_text = rc;
     dc.DrawLabel(GetLabel(), rc_text, wxALIGN_CENTER);
 }
 
-void Button::OnLeftDown(wxMouseEvent &ev)
+void Button::OnLeftDown(MouseEvent &ev)
 {
     being_pushed_ = true;
 
     Refresh();
 }
 
-void Button::OnLeftUp(wxMouseEvent &ev)
+void Button::OnLeftUp(MouseEvent &ev)
 {
     if(being_pushed_ == false) {
         return;
@@ -163,51 +166,50 @@ void Button::OnLeftUp(wxMouseEvent &ev)
     being_pushed_ = false;
 
     if(IsToggleModeEnabled()) {
-        if(GetClientRect().Contains(ev.GetPosition())) {
+        if(GetClientRect().Contain(ev.pt_)) {
             pushed_ = !pushed_;
 
-            wxCommandEvent evt(wxEVT_TOGGLEBUTTON, GetId());
+            wxCommandEvent evt(wxEVT_TOGGLEBUTTON);
             evt.SetEventObject(this);
-            ProcessWindowEvent(evt);
+            ProcessEvent(evt);
         }
 
     } else {
-        wxCommandEvent evt(wxEVT_BUTTON, GetId());
+        wxCommandEvent evt(wxEVT_BUTTON);
         evt.SetEventObject(this);
-        ProcessWindowEvent(evt);
+        ProcessEvent(evt);
     }
 
     Refresh();
 }
 
-void Button::OnMouseEnter(wxMouseEvent &ev)
+void Button::OnMouseEnter(MouseEvent &ev)
 {
     hover_ = true;
     Refresh();
 }
 
-void Button::OnMouseLeave(wxMouseEvent &ev)
+void Button::OnMouseLeave(MouseEvent &ev)
 {
     hover_ = false;
     Refresh();
 }
 
-void Button::OnMouseMove(wxMouseEvent &ev)
+void Button::OnMouseMove(MouseEvent &ev)
 {
-    auto new_hover_state = GetClientRect().Contains(ev.GetPosition());
+    auto new_hover_state = GetClientRect().Contain(ev.pt_);
     if(new_hover_state != hover_) {
         hover_ = new_hover_state;
         Refresh();
     }
 }
 
-void Button::OnPaint()
+void Button::OnPaint(wxDC &dc)
 {
-    wxPaintDC dc(this);
     paintButton(dc, hover_, pushed_ || (being_pushed_ && hover_));
 }
 
-void Button::OnCaptureLost(wxMouseCaptureLostEvent &ev)
+void Button::OnMouseCaptureLost(MouseCaptureLostEvent &ev)
 {
     being_pushed_ = false;
     Refresh();

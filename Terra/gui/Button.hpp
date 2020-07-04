@@ -1,5 +1,7 @@
 #pragma once
 
+#include "./Widget.hpp"
+
 NS_HWM_BEGIN
 
 //! Button class.
@@ -7,7 +9,8 @@ NS_HWM_BEGIN
  *  send wxEVT_TOGGLEBUTTON message otherwise.
  */
 class Button
-:   public wxWindow
+:   public IWidget
+,   public wxEvtHandler
 {
 public:
     //! Button appearance setting.
@@ -65,12 +68,10 @@ public:
      *  @param hue the base color of the button. (0.0f .. 1.0f)
      *  @post IsToggleModeEnabled() == false
      */
-    Button(wxWindow *parent,
-           wxWindowID id,
-           float hue,
-           ButtonTheme theme = getDefaultButtonTheme(),
-           wxPoint pos = wxDefaultPosition,
-           wxSize size = wxDefaultSize);
+    Button(FPoint pos = FPoint {},
+           FSize size = FSize {},
+           ButtonTheme theme = getDefaultButtonTheme()
+           );
 
     //! Set the base color of the button.
     /*! @param hue the base color of the button. (0.0f .. 1.0f)
@@ -112,19 +113,19 @@ private:
     bool hover_ = false;
     bool toggle_mode_ = false;
 
+    void OnLeftDown(MouseEvent &ev) override;
+    void OnLeftUp(MouseEvent &ev) override;
+    void OnMouseEnter(MouseEvent &ev) override;
+    void OnMouseLeave(MouseEvent &ev) override;
+    void OnMouseMove(MouseEvent &ev) override;
+    void OnPaint(wxDC &dc) override;
+    void OnMouseCaptureLost(MouseCaptureLostEvent &ev) override;
+
     virtual
     void paintButton(wxDC &dc,
                      bool shouldDrawButtonAsHighlighted,
                      bool shouldDrawButtonAsDown
                      );
-
-    void OnLeftDown(wxMouseEvent &ev);
-    void OnLeftUp(wxMouseEvent &ev);
-    void OnMouseEnter(wxMouseEvent &ev);
-    void OnMouseLeave(wxMouseEvent &ev);
-    void OnMouseMove(wxMouseEvent &ev);
-    void OnPaint();
-    void OnCaptureLost(wxMouseCaptureLostEvent &ev);
 };
 
 NS_HWM_END

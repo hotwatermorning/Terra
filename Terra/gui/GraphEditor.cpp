@@ -648,31 +648,6 @@ public:
 
         knife_ = wxCursor(img);
 
-        btn1_ = new Button(this, wxID_ANY, 0.0f);
-        btn2_ = new Button(this, wxID_ANY, 0.33f);
-        btn3_ = new Button(this, wxID_ANY, 0.66f);
-
-        btn1_->SetLabel("red");
-        btn2_->SetLabel("green");
-        btn3_->SetLabel("blue");
-
-        wxSize sz_button = { 100, 50 };
-        btn1_->SetSize(sz_button);
-        btn2_->SetSize(sz_button);
-        btn3_->SetSize(sz_button);
-
-        btn1_->Bind(wxEVT_BUTTON, [this](wxCommandEvent &ev) {
-            assert(ev.GetEventObject() == btn1_);
-            std::cout << "Button1 pushed." << std::endl;
-        });
-
-        btn2_->EnableToggleMode(true);
-        btn2_->Bind(wxEVT_TOGGLEBUTTON, [this](wxCommandEvent &ev) {
-            assert(ev.GetEventObject() == btn2_);
-            std::string state = btn2_->IsPushed() ? "Down" : "Up";
-            std::cout << ("Button2 is " + state) << std::endl;
-        });
-
         Bind(wxEVT_PAINT, [this](auto &ev) { OnPaint(); });
         Bind(wxEVT_LEFT_DOWN, [this](auto &ev) { OnLeftDown(ev); });
         Bind(wxEVT_LEFT_UP, [this](auto &ev) { OnLeftUp(ev); });
@@ -707,14 +682,14 @@ public:
     
     bool Layout() override
     {
-        auto center = GetCenter(GetClientRect());
-        btn2_->CenterOnParent();
-        auto rc1 = btn2_->GetRect();
-        auto rc3 = btn2_->GetRect();
-        rc1.Offset(-rc1.GetWidth() - 10, 0);
-        rc3.Offset(rc3.GetWidth() + 10, 0);
-        btn1_->Move(rc1.GetTopLeft());
-        btn3_->Move(rc3.GetTopLeft());
+//        auto center = GetCenter(GetClientRect());
+//        //btn2_->CenterOnParent();
+//        auto rc1 = btn2_->GetRect();
+//        auto rc3 = btn2_->GetRect();
+//        rc1.Offset(-rc1.GetWidth() - 10, 0);
+//        rc3.Offset(rc3.GetWidth() + 10, 0);
+//        btn1_->Move(rc1.GetTopLeft());
+//        btn3_->Move(rc3.GetTopLeft());
         back_buffer_ = GraphicsBuffer(GetClientSize());
         return GraphEditor::Layout();
     }

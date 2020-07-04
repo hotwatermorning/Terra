@@ -113,18 +113,17 @@ T transposed(T const &v) { auto tmp = v; transpose(tmp); return tmp; }
 
 struct [[nodiscard]] ScopedTranslateDC
 {
-    ScopedTranslateDC(wxDC &dc, FSize size, bool device_origin = false)
+    ScopedTranslateDC(wxDC &dc, FSize size)
     :   dc_(&dc)
+    ,   specified_size_(size)
     {
-        if(device_origin) {
-            dc_->GetDeviceOrigin(&saved_pos_x_, &saved_pos_y_);
-            dc_->SetDeviceOrigin(saved_pos_x_ + size.w,
-                                  saved_pos_y_ + size.h);
-        } else {
-            dc_->GetLogicalOrigin(&saved_pos_x_, &saved_pos_y_);
-            dc_->SetLogicalOrigin(saved_pos_x_ + size.w,
-                                  saved_pos_y_ + size.h);
-        }
+        saved_size_ = dc_->GetLogicalOrigin();
+        applied_size_ = wxPoint {
+            (int)std::round(saved_size_.x + specified_size_.w),
+            (int)std::round(saved_size_.y + specified_size_.h)
+        };
+
+        dc_->SetLogicalOrigin(applied_size_.x, applied_size_.y);
     }
 
     ScopedTranslateDC(ScopedTranslateDC const &rhs) = delete;
@@ -140,14 +139,17 @@ struct [[nodiscard]] ScopedTranslateDC
     void reset()
     {
         if(!dc_) { return; }
-        dc_->SetLogicalOrigin(saved_pos_x_, saved_pos_y_);
+        dc_->SetLogicalOrigin(saved_size_.x, saved_size_.y);
         dc_ = nullptr;
     }
 
+    wxPoint GetAppliedSize() const noexcept { return applied_size_; }
+
 private:
     wxDC *dc_ = nullptr;
-    int saved_pos_x_ = 0;
-    int saved_pos_y_ = 0;
+    FSize specified_size_;
+    wxPoint applied_size_;
+    wxPoint saved_size_;
 };
 
 struct [[nodiscard]] ScopedScaleDC

@@ -6,7 +6,9 @@
 #include "./Button.hpp"
 #include "./Util.hpp"
 #include "../misc/ScopeExit.hpp"
+#include "../misc/DebuggerOutputStream.hpp"
 #include "../misc/UndoManager.hpp"
+#include "./TestDialog.hpp"
 
 NS_HWM_BEGIN
 
@@ -1512,6 +1514,9 @@ private:
 
 std::unique_ptr<IGraphEditor> CreateGraphEditor2Component(wxWindow *parent, GraphProcessor &graph)
 {
+    auto dlg = CreateTestDialog(parent);
+    dlg->Show();
+    
     auto p = std::make_unique<GraphEditor2>(parent, wxID_ANY);
     p->SetGraph(graph);
 

@@ -1,6 +1,9 @@
 #pragma once
 
+#include "./Widget.hpp"
 #include "./Button.hpp"
+#include "./DataType.hpp"
+#include "./Util.hpp"
 
 NS_HWM_BEGIN
 

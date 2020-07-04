@@ -188,6 +188,41 @@ private:
     double saved_scale_y_ = 1.0;
 };
 
+struct [[nodiscard]] ScopedClipDC
+{
+    ScopedClipDC(wxDC &dc, wxRect const rc)
+    :   dc_(&dc)
+    ,   rc_(rc)
+    {
+        dc_->GetClippingBox(saved_rc_);
+        // dc_->DestroyClippingRegion();
+        dc_->SetClippingRegion(rc_);
+    }
+
+    ScopedClipDC(ScopedClipDC const &rhs) = delete;
+    ScopedClipDC & operator=(ScopedClipDC const &rhs) = delete;
+    ScopedClipDC(ScopedClipDC &&rhs) = delete;
+    ScopedClipDC & operator=(ScopedClipDC &&rhs) = delete;
+
+    ~ScopedClipDC()
+    {
+        reset();
+    }
+
+    void reset()
+    {
+        if(!dc_) { return; }
+        dc_->DestroyClippingRegion();
+        dc_->SetClippingRegion(saved_rc_);
+        dc_ = nullptr;
+    }
+
+private:
+    wxDC *dc_ = nullptr;
+    wxRect rc_;
+    wxRect saved_rc_;
+};
+
 inline
 bool isLinesIntersected(FPoint line1_begin, FPoint line1_end,
                         FPoint line2_begin, FPoint line2_end)

@@ -3,6 +3,12 @@
 NS_HWM_BEGIN
 
 template<class T>
+struct Point;
+
+template<class T>
+struct Size;
+
+template<class T>
 struct Point
 {
     T x = 0;
@@ -23,6 +29,20 @@ struct Point
             (int)std::round(y)
         };
     }
+
+    void Translate(T new_x, T new_y) & noexcept
+    {
+        x += new_x;
+        y += new_y;
+    }
+
+    [[nodiscard]] Point<T> Translated(T x, T y) const noexcept {
+        auto tmp = *this;
+        tmp.Translate(x, y);
+        return tmp;
+    }
+
+    Size<T> AsSize() const;
 };
 
 template<class T>
@@ -47,8 +67,12 @@ struct Size
         };
     }
 
-    void Scale(double xy) noexcept { Scale(xy, xy); }
-    void Scale(double x, double y) noexcept
+    Size operator-() const {
+        return Size { -w, -h };
+    }
+
+    void Scale(double xy) & noexcept { Scale(xy, xy); }
+    void Scale(double x, double y) & noexcept
     {
         w *= x;
         h *= y;
@@ -60,7 +84,21 @@ struct Size
         tmp.Scale(x, y);
         return tmp;
     }
+
+    Point<T> AsPoint() const;
 };
+
+template<class T>
+Size<T> Point<T>::AsSize() const
+{
+    return Size<T> { x, y };
+}
+
+template<class T>
+Point<T> Size<T>::AsPoint() const
+{
+    return Point<T> { w, h };
+}
 
 template<class T>
 bool operator==(Point<T> const &lhs, Point<T> const &rhs)
@@ -126,9 +164,9 @@ struct Rect {
     Rect()
     {}
 
-    Rect(Point<T> _pos, Size<T> _size)
-    :   pos(_pos)
-    ,   size(_size)
+    Rect(Point<T> initial_pos, Size<T> initial_size)
+    :   pos(initial_pos)
+    ,   size(initial_size)
     {}
 
     Rect(Point<T> topleft, Point<T> rightbottom)
@@ -161,8 +199,8 @@ struct Rect {
         };
     }
 
-    void Inflate(T xy) noexcept { Inflate(xy, xy); }
-    void Inflate(T x, T y) noexcept
+    void Inflate(T xy) & noexcept { Inflate(xy, xy); }
+    void Inflate(T x, T y) & noexcept
     {
         pos.x -= x;
         pos.y -= y;
@@ -173,17 +211,17 @@ struct Rect {
         size.h = std::max<T>(size.h, 0);
     }
 
-    void Deflate(T xy) noexcept { Deflate(xy, xy); }
-    void Deflate(T x, T y) noexcept { Inflate(-x, -y); }
+    void Deflate(T xy) & noexcept { Deflate(xy, xy); }
+    void Deflate(T x, T y) & noexcept { Inflate(-x, -y); }
 
-    void Translate(T x, T y) noexcept
+    void Translate(T x, T y) & noexcept
     {
         pos.x += x;
         pos.y += y;
     }
 
-    void Scale(double xy) noexcept { Scale(xy, xy); }
-    void Scale(double x, double y) noexcept
+    void Scale(double xy) & noexcept { Scale(xy, xy); }
+    void Scale(double x, double y) & noexcept
     {
         size.Scale(x, y);
     }
@@ -234,6 +272,69 @@ struct Rect {
         return
         (GetLeft() <= pt.x && pt.x < GetRight()) &&
         (GetTop() <= pt.y && pt.y < GetBottom());
+    }
+
+    void Join(Rect<T> const &rc) & noexcept {
+        if(rc.IsEmpty()) { return; }
+
+        if(IsEmpty()) {
+            *this = rc;
+        } else {
+            T const left      = std::min(GetLeft(), rc.GetLeft());
+            T const right     = std::max(GetRight(), rc.GetRight());
+            T const top       = std::min(GetTop(), rc.GetTop());
+            T const bottom    = std::max(GetBottom(), rc.GetBottom());
+
+            pos.x = left;
+            pos.y = top;
+            size.w = right - left;
+            size.h = bottom - top;
+        }
+    }
+
+    [[nodiscard]] Rect<T> Joined(Rect<T> const &rc) const noexcept {
+        auto tmp = *this;
+        tmp.Join(rc);
+        return tmp;
+    }
+
+    void Intersect(Rect<T> const &rc) noexcept {
+        T const left      = std::max(GetLeft(), rc.GetLeft());
+        T const right     = std::max(std::min(GetRight(), rc.GetRight()), left);
+        T const top       = std::max(GetTop(), rc.GetTop());
+        T const bottom    = std::max(std::min(GetBottom(), rc.GetBottom()), top);
+
+        pos.x = left;
+        pos.y = top;
+        size.w = right - left;
+        size.h = bottom - top;
+    }
+
+    [[nodiscard]] Rect<T> Intersected(Rect<T> const &rc) const noexcept {
+        auto tmp = *this;
+        tmp.Intersect(rc);
+        return tmp;
+    }
+
+    [[nodiscard]]
+    bool IsIntersected(Rect<T> const &rc) const noexcept {
+        return
+            Contain(rc.GetTopLeft()) ||
+            Contain(rc.GetTopRight()) ||
+            Contain(rc.GetBottomRight()) ||
+            Contain(rc.GetBottomLeft());
+    }
+
+    [[nodiscard]]
+    bool IsEmpty() const noexcept
+    {
+        return size.w <= 0 || size.h <= 0;
+    }
+
+    [[nodiscard]]
+    bool IsValid() const noexcept
+    {
+        return size.w >= 0 && size.h >= 0;
     }
 
     [[nodiscard]]

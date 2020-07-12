@@ -10,7 +10,6 @@ NS_HWM_BEGIN
  */
 class Button
 :   public IWidget
-,   public wxEvtHandler
 {
 public:
     //! Button appearance setting.
@@ -115,6 +114,7 @@ private:
 
     void OnLeftDown(MouseEvent &ev) override;
     void OnLeftUp(MouseEvent &ev) override;
+    void OnLeftDoubleClick(MouseEvent &ev) override;
     void OnMouseEnter(MouseEvent &ev) override;
     void OnMouseLeave(MouseEvent &ev) override;
     void OnMouseMove(MouseEvent &ev) override;

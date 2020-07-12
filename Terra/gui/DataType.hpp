@@ -194,8 +194,8 @@ struct Rect {
 
     [[nodiscard]] Point<T> GetCenter() const noexcept {
         return Point<T> {
-            GetX() + GetWidth() / 2.0,
-            GetY() + GetHeight() / 2.0,
+            T(GetX() + GetWidth() / 2.0),
+            T(GetY() + GetHeight() / 2.0),
         };
     }
 

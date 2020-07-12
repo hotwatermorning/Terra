@@ -236,12 +236,27 @@ public:
         
         auto &tp = pj->GetTransporter();
         slr_transporter_.reset(tp.GetListeners(), this);
+
+        Bind(wxEVT_PAINT, [this](wxPaintEvent &) { OnPaint(); });
         
         SetBackgroundColour(wxColour(0x3B, 0x3B, 0x3B));
     }
     
     ~TimeIndicator()
     {}
+
+    void OnPaint()
+    {
+        wxPaintDC dc(this);
+
+        BrushPen bp { wxTransparentColour, HSVToColour(0.0, 0.0, 1.0) };
+        bp.ApplyTo(dc);
+
+        auto rc = GetClientRect();
+        //rc.SetWidth(rc.GetWidth() - 30);
+        rc.SetHeight(rc.GetHeight() + 1);
+        dc.DrawRectangle(rc);
+    }
     
 private:
     UInt32 kIntervalSlow = 200;

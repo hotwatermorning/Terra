@@ -1,5 +1,8 @@
 #include "TestDialog.hpp"
 #include "Controls.hpp"
+#include "./Slider.hpp"
+#include "../misc/ScopeExit.hpp"
+#include "../misc/Stopwatch.hpp"
 
 NS_HWM_BEGIN
 
@@ -22,13 +25,16 @@ public:
         btn3_.SetLabel(L"blue");
 
         FSize sz_button = { 100, 50 };
+        FSize sz_size = { 100, 50 };
         btn1_.SetSize(sz_button);
         btn2_.SetSize(sz_button);
         btn3_.SetSize(sz_button);
+        sl1_.SetSize(sz_size);
 
         AddChild(&btn1_);
         AddChild(&btn2_);
         AddChild(&btn3_);
+        AddChild(&sl1_);
 
         btn1_.Bind(wxEVT_BUTTON, [this](wxCommandEvent &ev) {
             assert(ev.GetEventObject() == &btn1_);
@@ -43,11 +49,87 @@ public:
         });
     }
 
-    void OnPaint(wxDC &dc) override
+    void OnPaint(wxDC &device_context) override
     {
-        BrushPen bp { HSVToColour(hue_, 0.2f, 0.9f) };
-        bp.ApplyTo(dc);
-        dc.DrawRoundedRectangle(wxRect(GetClientRect().Translated(0, shift_y).Deflated(0, shift_y)), 10);
+        TERRA_STOPWATCH(__PRETTY_FUNCTION__);
+        
+        auto gc = CreateGraphicsContext(device_context);
+        assert(gc);
+
+        TERRA_STOPWATCH("inner");
+
+        auto bp = BrushPen { HSVToColour(hue_, 0.01f, 0.9f), wxTransparentColour };
+        bp.ApplyTo(gc);
+        auto rc = GetClientRect();
+        // gc->DrawRectangle(rc.GetX(), rc.GetY(), rc.GetWidth(), rc.GetHeight());
+
+        TERRA_STOPWATCH_WITH_NAME("inner 2", sw_inner2);
+
+        bp = BrushPen { wxTransparentColor, HSVToColour(0.0, 0.0, 0.0) };
+        // bp = BrushPen { HSVToColour(hue_, 0.2f, 0.4f), wxTransparentColour };
+        bp.ApplyTo(gc);
+
+        TERRA_STOPWATCH_FINISH(sw_inner2);
+
+        TERRA_STOPWATCH("inner3");
+
+        rc = GetClientRect().Translated(0, shift_y).Deflated(0, shift_y);
+        gc->DrawRectangle(rc.GetX(), rc.GetY(), rc.GetWidth(), rc.GetHeight());
+        // gc->DrawRoundedRectangle(rc.GetX(), rc.GetY(), rc.GetWidth(), rc.GetHeight(), 10);
+
+        static int kNumRedraw = 100;
+        static int kNumPoints = 100;
+        std::string text = "rc = GetClientRect().Translated(0, shift_y).Deflated(0, shift_y);\n"
+        "gc->DrawRectangle(rc.GetX(), rc.GetY(), rc.GetWidth(), rc.GetHeight());\n"
+        "// gc->DrawRoundedRectangle(rc.GetX(), rc.GetY(), rc.GetWidth(), rc.GetHeight(), 10);\n";
+
+        auto const bp_background = BrushPen { HSVToColour(0.3, 0.4, 0.5, 0.6), HSVToColour(0.5, 0.6, 0.7, 0.8) };
+        auto const bp_ellipse = BrushPen { HSVToColour(0.0, 0.4, 0.5, 0.6), HSVToColour(0.2, 0.6, 0.7, 0.8) };
+        auto const bp_point = BrushPen { HSVToColour(0.8, 0.8, 0.3) };
+        auto const col_text_background = HSVToColour(0.0, 0.2, 0.92, 0.8);
+        auto const col_text_foreground = HSVToColour(0.6, 0.2, 0.8, 0.8);
+
+        TERRA_STOPWATCH_WITH_NAME("Draw With DeviceContext", sw_draw_dc);
+        for(int i = 0; i < kNumRedraw; ++i) {
+            bp_background.ApplyTo(device_context);
+            device_context.DrawRoundedRectangle(GetClientRect(), 50);
+            bp_ellipse.ApplyTo(device_context);
+            device_context.DrawEllipse(GetClientRect());
+            bp_point.ApplyTo(device_context);
+            for(int pn = 0; pn < kNumPoints; ++pn) {
+                device_context.DrawPoint((pn * 3) % (int)GetWidth(), (pn * 4) % (int)GetHeight());
+            }
+
+            device_context.SetTextBackground(col_text_background);
+            device_context.SetTextForeground(col_text_foreground);
+
+            wxCoord tw = 0, th = 0;
+            device_context.GetTextExtent(text, &tw, &th);
+            device_context.DrawText(text, 10, th);
+        }
+        TERRA_STOPWATCH_FINISH(sw_draw_dc);
+
+        TERRA_STOPWATCH_WITH_NAME("Draw With GraphicsContext", sw_draw_gc);
+        for(int i = 0; i < kNumRedraw; ++i) {
+            BrushPen bp = { HSVToColour(0.3, 0.4, 0.5, 0.6), HSVToColour(0.5, 0.6, 0.7, 0.8) };
+            bp_background.ApplyTo(gc);
+            gc->DrawRoundedRectangle(0, 0, GetWidth(), GetHeight(), 50);
+            bp_ellipse.ApplyTo(gc);
+            gc->DrawEllipse(0, 0, GetWidth(), GetHeight());
+
+            bp_point.ApplyTo(gc);
+            for(int pn = 0; pn < kNumPoints; ++pn) {
+                device_context.DrawPoint((pn * 3) % (int)GetWidth(), (pn * 4) % (int)GetHeight());
+            }
+
+            wxDouble tw = 0, th = 0;
+            gc->SetFont(device_context.GetFont(), col_text_foreground);
+            gc->GetTextExtent(text, &tw, &th);
+
+            auto brush = gc->CreateBrush(wxBrush(col_text_background));
+            gc->DrawText(text, 10, th, brush);
+        }
+        TERRA_STOPWATCH_FINISH(sw_draw_gc);
     }
 
     void OnSetPosition() override
@@ -60,6 +142,7 @@ public:
         btn1_.SetPosition(rc.GetPosition().Translated(0, 80 * 0));
         btn2_.SetPosition(rc.GetPosition().Translated(0, 80 * 1));
         btn3_.SetPosition(rc.GetPosition().Translated(0, 80 * 2));
+        sl1_.SetPosition(rc.GetPosition().Translated(0, 80 * 3));
 
         Refresh();
     }
@@ -72,6 +155,7 @@ private:
     Button btn1_;
     Button btn2_;
     Button btn3_;
+    Slider sl1_;
 };
 
 class TestWidget

@@ -15,7 +15,7 @@ NS_HWM_BEGIN
 Button::ButtonTheme Button::getDefaultButtonTheme() noexcept
 {
     return {
-        5.0f, 1.0f,
+        6.0f, 1.0f,
         { 0.5f, 0.4f, 0.1f, 0.92f, 0.72f, 0.66f, 0.15f, 0.9f },
         { 0.5f, 0.4f, 0.1f, 0.97f, 0.82f, 0.76f, 0.15f, 0.9f },
         { 0.5f, 0.4f, 0.1f, 0.32f, 0.54f, 0.48f, 0.15f, 0.9f },
@@ -84,6 +84,11 @@ void Button::paintButton (wxDC &dc,
                           bool shouldDrawButtonAsDown
                           )
 {
+    wxGraphicsContext *gc = wxGraphicsContext::CreateFromUnknownDC(dc);
+    HWM_SCOPE_EXIT([gc] { delete gc; });
+    assert(gc);
+    if(!gc) { return; }
+
     auto rc = GetClientRect();
 
     assert(rc.GetX() == 0 && rc.GetY() == 0);
@@ -95,7 +100,7 @@ void Button::paintButton (wxDC &dc,
         c = &theme_.highlighted_;
     }
 
-    auto const round = theme_.sz_round_;
+    double const round = theme_.sz_round_;
     auto const edge = theme_.sz_edge_;
 
     auto const tr = wxTransparentColour;
@@ -104,54 +109,57 @@ void Button::paintButton (wxDC &dc,
     if(shouldDrawButtonAsDown == false || true) {
         // draw background edge
         bp = BrushPen { HSVToColour(0.0f, 0.0f, c->br_background_edge_, 0.6), tr };
-        bp.ApplyTo(dc);
+        bp.ApplyTo(gc);
         auto tmp = rc;
-        // tmp.Deflate(1);
-        dc.DrawRoundedRectangle(tmp, round);
+        gc->DrawRoundedRectangle(0, 0, rc.GetWidth(), rc.GetHeight(), round);
     }
 
     if(1) {
         // draw background
         bp = BrushPen { HSVToColour(hue_, 0.0, c->br_background_, 0.6), tr };
-        bp.ApplyTo(dc);
-        dc.DrawRoundedRectangle(0, 0, rc.GetWidth(), rc.GetHeight() - edge, round);
+        bp.ApplyTo(gc);
+        gc->DrawRoundedRectangle(0, 0, rc.GetWidth(), rc.GetHeight() - edge, round);
     }
 
     // draw front edge
     bp = BrushPen { HSVToColour(hue_, c->sa_front_, c->br_front_edge_), tr };
-    bp.ApplyTo(dc);
-    dc.DrawRoundedRectangle(edge, edge, rc.GetWidth() - (edge * 2)-1, rc.GetHeight() - (edge * 3), round);
+    bp.ApplyTo(gc);
+    gc->DrawRoundedRectangle(edge, edge, rc.GetWidth() - (edge * 2), rc.GetHeight() - (edge * 3), round);
 
     // draw front
     auto const col_top = HSVToColour(hue_, c->sa_front_, c->br_front_grad_top_);
     auto const col_bottom = HSVToColour(hue_, c->sa_front_, c->br_front_grad_bottom_);
 
-    wxGraphicsContext *gc = wxGraphicsContext::CreateFromUnknownDC(dc);
-    HWM_SCOPE_EXIT([gc] { delete gc; });
-    assert(gc);
-    if(!gc) { return; }
-
     auto brush = gc->CreateLinearGradientBrush(0, 0, 0, rc.GetHeight(), col_top, col_bottom);
     gc->SetBrush(brush);
-    gc->DrawRoundedRectangle(edge, edge * 2, rc.GetWidth() - (edge * 2)-1, rc.GetHeight() - (edge * 5), round);
+    gc->DrawRoundedRectangle(edge, edge * 2, rc.GetWidth() - (edge * 2), rc.GetHeight() - (edge * 4), round);
 
     // draw text highlight
     auto col_text_highlight = HSVToColour(hue_, 0.0, c->br_text_edge_);
-    dc.SetTextForeground(col_text_highlight);
+    gc->SetFont(dc.GetFont(), col_text_highlight);
     auto rc_text_highlight = rc;
     rc_text_highlight.Deflate(0, 1);
     rc_text_highlight.Translate(0, -1);
-    dc.DrawLabel(GetLabel(), rc_text_highlight, wxALIGN_CENTER);
+    wxDouble tw = 0, th = 0;
+    auto const &label = GetLabel();
+    gc->GetTextExtent(label, &tw, &th);
+    auto center = rc.GetCenter();
+    wxDouble tx = center.x - tw / 2.0;
+    wxDouble ty = center.y - th / 2.0 - 1;
+    gc->DrawText(label, tx, ty);
 
     // draw text
     auto col_text = HSVToColour(hue_, 0.0, c->br_text_);
-    dc.SetTextForeground(col_text);
-    auto rc_text = rc;
-    dc.DrawLabel(GetLabel(), rc_text, wxALIGN_CENTER);
+    gc->SetFont(dc.GetFont(), col_text);
+
+    ty += 1;
+    gc->DrawText(label, tx, ty);
+
 }
 
 void Button::OnLeftDown(MouseEvent &ev)
 {
+    hwm::dout << __PRETTY_FUNCTION__ << std::endl;
     being_pushed_ = true;
 
     Refresh();
@@ -159,9 +167,35 @@ void Button::OnLeftDown(MouseEvent &ev)
 
 void Button::OnLeftUp(MouseEvent &ev)
 {
+    hwm::dout << __PRETTY_FUNCTION__ << std::endl;
+
     if(being_pushed_ == false) {
         return;
     }
+
+    being_pushed_ = false;
+
+    if(IsToggleModeEnabled()) {
+        if(GetClientRect().Contain(ev.pt_)) {
+            pushed_ = !pushed_;
+
+            wxCommandEvent evt(wxEVT_TOGGLEBUTTON);
+            evt.SetEventObject(this);
+            ProcessEvent(evt);
+        }
+
+    } else {
+        wxCommandEvent evt(wxEVT_BUTTON);
+        evt.SetEventObject(this);
+        ProcessEvent(evt);
+    }
+
+    Refresh();
+}
+
+void Button::OnLeftDoubleClick(MouseEvent &ev)
+{
+    hwm::dout << __PRETTY_FUNCTION__ << std::endl;
 
     being_pushed_ = false;
 

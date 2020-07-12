@@ -2,6 +2,10 @@
 
 #include "./DataType.hpp"
 #include "./Util.hpp"
+#include "../misc/Preprocessor.hpp"
+#include "../misc/StrCnv.hpp"
+
+#define TERRA_WPRETTY_FUNCTION hwm::to_wstr(__PRETTY_FUNCTION__)
 
 NS_HWM_BEGIN
 
@@ -26,6 +30,7 @@ public:
 };
 
 class IWidget
+:   public wxEvtHandler
 {
 public:
     IWidget()
@@ -78,6 +83,8 @@ public:
     FRect GetRect() const noexcept { return rc_; }
     FPoint GetPosition() const noexcept { return rc_.pos; }
     FSize GetSize() const noexcept { return rc_.size; }
+    float GetWidth() const noexcept { return rc_.GetWidth(); }
+    float GetHeight() const noexcept { return rc_.GetHeight(); }
 
     void SetPosition(FPoint pos) {
         rc_.pos = pos;
@@ -150,31 +157,37 @@ public:
 public:
     void ProcessLeftDown(MouseEvent &ev)
     {
+        TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION << L", " << (void*)this);
         OnLeftDown(ev);
     }
 
     void ProcessLeftUp(MouseEvent &ev)
     {
+        TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION << L", " << (void*)this);
         OnLeftUp(ev);
     }
 
     void ProcessLeftDoubleClick(MouseEvent &ev)
     {
+        TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION << L", " << (void*)this);
         OnLeftDoubleClick(ev);
     }
 
     void ProcessRightDown(MouseEvent &ev)
     {
+        TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION << L", " << (void*)this);
         OnRightDown(ev);
     }
 
     void ProcessRightUp(MouseEvent &ev)
     {
+        TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION << L", " << (void*)this);
         OnRightUp(ev);
     }
 
     void ProcessRightDoubleClick(MouseEvent &ev)
     {
+        TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION << L", " << (void*)this);
         OnRightDoubleClick(ev);
     }
 
@@ -194,11 +207,13 @@ public:
             ProcessMouseEnter(tmp_ev);
         }
 
+        TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION << L", " << (void*)this);
         OnMouseMove(ev);
     }
 
     void ProcessMouseEnter(MouseEvent &ev)
     {
+        TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION << L", " << (void*)this);
         mouse_entered_ = true;
         OnMouseEnter(ev);
     }
@@ -215,6 +230,7 @@ public:
         }
 
         if(mouse_entered_) {
+            TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION << L", " << (void*)this);
             OnMouseLeave(ev);
             mouse_entered_ = false;
         }
@@ -222,26 +238,31 @@ public:
 
     void ProcessMouseWheel(MouseEvent &ev)
     {
+        TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION << L", " << (void*)this);
         OnMouseWheel(ev);
     }
 
     void ProcessKeyDown(KeyEvent &ev)
     {
+        TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION << L", " << (void*)this);
         OnKeyDown(ev);
     }
 
     void ProcessKeyUp(KeyEvent &ev)
     {
+        TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION << L", " << (void*)this);
         OnKeyUp(ev);
     }
 
     void ProcessChar(KeyEvent &ev)
     {
+        TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION << L", " << (void*)this);
         OnChar(ev);
     }
 
     void ProcessMouseCaptureLost(MouseCaptureLostEvent &ev)
     {
+        TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION << L", " << (void*)this);
         OnMouseCaptureLost(ev);
     }
 
@@ -250,8 +271,17 @@ public:
     template<class EventType>
     void ProcessEventFromParent(EventType &ev, void(IWidget::* handler)(EventType &ev), IWidget *target = nullptr)
     {
+        if(target) {
+            auto pt = target->OwnerToChild(ev.pt_);
+            auto tmp_ev = ev;
+            tmp_ev.pt_ = pt;
+            (target->*handler)(tmp_ev);
+            return;
+        }
+
         auto pt = ParentToChild(ev.pt_);
-        auto child = GetChildWithPosition(pt);
+        IWidget *child = GetChildWithPosition(pt);
+
         if(child) {
             auto tmp_ev = ev;
             tmp_ev.pt_ = pt;
@@ -265,25 +295,18 @@ public:
             ev.should_propagate_ = true;
         }
 
-        if(!target || target == this) {
-            auto tmp_ev = ev;
-            tmp_ev.pt_ = pt;
-            (this->*handler)(tmp_ev);
+        auto tmp_ev = ev;
+        tmp_ev.pt_ = pt;
+        (this->*handler)(tmp_ev);
 
-            ev.should_propagate_ = tmp_ev.should_propagate_;
-        }
+        ev.should_propagate_ = tmp_ev.should_propagate_;
     }
 
     void ProcessPaintEventFromParent(wxDC &dc)
     {
         if(redraw_area_.IsEmpty()) { return; }
 
-        // ScopedClipDC sc(dc, wxRect(redraw_area_));
-
         ScopedTranslateDC st(dc, - GetPosition().AsSize());
-
-        //auto as = st.GetAppliedSize();
-        //ScopedClipDC sc(dc, (wxRect)redraw_area_.Translated(as.x, as.y));
 
         ScopedClipDC sc(dc, wxRect(redraw_area_));
         ScopedClipDC sc2(dc, wxRect(GetClientRect()));
@@ -309,6 +332,29 @@ public:
     FPoint ParentToChild(FPoint pt) const
     {
         return pt - GetPosition().AsSize();
+    }
+
+    FPoint ChildToOwner(FPoint pt) const
+    {
+        auto self = this;
+        FPoint origin = { 0, 0 };
+        for( ; ; ) {
+            auto parent = self->GetParent();
+            if(!parent) {
+                break;
+            }
+
+            origin = self->ChildToParent(origin);
+            self = parent;
+        }
+
+        return pt + origin.AsSize();
+    }
+
+    FPoint OwnerToChild(FPoint pt) const
+    {
+        auto shift = ChildToOwner(FPoint{0, 0});
+        return pt - shift.AsSize();
     }
 
     FRect ChildToParent(FRect rc) const
@@ -373,7 +419,7 @@ public:
 
     void ReleaseMouse()
     {
-        RequestToCaptureMouse(this);
+        RequestToReleaseMouse(this);
     }
 
 private:
@@ -535,14 +581,22 @@ private:
 
     void OnLeftDown(wxMouseEvent &ev)
     {
+        // hwm::dout << __PRETTY_FUNCTION__ << ", " << (void*)this << std::endl;
+
+        if(captured_) {
+            ReleaseMouse(captured_);
+        }
+
         IWidget::MouseEvent tmp_ev;
         tmp_ev.pt_ = FPoint(ev.GetPosition());
         tmp_ev.key_state_ = ev;
-        widget_->ProcessEventFromParent(tmp_ev, &IWidget::ProcessLeftDown, captured_);
+        widget_->ProcessEventFromParent(tmp_ev, &IWidget::ProcessLeftDown);
     }
 
     void OnLeftUp(wxMouseEvent &ev)
     {
+        // hwm::dout << __PRETTY_FUNCTION__ << std::endl;
+
         IWidget::MouseEvent tmp_ev;
         tmp_ev.pt_ = FPoint(ev.GetPosition());
         tmp_ev.key_state_ = ev;
@@ -551,6 +605,8 @@ private:
 
     void OnLeftDoubleClick(wxMouseEvent &ev)
     {
+        // hwm::dout << __PRETTY_FUNCTION__ << std::endl;
+
         IWidget::MouseEvent tmp_ev;
         tmp_ev.pt_ = FPoint(ev.GetPosition());
         tmp_ev.key_state_ = ev;
@@ -559,6 +615,8 @@ private:
 
     void OnRightDown(wxMouseEvent &ev)
     {
+        // hwm::dout << __PRETTY_FUNCTION__ << std::endl;
+
         IWidget::MouseEvent tmp_ev;
         tmp_ev.pt_ = FPoint(ev.GetPosition());
         tmp_ev.key_state_ = ev;
@@ -583,6 +641,8 @@ private:
 
     void OnMouseMove(wxMouseEvent &ev)
     {
+        // TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION);
+
         IWidget::MouseEvent tmp_ev;
         tmp_ev.pt_ = FPoint(ev.GetPosition());
         tmp_ev.key_state_ = ev;
@@ -591,6 +651,9 @@ private:
 
     void OnMouseEnter(wxMouseEvent &ev)
     {
+        // TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION);
+
+        // hwm::dout << "Owner: MousEnter" << std::endl;
 //        IWidget::MouseEvent tmp_ev;
 //        tmp_ev.pt_ = FPoint(ev.GetPosition());
 //        tmp_ev.key_state_ = ev;
@@ -599,6 +662,8 @@ private:
 
     void OnMouseLeave(wxMouseEvent &ev)
     {
+        // TERRA_DEBUG_LOG(TERRA_WPRETTY_FUNCTION);
+
 //        IWidget::MouseEvent tmp_ev;
 //        tmp_ev.pt_ = FPoint(ev.GetPosition());
 //        tmp_ev.key_state_ = ev;
@@ -617,6 +682,7 @@ private:
 
     void OnCaptureLost(wxMouseCaptureLostEvent &ev)
     {
+        // hwm::dout << __PRETTY_FUNCTION__ << std::endl;
         if(captured_) {
             IWidget::MouseCaptureLostEvent ev;
             captured_->ProcessMouseCaptureLost(ev);
@@ -643,18 +709,25 @@ private:
 
     void CaptureMouse(IWidget *p) override
     {
+        // hwm::dout << __PRETTY_FUNCTION__ << std::endl;
+
         if(captured_) {
             IWidget::MouseCaptureLostEvent ev;
             captured_->ProcessMouseCaptureLost(ev);
             captured_ = nullptr;
         }
 
-        wxWindow::CaptureMouse();
+        if(wxWindow::HasCapture() == false) {
+            wxWindow::CaptureMouse();
+        }
+
         captured_ = p;
     }
 
     void ReleaseMouse(IWidget *p) override
     {
+        // hwm::dout << __PRETTY_FUNCTION__ << std::endl;
+
         if(captured_ == p) {
             wxWindow::ReleaseMouse();
             captured_ = nullptr;

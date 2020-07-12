@@ -399,6 +399,7 @@ private:
     bool being_pushed_ = false;
     bool pushed_ = false;
     bool hover_ = false;
+    wxTextCtrl *txt_name_;
 
     void UpdateShadowBuffer()
     {
@@ -1340,6 +1341,7 @@ public:
     {
         ScopedUndoTransaction sut(L"Add node");
         static int num;
+        if(nodes_.empty()) { num = 0; }
         std::wstringstream ss;
         ss << L"Node[" << num << L"]";
         num++;

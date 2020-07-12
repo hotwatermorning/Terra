@@ -28,6 +28,16 @@ public:
         dc.SetBrush(brush_);
         dc.SetPen(pen_);
     }
+
+    void ApplyTo(wxGraphicsContext *gc) const {
+        gc->SetBrush(brush_);
+        gc->SetPen(pen_);
+    }
+
+    void ApplyTo(std::unique_ptr<wxGraphicsContext> &gc) const {
+        gc->SetBrush(brush_);
+        gc->SetPen(pen_);
+    }
 };
 
 struct BrushPenSet
@@ -329,6 +339,12 @@ struct Bezier
     FPoint pt_control1_;
     FPoint pt_control2_;
 };
+
+inline
+std::unique_ptr<wxGraphicsContext> CreateGraphicsContext(wxDC &dc)
+{
+    return std::unique_ptr<wxGraphicsContext>(wxGraphicsContext::CreateFromUnknownDC(dc));
+}
 
 NS_HWM_END
 

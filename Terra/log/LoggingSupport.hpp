@@ -59,7 +59,9 @@ LoggingStreamWrapper<Stream> & operator<<(LoggingStreamWrapper<Stream> &os, char
 }
 
 // logging macro.
-#define TERRA_LOG(level, ...) \
+#define TERRA_LOG(level, ...) TERRA_LOG_I(level, __VA_ARGS__)
+
+#define TERRA_LOG_I(level, ...) \
 do { \
     if(auto global_logger_ref ## __LINE__ = GetGlobalLogger()) { \
         auto error = global_logger_ref ## __LINE__ ->OutputLog(level, [&] { \
@@ -77,9 +79,14 @@ do { \
 
 // dedicated logging macros for the default logging levels.
 
-#define TERRA_ERROR_LOG(...) TERRA_LOG(L"Error", __VA_ARGS__)
-#define TERRA_WARN_LOG(...) TERRA_LOG(L"Warn", __VA_ARGS__)
-#define TERRA_INFO_LOG(...) TERRA_LOG(L"Info", __VA_ARGS__)
-#define TERRA_DEBUG_LOG(...) TERRA_LOG(L"Debug", __VA_ARGS__)
+#define TERRA_ERROR_LOG_I(...) TERRA_LOG(L"Error", __VA_ARGS__)
+#define TERRA_WARN_LOG_I(...) TERRA_LOG(L"Warn", __VA_ARGS__)
+#define TERRA_INFO_LOG_I(...) TERRA_LOG(L"Info", __VA_ARGS__)
+#define TERRA_DEBUG_LOG_I(...) TERRA_LOG(L"Debug", __VA_ARGS__)
+
+#define TERRA_ERROR_LOG(...) TERRA_ERROR_LOG_I(__VA_ARGS__)
+#define TERRA_WARN_LOG(...) TERRA_WARN_LOG_I(__VA_ARGS__)
+#define TERRA_INFO_LOG(...) TERRA_INFO_LOG_I(__VA_ARGS__)
+#define TERRA_DEBUG_LOG(...) TERRA_DEBUG_LOG_I(__VA_ARGS__)
 
 NS_HWM_END

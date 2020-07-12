@@ -1,0 +1,12 @@
+#pragma once
+
+#define TERRA_PP_CAT_I(x, y) x ## y
+#define TERRA_PP_CAT(x, y) TERRA_PP_CAT_I(x, y)
+
+#define TERRA_PP_STRINGIZE_I(x) #x
+#define TERRA_PP_STRINGIZE_I(x) TERRA_PP_STRINGIZE_II(x)
+#define TERRA_PP_STRINGIZE(...) TERRA_PP_STRINGIZE_I(__VA_ARGS__)
+
+#define TERRA_PP_WSTRINGIZE_II(x) L##x
+#define TERRA_PP_WSTRINGIZE_I(x) TERRA_PP_WSTRINGIZE_II(x)
+#define TERRA_PP_WSTRINGIZE(...) TERRA_PP_WSTRINGIZE_I(__VA_ARGS__)

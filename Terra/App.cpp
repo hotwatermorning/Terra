@@ -196,7 +196,7 @@ bool App::OnInit()
     // コンフィグデータの読み込み
     pimpl_->LoadConfig();
     
-    pimpl_->plugin_scanner_.AddDirectories(GetVst3PluginSearchPaths());
+    pimpl_->plugin_scanner_.SetDirectories(GetVst3PluginSearchPaths());
     
     TERRA_DEBUG_LOG(L"Add plugin directories.");
     
@@ -791,6 +791,7 @@ std::vector<String> App::GetVst3PluginSearchPaths() const
 void App::SetVst3PluginSearchPaths(std::vector<String> new_list)
 {
     pimpl_->vst3_paths_ = new_list;
+    pimpl_->plugin_scanner_.SetDirectories(new_list);
     pimpl_->SaveConfig();
 }
 

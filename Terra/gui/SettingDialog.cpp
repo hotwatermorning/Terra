@@ -640,7 +640,10 @@ public:
         btn_minus_->Enable(selected_any);
 
         if(lb_dir_list_->IsEmpty()) {
-            OnRestoreList();
+            for(auto path: App::GetDefaultVst3PluginSearchPaths()) {
+                lb_dir_list_->Append(path);
+            }
+            lb_dir_list_->Select(wxNOT_FOUND);
         }
     }
     

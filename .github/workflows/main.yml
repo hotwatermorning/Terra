@@ -18,11 +18,11 @@ jobs:
     - name: Test
       run: |
         cd gradle
-        gradlew test
+        .\gradlew test
     - name: Build App
       run: |
         cd gradle
-        gradlew build_app -Pconfig=Release
+        .\gradlew build_app -Pconfig=Release
     - name: Archive
       run: |
         cd build/Release

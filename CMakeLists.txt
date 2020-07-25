@@ -143,6 +143,7 @@ ExternalProject_Add(
     -D
     -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF
     -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF
+    -DSMTG_RUN_VST_VALIDATOR=OFF
     -DSMTG_ADD_VSTGUI=OFF
   BUILD_COMMAND
     cd <BINARY_DIR> &&
@@ -197,7 +198,6 @@ else()
         "CXXFLAGS=-stdlib=libc++ -DHAVE_TYPE_TRAITS" "OBJCXXFLAGS=-stdlib=libc++"
         "CPPFLAGS=-stdlib=libc++" "LDFLAGS=-stdlib=libc++"
         --with-macosx-version-min=10.9 --with-cocoa
-        --with-macosx-sdk=/Applications/Xcode_11.3.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.11.sdk
         --with-libjpeg=builtin --with-libpng=builtin
         --with-regex=builtin --with-libtiff=builtin
         --with-zlib=builtin --with-expat=builtin

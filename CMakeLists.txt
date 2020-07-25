@@ -40,7 +40,9 @@ set(SUBMODULE_INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>")
 set(VST3_SUBMODULE_INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}")
 
 set(ASIOSDK_DOWNLOAD_URL "https://www.steinberg.net/sdk_downloads/asiosdk2.3.zip")
-set(ASIOSDK_PATH "${CMAKE_CURRENT_BINARY_DIR}/src/asiosdk")
+set(ASIOSDK_DIR "${CMAKE_CURRENT_BINARY_DIR}/src/asiosdk")
+
+message("ASIOSDK_DIR: ${ASIOSDK_DIR}")
 
 if(MSVC)
   ExternalProject_Add(
@@ -66,7 +68,10 @@ ExternalProject_Add(
     "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}"
     -DPA_BUILD_STATIC=ON
     -DPA_BUILD_SHARED=OFF
-    $<MSVC:-DPA_DLL_LINK_WITH_STATIC_RUNTIME=OFF -DPA_USE_WDMKS=OFF -DPA_USE_ASIO=ON -DASIOSDK_ROOT_DIR="${ASIOSDK_DIR}">
+    $<$<BOOL:${MSVC}>:-DPA_DLL_LINK_WITH_STATIC_RUNTIME=OFF>
+    $<$<BOOL:${MSVC}>:-DPA_USE_WDMKS=OFF>
+    $<$<BOOL:${MSVC}>:-DPA_USE_ASIO=ON>
+    $<$<BOOL:${MSVC}>:-DASIOSDK_ROOT_DIR=${ASIOSDK_DIR}>
   )
 
 ExternalProject_Add(
@@ -94,7 +99,7 @@ if(MSVC)
   ExternalProject_Add(
     protobuf
     PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
-    SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/protobuf"
+    SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/protobuf/cmake"
     CMAKE_ARGS
       -DCMAKE_BUILD_TYPE=$<CONFIG>
       "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}"
@@ -135,6 +140,7 @@ ExternalProject_Add(
   SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/vst3sdk"
   CMAKE_ARGS
     -DCMAKE_BUILD_TYPE=${VST3_CONFIG}
+    -D
     -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF
     -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF
     -DSMTG_ADD_VSTGUI=OFF
@@ -151,12 +157,15 @@ if(MSVC)
     wxWidgets
     PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/wxWidgets"
+    BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/src/wxWidgets-build"
     CONFIGURE_COMMAND
       echo "Prepare setup.h" &&
-      cd <SOURCE_DIR> &&
+      cd "<SOURCE_DIR>" &&
       "${CMAKE_COMMAND}" -E copy "./include/wx/msw/setup0.h" "./include/wx/msw/setup.h" &&
-      cmake
-        -DCMAKE_BUILD_TYPE=$<CONFIG>
+      echo "Prepare project" &&
+      cd "<BINARY_DIR>" &&
+        "${CMAKE_COMMAND}"
+        -G "${CMAKE_GENERATOR}"
         "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}"
         -DwxBUILD_SHARED=OFF
         -DwxBUILD_MONOLITHIC=OFF
@@ -165,7 +174,11 @@ if(MSVC)
         -DwxBUILD_TESTS=OFF
         -DwxBUILD_SAMPLES=OFF
         -DwxBUILD_DEMOS=OFF
-        -DRTMIDI_BUILD_STATIC_LIBS=ON -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF
+        "<SOURCE_DIR>"
+    BUILD_COMMAND
+      "${CMAKE_COMMAND}" --build . --target ALL_BUILD --config $<CONFIG>
+    INSTALL_COMMAND
+      "${CMAKE_COMMAND}" --install "<BINARY_DIR>" --config $<CONFIG>
     )
 else()
   ExternalProject_Add(
@@ -297,18 +310,24 @@ generate_source_list(
 # configure build targets
 ####################################################################
 
-add_executable(Terra MACOSX_BUNDLE ${TERRA_APP_SOURCES})
-add_executable(Terra-Test MACOSX_BUNDLE ${TERRA_TEST_SOURCES})
+if(MSVC)
+  add_executable(Terra WIN32 ${TERRA_APP_SOURCES})
+  add_executable(Terra-Test ${TERRA_TEST_SOURCES})
+else()
+  add_executable(Terra MACOSX_BUNDLE ${TERRA_APP_SOURCES})
+  add_executable(Terra-Test MACOSX_BUNDLE ${TERRA_TEST_SOURCES})
+endif()
+
 list(APPEND TARGET_LIST Terra Terra-Test)
 
 if(MSVC)
-  set(VST3_SDK_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/opt/vst3sdk/lib/sdk.lib")
-  set(VST3_BASE_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/opt/vst3sdk/lib/base.lib")
-  set(VST3_PLUGINTERFACES_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/opt/vst3sdk/lib/pluginterfaces.lib")
-  set(PROTOBUF_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/lib/protobuf.lib")
-  set(RTMIDI_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/lib/rtmidi.lib")
-  set(PORTAUDIO_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/lib/portaudio.lib")
-  set(FMT_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/opt/vst3sdk/lib/$<IF:$<CONFIG:Debug>,fmtd.lib,fmt.lib>")
+  set(VST3_SDK_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/sdk.lib")
+  set(VST3_BASE_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/base.lib")
+  set(VST3_PLUGINTERFACES_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/pluginterfaces.lib")
+  set(PROTOBUF_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/lib/$<IF:$<CONFIG:Debug>,libprotobufd.lib,libprotobuf.lib>")
+  set(RTMIDI_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/lib/rtmidi.lib")
+  set(PORTAUDIO_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/lib/portaudio_static_x64.lib")
+  set(FMT_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/lib/$<IF:$<CONFIG:Debug>,fmtd.lib,fmt.lib>")
 else()
   set(VST3_SDK_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/libsdk.a")
   set(VST3_BASE_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/libbase.a")
@@ -388,8 +407,6 @@ foreach(TARGET Terra;Terra-Test)
     ${TARGET}
     PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/build/install/$<CONFIG>/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/build/install/$<CONFIG>/include/wx-3.1"
-    "${CMAKE_CURRENT_SOURCE_DIR}/build/install/$<CONFIG>/lib/wx/include/osx_cocoa-unicode-static-3.1"
     "${CMAKE_CURRENT_SOURCE_DIR}/ext/vst3sdk"
     "${CMAKE_CURRENT_SOURCE_DIR}/ext/variant/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/ext/midifile/include"
@@ -398,6 +415,22 @@ foreach(TARGET Terra;Terra-Test)
     "${CMAKE_CURRENT_SOURCE_DIR}/schema/cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Terra"
     )
+
+  if(MSVC)
+    target_include_directories(
+      ${TARGET}
+      PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/build/install/$<CONFIG>/include"
+      "${CMAKE_CURRENT_SOURCE_DIR}/build/install/$<CONFIG>/include/msvc"
+      )
+  else()
+    target_include_directories(
+      ${TARGET}
+      PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/build/install/$<CONFIG>/include/wx-3.1"
+      "${CMAKE_CURRENT_SOURCE_DIR}/build/install/$<CONFIG>/lib/wx/include/osx_cocoa-unicode-static-3.1"
+      )
+  endif()
 
   target_link_libraries(
     ${TARGET}
@@ -432,15 +465,15 @@ foreach(TARGET Terra;Terra-Test)
   foreach(WX_LIB ${WX_LIBS})
     target_link_libraries(
       ${TARGET}
-      "${SUBMODULE_INSTALL_DIR}/lib/${WX_LIB}"
+      "${SUBMODULE_INSTALL_DIR}/lib/$<$<BOOL:${MSVC}>:vc_x64_lib>/${WX_LIB}"
       )
   endforeach()
 
-  # Use static link runtime libraries.
+  # Use dynamic link runtime libraries.
   set_target_properties(
     ${TARGET}
     PROPERTIES
-    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
     )
 
   target_compile_options(

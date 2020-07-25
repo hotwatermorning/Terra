@@ -674,7 +674,7 @@ build_fmtlib.mustRunAfter update_submodules
 
 task compile_schemas {
   doLast {
-    def protoc = file("../ext/protobuf/${build_dir_name}/install/bin/protoc${isWindows() ? '.exe' : ''}").getAbsolutePath()
+    def protoc = file("../build/install/${project.config}/bin/protoc${isWindows() ? '.exe' : ''}").getAbsolutePath()
     assert(file(protoc).exists())
 
     assert(mkdirs_if_needed(file("../schema/cpp")))

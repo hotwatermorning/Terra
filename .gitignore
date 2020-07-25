@@ -20,7 +20,5 @@
 !gradle/**/*
 gradle/.gradle
 
-build_debug
-build_release
-test_debug
+build
 schema/cpp

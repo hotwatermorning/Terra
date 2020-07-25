@@ -26,6 +26,8 @@ ensure_property(project, "use_ccache", ["true", "false"])
 ensure_property(project, "renew_cache", ["false", "true"])
 ensure_property(project, "msvc_version", ["Visual Studio 16 2019", "Visual Studio 15 2017"])
 
+ensure_property(project, "cache_strategy", ["azure", "file", "null"])
+
 // enable setting cache title to distiguish stored caches with titles.
 if(project.hasProperty("cache_title") == false) {
   project.metaClass.setProperty("cache_title", "")
@@ -35,11 +37,7 @@ project.cache_title = project.cache_title.trim().replaceAll(/ /, "_")
 
 ext {
   isWindows = { return System.properties['os.name'].toLowerCase().startsWith("windows") }
-  build_dir_name = "build_${project.config.toLowerCase()}"
-  test_build_dir_name = "test_${project.config.toLowerCase()}"
-  enable_ccache = ((project.use_ccache == "true" && isWindows() == false) ? "which ccache".execute().waitFor() == 0 : false)
-  ccache_path = (enable_ccache ? "which ccache".execute().text.trim() : "")
-  ccache_envvars = (enable_ccache ? [CC: "${ccache_path} clang", CXX: "${ccache_path} clang++"] : [CCACHE_DISABLE: "true"])
+  build_dir_name = "build"
   should_renew_cache = (project.renew_cache == "true")
   getCMakeGenerator = {
     return isWindows() ? "-G \"${project.msvc_version}\" -A x64" : "-G Xcode"
@@ -243,12 +241,6 @@ def execute = { String params, def working_dir = ".", Map env_vars = [:] ->
   return result
 }
 
-task update_submodules {
-  doLast {
-    execute("git submodule update --init --recursive", "..")
-  }
-}
-
 // 指定したディレクトリが存在しなければ作成し、成功か失敗かをbooleanで返す
 // 存在する場合は何もせずにtrueを返す
 def mkdirs_if_needed = { def path ->
@@ -286,6 +278,64 @@ def createNullCacheStrategy = {
   return [
     fetch: { def param -> return false },
     store: { def param -> return false },
+  ]
+}
+
+def createFileCacheStrategy = {
+  def cache_dir = file("/opt/terra_cache")
+
+  def isCached = { def param ->
+    return file("${cache_dir}/${param.getArchiveFileName()}").exists()
+  }
+
+  return [
+    fetch: { def param ->
+      if(isCached(param) == false) {
+        return false
+      }
+
+      if(mkdirs_if_needed(param.cache_dir) == false) {
+        assert false, "failed to create ${param.cache_dir}"
+      }
+
+      execute("cmake -E copy ${cache_dir}/${param.getArchiveFileName()} ./", param.cache_dir)
+
+      // extract archive
+      def result = execute_may_fail(
+        "tar ${isGnuTar() ? "--force-local" : ""} -xvf ${param.getArchiveFileName()}"
+        , param.cache_dir)
+
+      // remove downloaded archive
+      execute("rm '${param.getArchiveFileName()}'", param.cache_dir)
+
+      if(result.failed()) {
+        logger.warn("failed extract ${param.getArchiveFileName()}")
+        return false
+      }
+
+      return true
+    },
+    store: { def param ->
+      assert(file(param.cache_dir).exists())
+
+      if(isWindows()) {
+        def tar_result = execute_may_fail(
+            "tar ${isGnuTar() ? "--warning=no-file-changed" : ""} --exclude=${param.getArchiveFileName()} -czvhf ${param.getArchiveFileName()} ."
+            , param.cache_dir)
+
+        if(tar_result.exitValue() >= 2) {
+          logger.warn("failed to create archive.")
+          return false
+        }
+      } else {
+        execute("tar -czvhf ${param.getArchiveFileName()} --exclude=${param.getArchiveFileName()} .", param.cache_dir)
+      }
+
+      execute("cmake -E copy ${param.getArchiveFileName()} ${cache_dir}/", param.cache_dir)
+      execute("rm '${param.getArchiveFileName()}'", param.cache_dir)
+
+      return true
+    },
   ]
 }
 
@@ -329,9 +379,15 @@ def createAzureCacheStrategy = {
   }
 
   if(isWindows()) {
-    if(execute_may_fail("where az").failed()) { return null }
+    if(execute_may_fail("where az").failed()) {
+      logger.info("az command not found")
+      return null
+    }
   } else {
-    if(execute_may_fail("which az").failed()) { return null }
+    if(execute_may_fail("which az").failed()) {
+      logger.info("az command not found")
+      return null
+    }
   }
 
   if(getAzureStorageAccount() == ""
@@ -410,7 +466,6 @@ def createAzureCacheStrategy = {
 
       return true
     },
-    isCached: isCached,
   ]
 }
 
@@ -420,23 +475,21 @@ def get_hash = { String submodule_name ->
 }
 
 def get_cache_strategy = {
-  def st = createAzureCacheStrategy()
-  if(st) {
-    println "Use AzureCacheStrategy"
+  if(project.cache_strategy == "azure") {
+    return createAzureCacheStrategy()
+  } else if(project.cache_strategy == "file") {
+    return createFileCacheStrategy()
+  } else {
+    return createNullCacheStrategy()
   }
-
-  if(st == null) {
-    st = createNullCacheStrategy()
-    println "Use NullCacheStrategy"
-  }
-
-  return st
 }
 
 // 指定したディレクトリのキャッシュが有効なときはそれを使用し、
 // キャッシュがないときはビルドを行う
 def build_if_needed = { String archive_name, File cache_dir, String hash, Closure do_build ->
   def cache = get_cache_strategy()
+  assert(cache)
+
   def param = createCacheParam(cache_dir, archive_name, project.config, hash)
 
   if(should_renew_cache) {
@@ -456,237 +509,43 @@ def build_if_needed = { String archive_name, File cache_dir, String hash, Closur
   }
 }
 
-task build_protobuf {
+task update_submodules {
   doLast {
-    println "Build Protocol Buffer"
-    def build_dir = file("../ext/protobuf/${build_dir_name}").getAbsolutePath()
-    assert(mkdirs_if_needed(build_dir))
-
-    build_if_needed(
-      "protobuf",
-      file("${build_dir}/install"),
-      get_hash("protobuf"),
-      {
-        if(isWindows()) {
-          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
-                  "-Dprotobuf_BUILD_TESTS=OFF -Dprotobuf_MSVC_STATIC_RUNTIME=OFF ../cmake"
-                  , build_dir)
-          execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
-          execute("cmake --build . -j --target INSTALL --config ${project.config}", build_dir)
-        } else {
-          execute("./autogen.sh", "${build_dir}/..")
-          execute("../configure --disable-shared --prefix \"${build_dir}/install\"",
-                  build_dir,
-                  ccache_envvars
-                  )
-          execute("make", build_dir, ccache_envvars)
-          execute("make install", build_dir)
-        }
-      })
+    execute("git submodule sync", file(".."))
+    execute("git submodule update --init --recursive", file(".."))
   }
 }
-build_protobuf.mustRunAfter update_submodules
 
-task build_rtmidi {
+task prepare_project {
+  mustRunAfter update_submodules
   doLast {
-    println "Build RtMidi"
-    def build_dir = file("../ext/rtmidi/${build_dir_name}").getAbsolutePath()
+    def build_dir = file("../build").getAbsolutePath()
     assert(mkdirs_if_needed(build_dir))
-
-    build_if_needed(
-      "rtmidi",
-      file("${build_dir}/install"),
-      get_hash("rtmidi"),
-      {
-        if(isWindows()) {
-          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF ..", build_dir)
-          execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
-          execute("cmake --build . -j --target INSTALL --config ${project.config}", build_dir)
-        } else {
-          execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DRTMIDI_BUILD_STATIC_LIBS=ON -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-          execute("make -j", build_dir, ccache_envvars)
-          execute("make install", build_dir)
-        }
-      })
+    execute("cmake ${getCMakeGenerator()} ..", build_dir)
   }
 }
-build_rtmidi.mustRunAfter update_submodules
-
-task build_portaudio {
-  doLast {
-    println "Build PortAudio"
-    def build_dir = file("../ext/portaudio/${build_dir_name}").getAbsolutePath()
-    assert(mkdirs_if_needed(build_dir))
-
-    build_if_needed(
-      "portaudio",
-      file("${build_dir}/install"),
-      get_hash("portaudio"),
-      {
-        if(isWindows()) {
-          def asiosdk_zip_name = "asiosdk2.3.zip"
-          def asiosdk_zip_path = new File(build_dir, asiosdk_zip_name)
-          def asiosdk_url = "https://www.steinberg.net/sdk_downloads/${asiosdk_zip_name}"
-          def asiosdk_dir = new File(build_dir, "ASIOSDK2.3")
-
-          download {
-            src asiosdk_url
-            dest build_dir
-            overwrite false
-          }
-          assert(asiosdk_zip_path.exists())
-
-          copy {
-            from zipTree(asiosdk_zip_path)
-            into build_dir
-          }
-
-          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" " +
-                  "-DPA_BUILD_STATIC=ON -DPA_DLL_LINK_WITH_STATIC_RUNTIME=OFF " +
-                  "-DPA_BUILD_SHARED=OFF -DPA_USE_WDMKS=OFF " +
-                  "-DPA_USE_ASIO=ON -DASIOSDK_ROOT_DIR=\"${asiosdk_dir}\" " +
-                  "..",
-                  build_dir, ccache_envvars)
-          execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
-          execute("cmake --build . -j --target INSTALL --config ${project.config}", build_dir)
-        } else {
-          execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DPA_BUILD_STATIC=ON -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-          execute("make -j", build_dir, ccache_envvars)
-          execute("make install", build_dir)
-        }
-      })
-  }
-}
-build_portaudio.mustRunAfter update_submodules
-
-task build_vst3sdk {
-  doLast {
-    println "Build VST3 SDK"
-    def build_dir = file("../ext/vst3sdk/${build_dir_name}").getAbsolutePath()
-    assert(mkdirs_if_needed(build_dir))
-
-    build_if_needed(
-      "vst3sdk",
-      file(build_dir),
-      get_hash("vst3sdk"),
-      {
-        if(isWindows()) {
-          // VST3SDKは、makeのinstallターゲットを用意しない
-          execute(
-            " cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' "
-            + " -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF "
-            + " -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF "
-            + " -DSMTG_ADD_VSTGUI=OFF "
-            + ".."
-            , build_dir)
-          execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
-        } else {
-          // VST3SDKは、makeのinstallターゲットを用意しない
-          execute(
-            " cmake -DCMAKE_BUILD_TYPE=${project.config} "
-            + " -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF "
-            + " -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF "
-            + " -DSMTG_ADD_VSTGUI=OFF "
-            + ".."
-            , build_dir, ccache_envvars)
-          execute("make -j", build_dir, ccache_envvars)
-        }
-      })
-  }
-}
-build_vst3sdk.mustRunAfter update_submodules
-
-task build_wxwidgets {
-  doLast {
-    println "Build wxWidgets"
-    def build_dir = file("../ext/wxWidgets/${build_dir_name}").getAbsolutePath()
-    assert(mkdirs_if_needed(build_dir))
-
-    build_if_needed(
-      "wxwidgets",
-      file("${build_dir}/install"),
-      get_hash("wxWidgets"),
-      {
-
-        if(isWindows()) {
-          copy {
-            from file("../ext/wxWidgets/include/wx/msw/setup0.h")
-            into file("../ext/wxWidgets/include/wx/msw")
-            rename "setup0\\.h", "setup.h"
-          }
-          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
-                  " -DwxBUILD_SHARED=OFF -DwxBUILD_MONOLITHIC=OFF " +
-                  "-DwxBUILD_USE_STATIC_RUNTIME=OFF -DwxBUILD_MSVC_MULTIPROC=ON " +
-                  "-DCMAKE_CXX_STANDARD=14 .."
-                  , build_dir)
-          execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
-          execute("cmake --build . -j --target INSTALL --config ${project.config}", build_dir)
-        } else {
-          def debug_flags = ""
-          if(project.config == "Debug") {
-            debug_flags = "--enable-debug --enable-debug-info --enable-debug-gdb"
-          }
-
-          execute("./autogen.sh", "../ext/wxWidgets")
-          execute('../configure CXXFLAGS="-stdlib=libc++ -DHAVE_TYPE_TRAITS" OBJCXXFLAGS="-stdlib=libc++" ' +
-                  'CPPFLAGS="-stdlib=libc++" LDFLAGS="-stdlib=libc++" ' +
-                  '--with-macosx-version-min=10.7 --with-cocoa ' +
-                  '--with-libjpeg=builtin --with-libpng=builtin --with-regex=builtin --with-libtiff=builtin ' +
-                  '--with-zlib=builtin --with-expat=builtin ' +
-                  '--enable-stl --enable-std_containers --enable-std_iostreams --enable-std_string ' +
-                  "--disable-shared --enable-unicode ${debug_flags} --with-cxx=14 --prefix=\"${build_dir}/install\"",
-                  build_dir,
-                  ccache_envvars
-                  )
-          execute("make -j4", build_dir, ccache_envvars)
-          execute("make install", build_dir)
-        }
-      })
-  }
-}
-build_wxwidgets.mustRunAfter update_submodules
-
-task build_fmtlib {
-  doLast {
-    println "Build fmtlib"
-    def build_dir = file("../ext/fmt/${build_dir_name}").getAbsolutePath()
-    assert(mkdirs_if_needed(build_dir))
-
-    build_if_needed(
-      "fmtlib",
-      file("${build_dir}/install"),
-      get_hash("fmt"),
-      {
-        if(isWindows()) {
-          execute("cmake ${getCMakeGenerator()} -DCMAKE_INSTALL_PREFIX='${build_dir}/install' " +
-                  "-DFMT_TEST=OFF ..", build_dir, ccache_envvars)
-          execute("cmake --build . -j --target ALL_BUILD --config ${project.config}", build_dir)
-          execute("cmake --build . -j --target INSTALL --config ${project.config}", build_dir)
-        } else {
-          execute("cmake -DCMAKE_INSTALL_PREFIX=\"${build_dir}/install\" -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
-          execute("make -j", build_dir, ccache_envvars)
-          execute("make install", build_dir)
-        }
-      })
-  }
-}
-build_fmtlib.mustRunAfter update_submodules
 
 task compile_schemas {
+  compile_schemas.mustRunAfter prepare_project
   doLast {
-    def protoc = file("../ext/protobuf/${build_dir_name}/install/bin/protoc${isWindows() ? '.exe' : ''}").getAbsolutePath()
+    def protoc = file("../build/install/${project.config}/opt/protobuf/bin/protoc${isWindows() ? '.exe' : ''}").getAbsolutePath()
     assert(file(protoc).exists())
 
     assert(mkdirs_if_needed(file("../schema/cpp")))
+    assert(mkdirs_if_needed(file("../schema/cpp_tmp")))
     file("../schema").eachFileMatch(~/.*\.proto$/) {
-      execute("'${protoc}' -Ischema --cpp_out=schema/cpp '${it.getName()}'", "..")
-    }
-  }
-}
-compile_schemas.mustRunAfter build_protobuf
+      def filename_we = it.getName() - ~/\.\w+$/
+      def cc = filename_we + ".pb.cc"
+      def h = filename_we + ".pb.h"
 
-task build_submodules {
-  dependsOn { [build_protobuf, compile_schemas, build_rtmidi, build_portaudio, build_vst3sdk, build_wxwidgets, build_fmtlib] }
+      // 仮のディレクトリにファイルを生成し、データの変更をチェックしてから上書きする。
+      // （compile_schemas タスクの実行によって、必ず Terra の再ビルドが行われてしまうことを避けるため）
+      execute("'${protoc}' -Ischema --cpp_out=schema/cpp_tmp '${it.getName()}'", "..")
+      execute("cmake -E copy_if_different \"schema/cpp_tmp/${cc}\" \"schema/cpp/${cc}\"", "..")
+      execute("cmake -E copy_if_different \"schema/cpp_tmp/${h}\" \"schema/cpp/${h}\"", "..")
+    }
+    delete file("../schema/cpp_tmp")
+  }
 }
 
 task copy_resources {
@@ -695,126 +554,113 @@ task copy_resources {
     // because the resources are copied into a bundle directory by cmake script.
     if(isWindows() == false) { return; }
 
-    def dest_dir_names = [ build_dir_name, test_build_dir_name ]
+    def output_dir = file("../build/${project.config}").getAbsolutePath()
 
-    dest_dir_names.each { def dir_name ->
-      def output_dir = file("../${dir_name}/${project.config}").getAbsolutePath()
-
-      def src = file("../data")
-      def dest = new File(output_dir, "Resource")
-      assert(mkdirs_if_needed(output_dir))
-      copy {
-        from src
-        into dest
-      }
+    def src = file("../data")
+    def dest = new File(output_dir, "Resource")
+    assert(mkdirs_if_needed(output_dir))
+    copy {
+      from src
+      into dest
     }
   }
 
   description = """copy resource data into the output directory."""
 }
 
-task prepare_app {
-  doLast {
+ext {
+  buildProject = { String target_name ->
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
-    assert(mkdirs_if_needed(build_dir))
-    execute("cmake ${getCMakeGenerator()} -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir, ccache_envvars)
+    // for macOS, Xcode build performs parallel builds by default and
+    // requires a number of concurrency for this option.
+    def parallel_option = isWindows() ? "-j" : ""
+    execute("cmake --build . ${parallel_option} --target ${target_name} --config ${project.config}", build_dir)
   }
 }
-prepare_app.mustRunAfter build_submodules
-prepare_app.mustRunAfter compile_schemas
+
+task build_target {
+  dependsOn { [copy_resources, update_submodules, prepare_project] }
+  doLast {
+    assert(project.hasProperty("target"))
+    buildProject(project.target)
+  }
+}
+
+def submodule_target_list = ["protobuf", "wxWidgets", "portaudio", "fmt", "rtmidi", "vst3sdk"]
+
+submodule_target_list.each { def name ->
+  task "build_${name}" {
+    group = "build"
+    dependsOn { [copy_resources, update_submodules, prepare_project] }
+    doLast {
+      build_if_needed(name, file("../build/install/${project.config}/opt/${name}"), get_hash(name), {
+        buildProject(name)
+      })
+    }
+  }
+}
+
+task build_submodules {
+  group = "build"
+  def deps = [copy_resources, update_submodules, prepare_project]
+
+  submodule_target_list.each { def name ->
+    deps << "build_${name}"
+  }
+
+  dependsOn { deps }
+}
 
 task build_app {
+  group = "build"
+  mustRunAfter { [ "build_test", "run_test" ] }
+  description = "Build Terra Application"
+  dependsOn { [copy_resources, update_submodules, prepare_project] }
+  mustRunAfter build_submodules
   doLast {
-    def build_dir = file("../${build_dir_name}").getAbsolutePath()
-    // for macOS, Xcode build performs parallel builds by default and
-    // requires a number of concurrency for this option.
-    def parallel_option = isWindows() ? "-j" : ""
-    execute("cmake --build . ${parallel_option} --target ALL_BUILD --config ${project.config}", build_dir, ccache_envvars)
+    buildProject("Terra")
   }
 }
-build_app.mustRunAfter copy_resources
-build_app.mustRunAfter prepare_app
-
-task prepare_test {
-  doLast {
-    // test project must be built with Debug configuration
-    assert(project.config == "Debug")
-
-    def build_dir = file("../${test_build_dir_name}").getAbsolutePath()
-    assert(mkdirs_if_needed(build_dir))
-    execute("cmake ${getCMakeGenerator()} -DCMAKE_BUILD_TYPE=${project.config} -DTERRA_BUILD_TEST=ON ..", build_dir, ccache_envvars)
-  }
-}
-prepare_test.mustRunAfter build_submodules
-prepare_test.mustRunAfter compile_schemas
 
 task build_test {
+  group = "build"
+  dependsOn { [copy_resources, update_submodules, prepare_project] }
+  mustRunAfter build_submodules
   doLast {
-    // test project must be built with Debug configuration
-    assert(project.config == "Debug")
-
-    def build_dir = file("../${test_build_dir_name}").getAbsolutePath()
-    // for macOS, Xcode build performs parallel builds by default and
-    // requires a number of concurrency for this option.
-    def parallel_option = isWindows() ? "-j" : ""
-    execute("cmake --build . ${parallel_option} --target ALL_BUILD --config ${project.config}", build_dir, ccache_envvars)
+    buildProject("Terra-Test")
   }
 }
-build_test.mustRunAfter copy_resources
-build_test.mustRunAfter prepare_test
 
 task run_test {
+  group = "test"
+  mustRunAfter build_test
   doLast {
-    def build_dir = file("../${test_build_dir_name}").getAbsolutePath()
+    assert(project.config == "Debug")
+
+    def build_dir = file("../build/Debug").getAbsolutePath()
     if(isWindows()) {
-      execute("Debug\\Terra-Test.exe", build_dir)
+      execute("Terra-Test.exe", build_dir)
     } else {
-      execute("./Debug/Terra-Test.app/Contents/MacOS/Terra-Test", build_dir)
+      execute("Terra-Test.app/Contents/MacOS/Terra-Test", build_dir)
     }
   }
-}
-run_test.mustRunAfter build_test
-
-//! 指定したディレクトリの直下にあるディレクトリのうち、
-//! 現在のビルド構成によって決まるディレクトリ名と同じディレクトリがあれば、それを削除する。
-def delete_build_dir(def target_dir, def dir_name = build_dir_name) {
-  def target_path = new File(target_dir, dir_name)
-  if(target_path.exists()) {
-    println "dir path to delete: '${target_path}'"
-    target_path.deleteDir()
-  }
-}
-
-task clean_submodules {
-  doLast {
-    file("../ext").eachDir {
-      delete_build_dir(it)
-    }
-  }
-}
-
-task clean_app {
-  doLast {
-    delete_build_dir("..")
-  }
-}
-
-task clean_test {
-  doLast {
-    delete_build_dir("..", test_build_dir_name)
-  }
-}
-
-task clean_all {
-  dependsOn { [clean_submodules, clean_app, clean_test] }
-}
-
-task build_all {
-  dependsOn { [update_submodules, build_submodules, prepare_app, copy_resources, build_app] }
 }
 
 task test {
-  dependsOn { [update_submodules, build_submodules, prepare_test, copy_resources, build_test, run_test] }
+  group = "build and test"
+  dependsOn { [build_test, run_test] }
 }
 
-defaultTasks 'build_all'
+task build_all {
+  group = "build and test"
+  dependsOn { [test, build_app] }
+}
+
+gradle.taskGraph.whenReady {taskGraph ->
+  if(taskGraph.hasTask(build_target)) {
+    assert project.hasProperty("target")
+  }
+}
+
+defaultTasks "build_all"
+

@@ -15,6 +15,7 @@
 !.gitignore
 !.gitmodules
 !*.plist
+!.github
 
 !gradle/*
 !gradle/**/*

@@ -1,0 +1,118 @@
+# This is a basic workflow to help you get started with Actions
+
+name: CI
+
+# Controls when the action will run. Triggers the workflow on push or pull request
+# events but only for the master branch
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build_win:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Test
+      run: |
+        cd gradle
+        gradlew test
+    - name: Build App
+      run: |
+        cd gradle
+        gradlew build_app -Pconfig=Release
+    - name: Archive
+      run: |
+        cd build/Release
+        Compress-Archive -Path .\* -DestinationPath ..\release-win.zip
+    - name: Upload
+      uses: actions/upload-artifact@v2
+      with:
+        name: release-win
+        path: build\release-win.zip
+  build_mac:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Test
+      run: |
+        cd gradle
+        ./gradlew test
+    - name: Build App
+      run: |
+        cd gradle
+        ./gradlew build_app -Pconfig=Release
+    - name: Archive
+      run: |
+        cd build/Release
+        zip --symlink -r ../release-mac.zip .
+    - name: Upload
+      uses: actions/upload-artifact@v2
+      with:
+        name: release-mac
+        path: build/release-mac.zip
+  release:
+    needs: [build_win, build_mac]
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Export version
+      run: |
+        APP_VERSION="0.9.3"
+        echo "::set-env name=APP_VERSION::${APP_VERSION}"
+    - name: Create a Release
+      id: create_release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: actions/create-release@v1
+      with:
+        tag_name: ${{ format('v{0}', env.APP_VERSION) }}
+        release_name: ${{ format('release-{0}', env.APP_VERSION) }}
+        draft: true
+    - name: Download (Win)
+      uses: actions/download-artifact@v2
+      with:
+        name: release-win
+    - name: Download (Mac)
+      uses: actions/download-artifact@v2
+      with:
+        name: release-mac
+    - name: Show files
+      run: |
+        ls -la .
+    - name: Upload Release Archives (Win)
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: actions/upload-release-asset@v1.0.2
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./release-win.zip
+        asset_name: ${{ format('Terra-{0}-win.zip', env.APP_VERSION) }}
+        asset_content_type: application/zip
+    - name: Upload Release Archives (Mac)
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: actions/upload-release-asset@v1.0.2
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./release-mac.zip
+        asset_name: ${{ format('Terra-{0}-mac.zip', env.APP_VERSION) }}
+        asset_content_type: application/zip
+  notify:
+    runs-on: ubuntu-latest
+    needs: [release]
+    if: always()
+    steps:
+      - name: Get workflow conclusion
+        uses: technote-space/workflow-conclusion-action@v1
+      - name: Send notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ env.WORKFLOW_CONCLUSION }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: always()

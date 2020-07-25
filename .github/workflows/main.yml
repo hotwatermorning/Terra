@@ -11,10 +11,36 @@ on:
     branches: [ master ]
 
 jobs:
+  init:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Prepare Ref Name
+      run: |
+        ref="${github_ref////-}"
+        echo $ref
+        echo "::set-env name=REF_SLUG::$ref"
+      env:
+        github_ref: ${{ github.ref }}
   build_win:
+    needs: [init]
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v2
+      with:
+        submodules: recursive
+    - name: Cache build
+      uses: actions/cache@v2
+      env:
+        cache-name: cache-builds
+      with:
+        path: |
+          gradle/.gradle
+          build
+        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.REF_SLUG }}
+        restore-keys: |
+          ${{ runner.os }}-build-${{ env.cache-name }}-
+          ${{ runner.os }}-build-
+          ${{ runner.os }}-
     - name: Test
       run: |
         cd gradle
@@ -33,9 +59,25 @@ jobs:
         name: release-win
         path: build\release-win.zip
   build_mac:
+    needs: [init]
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v2
+      with:
+        submodules: recursive
+    - name: Cache build
+      uses: actions/cache@v2
+      env:
+        cache-name: cache-builds
+      with:
+        path: |
+          gradle/.gradle
+          build
+        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.REF_SLUG }}
+        restore-keys: |
+          ${{ runner.os }}-build-${{ env.cache-name }}-
+          ${{ runner.os }}-build-
+          ${{ runner.os }}-
     - name: Test
       run: |
         cd gradle

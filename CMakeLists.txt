@@ -115,7 +115,7 @@ else()
     BUILD_COMMAND
       echo "Run autogen.sh" &&
       cd <SOURCE_DIR> &&
-      test ./autogen.sh &&
+      $<IF:$<BOOL:$ENV{CI}>,,test >./autogen.sh &&
       echo "autogen.sh succeeded." &&
       echo "Run configure" &&
       cd <BINARY_DIR> &&

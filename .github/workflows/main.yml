@@ -11,23 +11,19 @@ on:
     branches: [ master ]
 
 jobs:
-  init:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Prepare Ref Name
-      run: |
-        ref="${github_ref////-}"
-        echo $ref
-        echo "::set-env name=REF_SLUG::$ref"
-      env:
-        github_ref: ${{ github.ref }}
   build_win:
-    needs: [init]
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v2
       with:
         submodules: recursive
+    - name: Prepare Ref Name
+      run: |
+        $ref = $github_ref -replace "/", "-"
+        echo $ref
+        echo "::set-env name=REF_SLUG::$ref"
+      env:
+        github_ref: ${{ github.ref }}
     - name: Cache build
       uses: actions/cache@v2
       env:
@@ -43,8 +39,9 @@ jobs:
           ${{ runner.os }}-
     - name: Test
       run: |
-        cd gradle
-        .\gradlew test
+        echo ${{ env.REF_SLUG }}
+#         cd gradle
+#         .\gradlew test
     - name: Build App
       run: |
         cd gradle
@@ -60,12 +57,18 @@ jobs:
         name: release-win
         path: build\release-win.zip
   build_mac:
-    needs: [init]
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v2
       with:
         submodules: recursive
+    - name: Prepare Ref Name
+      run: |
+        ref="${github_ref////-}"
+        echo $ref
+        echo "::set-env name=REF_SLUG::$ref"
+      env:
+        github_ref: ${{ github.ref }}
     - name: Install dependencies
       run: |
         brew install autoconf automake libtool
@@ -84,8 +87,9 @@ jobs:
           ${{ runner.os }}-
     - name: Test
       run: |
-        cd gradle
-        ./gradlew test
+        echo ${{ env.REF_SLUG }}
+#         cd gradle
+#         ./gradlew test
     - name: Build App
       run: |
         cd gradle

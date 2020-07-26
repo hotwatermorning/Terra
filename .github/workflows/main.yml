@@ -52,6 +52,7 @@ jobs:
     - name: Archive
       run: |
         cd build/Release
+        if(Test-Path ..\release-win.zip) { Remove-Item ..\release-win.zip }
         Compress-Archive -Path .\* -DestinationPath ..\release-win.zip
     - name: Upload
       uses: actions/upload-artifact@v2
@@ -92,6 +93,7 @@ jobs:
     - name: Archive
       run: |
         cd build/Release
+        rm -rf ../release-mac.zip
         zip --symlink -r ../release-mac.zip .
     - name: Upload
       uses: actions/upload-artifact@v2

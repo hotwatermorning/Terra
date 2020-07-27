@@ -17,34 +17,22 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: recursive
-    - name: Prepare Ref Name
-      run: |
-        $ref = $github_ref -replace "/", "-"
-        echo $ref
-        echo "::set-env name=REF_SLUG::$ref"
-      env:
-        github_ref: ${{ github.ref }}
-    - name: Cache build
-      uses: actions/cache@v2
-      env:
-        cache-name: cache-builds
-      with:
-        path: |
-          gradle/.gradle
-          build
-        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.REF_SLUG }}
-        restore-keys: |
-          ${{ runner.os }}-build-${{ env.cache-name }}-
-          ${{ runner.os }}-build-
-          ${{ runner.os }}-
     - name: Test
       run: |
         cd gradle
-        .\gradlew test
+        .\gradlew --debug build_submodules test
+      env:
+        AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+        AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+        AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
     - name: Build App
       run: |
         cd gradle
-        .\gradlew build_app -Pconfig=Release
+        .\gradlew build_submodules build_app -Pconfig=Release
+      env:
+        AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+        AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+        AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
     - name: Archive
       run: |
         cd build/Release
@@ -61,37 +49,25 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: recursive
-    - name: Prepare Ref Name
-      run: |
-        ref="${github_ref////-}"
-        echo $ref
-        echo "::set-env name=REF_SLUG::$ref"
-      env:
-        github_ref: ${{ github.ref }}
     - name: Install dependencies
       run: |
         brew install autoconf automake libtool
-    - name: Cache build
-      uses: actions/cache@v2
-      env:
-        cache-name: cache-builds
-      with:
-        path: |
-          gradle/.gradle
-          build
-        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.REF_SLUG }}
-        restore-keys: |
-          ${{ runner.os }}-build-${{ env.cache-name }}-
-          ${{ runner.os }}-build-
-          ${{ runner.os }}-
     - name: Test
       run: |
         cd gradle
-        ./gradlew test
+        ./gradlew --debug build_submodules test
+      env:
+        AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+        AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+        AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
     - name: Build App
       run: |
         cd gradle
-        ./gradlew build_app -Pconfig=Release
+        ./gradlew build_submodules build_app -Pconfig=Release
+      env:
+        AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+        AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+        AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
     - name: Archive
       run: |
         cd build/Release

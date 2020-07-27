@@ -107,6 +107,12 @@ if(MSVC)
       -Dprotobuf_MSVC_STATIC_RUNTIME=OFF
     )
 else()
+  if("$ENV{CI}" STREQUAL "true")
+    list(APPEND AUTOGEN_SH "./autogen.sh")
+  else()
+    list(APPEND AUTOGEN_SH "test" "./autogen.sh")
+  endif()
+
   ExternalProject_Add(
     protobuf
     PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
@@ -115,7 +121,7 @@ else()
     BUILD_COMMAND
       echo "Run autogen.sh" &&
       cd <SOURCE_DIR> &&
-      $<IF:$<BOOL:$ENV{CI}>,,test >./autogen.sh &&
+      ${AUTOGEN_SH} &&
       echo "autogen.sh succeeded." &&
       echo "Run configure" &&
       cd <BINARY_DIR> &&

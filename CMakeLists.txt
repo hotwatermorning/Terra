@@ -84,12 +84,12 @@ ExternalProject_Add(
   )
 
 ExternalProject_Add(
-  fmtlib
+  fmt
   PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
   SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/fmt"
   CMAKE_ARGS
     -DCMAKE_BUILD_TYPE=$<CONFIG>
-    "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/fmtlib"
+    "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/fmt"
   BUILD_COMMAND
     cd <BINARY_DIR> &&
     "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG>
@@ -229,7 +229,7 @@ else()
     )
 endif()
 
-add_custom_target(build-submodules DEPENDS vst3sdk protobuf portaudio rtmidi fmtlib wxWidgets)
+add_custom_target(build-submodules DEPENDS vst3sdk protobuf portaudio rtmidi fmt wxWidgets)
 
 ####################################################################
 # configure source file lists
@@ -377,7 +377,7 @@ if(MSVC)
   set(PROTOBUF_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/protobuf/lib/$<IF:$<CONFIG:Debug>,libprotobufd.lib,libprotobuf.lib>")
   set(RTMIDI_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/rtmidi/lib/rtmidi.lib")
   set(PORTAUDIO_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/portaudio/lib/portaudio_static_x64.lib")
-  set(FMT_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/fmtlib/lib/$<IF:$<CONFIG:Debug>,fmtd.lib,fmt.lib>")
+  set(FMT_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/fmt/lib/$<IF:$<CONFIG:Debug>,fmtd.lib,fmt.lib>")
 else()
   set(VST3_SDK_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/libsdk.a")
   set(VST3_BASE_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/libbase.a")
@@ -385,7 +385,7 @@ else()
   set(PROTOBUF_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/protobuf/lib/libprotobuf.a")
   set(RTMIDI_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/rtmidi/lib/librtmidi.a")
   set(PORTAUDIO_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/portaudio/lib/libportaudio.a")
-  set(FMT_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/fmtlib/lib/$<IF:$<CONFIG:Debug>,libfmtd.a,libfmt.a>")
+  set(FMT_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/fmt/lib/$<IF:$<CONFIG:Debug>,libfmtd.a,libfmt.a>")
 endif()
 
 find_library(JACK_LIB jack)
@@ -458,7 +458,7 @@ foreach(TARGET Terra;Terra-Test)
     PRIVATE
     "${SUBMODULE_INSTALL_DIR}/portaudio/include"
     "${SUBMODULE_INSTALL_DIR}/rtmidi/include"
-    "${SUBMODULE_INSTALL_DIR}/fmtlib/include"
+    "${SUBMODULE_INSTALL_DIR}/fmt/include"
     "${SUBMODULE_INSTALL_DIR}/protobuf/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/ext/vst3sdk"
     "${CMAKE_CURRENT_SOURCE_DIR}/ext/variant/include"

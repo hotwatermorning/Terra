@@ -576,19 +576,27 @@ task build_target {
   }
 }
 
-task build_submodules {
-  dependsOn { [copy_resources, update_submodules, prepare_project] }
-  doLast {
-    def ref_slug = getenv("GITHUB_REF", [ null_as_empty: true, trim: true ]).replaceAll("/", "-")
-    build_if_needed(
-      "submodules",
-      file("../build/src"),
-      ref_slug,
-      {
-        buildProject("build-submodules")
-      }
-    )
+def submodule_target_list = ["protobuf", "wxWidgets", "portaudio", "fmt", "vst3sdk"]
+
+submodule_target_list.each { def name ->
+  task "build_${name}" {
+    dependsOn { [copy_resources, update_submodules, prepare_project] }
+    doLast {
+      build_if_needed(name, file("../build/src/${name}-build"), get_hash(name), {
+        buildProject(name)
+      })
+    }
   }
+}
+
+task build_submodules {
+  def deps = [copy_resources, update_submodules, prepare_project]
+
+  submodule_target_list.each { def name ->
+    deps << "build_${name}"
+  }
+
+  dependsOn { deps }
 }
 
 task build_app {

@@ -522,7 +522,7 @@ task prepare_project {
 task compile_schemas {
   compile_schemas.mustRunAfter prepare_project
   doLast {
-    def protoc = file("../build/install/${project.config}/bin/protoc${isWindows() ? '.exe' : ''}").getAbsolutePath()
+    def protoc = file("../build/install/${project.config}/opt/protobuf/bin/protoc${isWindows() ? '.exe' : ''}").getAbsolutePath()
     assert(file(protoc).exists())
 
     assert(mkdirs_if_needed(file("../schema/cpp")))
@@ -552,25 +552,52 @@ task copy_resources {
   description = """copy resource data into the output directory."""
 }
 
-task build_app {
-  dependsOn { [copy_resources, update_submodules, prepare_project] }
-  doLast {
+ext {
+  buildProject = { String target_name ->
     def build_dir = file("../${build_dir_name}").getAbsolutePath()
     // for macOS, Xcode build performs parallel builds by default and
     // requires a number of concurrency for this option.
     def parallel_option = isWindows() ? "-j" : ""
-    execute("cmake --build . ${parallel_option} --target Terra --config ${project.config}", build_dir)
+    execute("cmake --build . ${parallel_option} --target ${target_name} --config ${project.config}", build_dir)
+  }
+}
+
+task build_target {
+  dependsOn { [copy_resources, update_submodules, prepare_project] }
+  doLast {
+    assert(project.hasProperty("target"))
+    buildProject(project.target)
+  }
+}
+
+task build_submodules {
+  dependsOn { [copy_resources, update_submodules, prepare_project] }
+  doLast {
+    def ref_slug = getenv("GITHUB_REF", [ null_as_empty: true, trim: true ]).replaceAll("/", "-")
+    build_if_needed(
+      "submodules",
+      file("../build/src"),
+      ref_slug,
+      {
+        buildProject("build-submodules")
+      }
+    )
+  }
+}
+
+task build_app {
+  dependsOn { [copy_resources, update_submodules, prepare_project] }
+  mustRunAfter build_submodules
+  doLast {
+    buildProject("Terra")
   }
 }
 
 task build_test {
   dependsOn { [copy_resources, update_submodules, prepare_project] }
+  mustRunAfter build_submodules
   doLast {
-    def build_dir = file("../${build_dir_name}").getAbsolutePath()
-    // for macOS, Xcode build performs parallel builds by default and
-    // requires a number of concurrency for this option.
-    def parallel_option = isWindows() ? "-j" : ""
-    execute("cmake --build . ${parallel_option} --target Terra-Test --config ${project.config}", build_dir)
+    buildProject("Terra-Test")
   }
 }
 
@@ -596,4 +623,11 @@ task build_all {
   dependsOn { [test, build_app] }
 }
 
+gradle.taskGraph.whenReady {taskGraph ->
+  if(taskGraph.hasTask(build_target)) {
+    assert project.hasProperty("target")
+  }
+}
+
 defaultTasks "build_all"
+

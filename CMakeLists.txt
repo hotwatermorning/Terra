@@ -7,6 +7,10 @@ if(NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "10.9")
 endif()
 
+if(NOT DEFINED ENV{CMAKE_PARALLEL_LEVEL})
+  set(ENV{CMAKE_BUILD_PARALLEL_LEVEL} 4)
+endif()
+
 include(ExternalProject)
 
 ####################################################################
@@ -36,8 +40,8 @@ set(VST3_CONFIG "$<IF:$<CONFIG:Debug>,Debug,Release>")
 # INSTALL_DIR に ${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG> のようにして generator expression を使用すると、最初に $<CONFIG> ディレクトリが作られてしまう問題がある。
 # そのため、 INSTALL_DIR は使用しないようにする。
 
-set(SUBMODULE_INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>")
-set(VST3_SUBMODULE_INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}")
+set(SUBMODULE_INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt")
+set(VST3_SUBMODULE_INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt")
 
 set(ASIOSDK_DOWNLOAD_URL "https://www.steinberg.net/sdk_downloads/asiosdk2.3.zip")
 set(ASIOSDK_DIR "${CMAKE_CURRENT_BINARY_DIR}/src/asiosdk")
@@ -51,7 +55,7 @@ if(MSVC)
     URL ${ASIOSDK_DOWNLOAD_URL}
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
-    INSTALL_COMMAND cmake -E copy_directory <SOURCE_DIR> "${SUBMODULE_INSTALL_DIR}/opt/asiosdk"
+    INSTALL_COMMAND cmake -E copy_directory <SOURCE_DIR> "${SUBMODULE_INSTALL_DIR}/asiosdk"
     )
   set(DEPENDS_ON_ASIOSDK "DEPENDS;asiosdk")
 else()
@@ -65,13 +69,18 @@ ExternalProject_Add(
   ${DEPENDS_ON_ASIOSDK}
   CMAKE_ARGS
     -DCMAKE_BUILD_TYPE=$<CONFIG>
-    "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}"
+    "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/portaudio"
     -DPA_BUILD_STATIC=ON
     -DPA_BUILD_SHARED=OFF
     $<$<BOOL:${MSVC}>:-DPA_DLL_LINK_WITH_STATIC_RUNTIME=OFF>
     $<$<BOOL:${MSVC}>:-DPA_USE_WDMKS=OFF>
     $<$<BOOL:${MSVC}>:-DPA_USE_ASIO=ON>
     $<$<BOOL:${MSVC}>:-DASIOSDK_ROOT_DIR=${ASIOSDK_DIR}>
+  BUILD_COMMAND
+    cd <BINARY_DIR> &&
+    "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG>
+  BUILD_BYPRODUCTS
+    "${CMAKE_CURRENT_BINARY_DIR}/src/portaudio-stamp/Debug/portaudio-build"
   )
 
 ExternalProject_Add(
@@ -80,7 +89,10 @@ ExternalProject_Add(
   SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/fmt"
   CMAKE_ARGS
     -DCMAKE_BUILD_TYPE=$<CONFIG>
-    "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}"
+    "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/fmtlib"
+  BUILD_COMMAND
+    cd <BINARY_DIR> &&
+    "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG>
   )
 
 ExternalProject_Add(
@@ -89,10 +101,13 @@ ExternalProject_Add(
   SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/rtmidi"
   CMAKE_ARGS
     -DCMAKE_BUILD_TYPE=$<CONFIG>
-    "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}"
+    "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/rtmidi"
     -DRTMIDI_BUILD_STATIC_LIBS=ON
     -DBUILD_SHARED_LIBS=OFF
     -DBUILD_TESTING=OFF
+  BUILD_COMMAND
+    cd <BINARY_DIR> &&
+    "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG>
   )
 
 if(MSVC)
@@ -102,9 +117,12 @@ if(MSVC)
     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/protobuf/cmake"
     CMAKE_ARGS
       -DCMAKE_BUILD_TYPE=$<CONFIG>
-      "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}"
+      "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/protobuf"
       -Dprotobuf_BUILD_TESTS=OFF
       -Dprotobuf_MSVC_STATIC_RUNTIME=OFF
+    BUILD_COMMAND
+      cd <BINARY_DIR> &&
+      "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG>
     )
 else()
   if("$ENV{CI}" STREQUAL "true")
@@ -125,20 +143,12 @@ else()
       echo "autogen.sh succeeded." &&
       echo "Run configure" &&
       cd <BINARY_DIR> &&
-      <SOURCE_DIR>/configure --disable-shared "--prefix=${SUBMODULE_INSTALL_DIR}" &&
-      make
+      <SOURCE_DIR>/configure --disable-shared "--prefix=${SUBMODULE_INSTALL_DIR}/protobuf" &&
+      make -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL}
     INSTALL_COMMAND
       make install
     )
 endif()
-
-add_custom_target(
-  compile-schemas
-  cd ${CMAKE_CURRENT_SOURCE_DIR}/gradle &&
-  $<IF:$<BOOL:${MSVC}>,gradlew,./gradlew> compile_schemas
-  )
-
-add_dependencies(compile-schemas protobuf)
 
 ExternalProject_Add(
   vst3sdk
@@ -153,10 +163,10 @@ ExternalProject_Add(
     -DSMTG_ADD_VSTGUI=OFF
   BUILD_COMMAND
     cd <BINARY_DIR> &&
-    "${CMAKE_COMMAND}" --build . --config ${VST3_CONFIG}
+    "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config ${VST3_CONFIG}
   INSTALL_COMMAND
-    cmake -E copy_directory "<BINARY_DIR>/bin/${VST3_CONFIG}" "${VST3_SUBMODULE_INSTALL_DIR}/opt/vst3sdk/bin/${VST3_CONFIG}" &&
-    cmake -E copy_directory "<BINARY_DIR>/lib/${VST3_CONFIG}" "${VST3_SUBMODULE_INSTALL_DIR}/opt/vst3sdk/lib/${VST3_CONFIG}"
+    cmake -E copy_directory "<BINARY_DIR>/bin/${VST3_CONFIG}" "${VST3_SUBMODULE_INSTALL_DIR}/vst3sdk/bin/${VST3_CONFIG}" &&
+    cmake -E copy_directory "<BINARY_DIR>/lib/${VST3_CONFIG}" "${VST3_SUBMODULE_INSTALL_DIR}/vst3sdk/lib/${VST3_CONFIG}"
   )
 
 if(MSVC)
@@ -173,7 +183,7 @@ if(MSVC)
       cd "<BINARY_DIR>" &&
         "${CMAKE_COMMAND}"
         -G "${CMAKE_GENERATOR}"
-        "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}"
+        "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/wxWidgets"
         -DwxBUILD_SHARED=OFF
         -DwxBUILD_MONOLITHIC=OFF
         -DwxBUILD_USE_STATIC_RUNTIME=OFF
@@ -183,7 +193,7 @@ if(MSVC)
         -DwxBUILD_DEMOS=OFF
         "<SOURCE_DIR>"
     BUILD_COMMAND
-      "${CMAKE_COMMAND}" --build . --target ALL_BUILD --config $<CONFIG>
+      "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --target ALL_BUILD --config $<CONFIG>
     INSTALL_COMMAND
       "${CMAKE_COMMAND}" --install "<BINARY_DIR>" --config $<CONFIG>
     )
@@ -200,7 +210,7 @@ else()
       echo "autogen.sh succeeded." &&
       echo "Run configure" &&
       cd <BINARY_DIR> &&
-      <SOURCE_DIR>/configure --disable-shared "--prefix=${SUBMODULE_INSTALL_DIR}"
+      <SOURCE_DIR>/configure --disable-shared "--prefix=${SUBMODULE_INSTALL_DIR}/wxWidgets"
         "CXXFLAGS=-stdlib=libc++ -DHAVE_TYPE_TRAITS" "OBJCXXFLAGS=-stdlib=libc++"
         "CPPFLAGS=-stdlib=libc++" "LDFLAGS=-stdlib=libc++"
         --with-macosx-version-min=10.9 --with-cocoa
@@ -213,11 +223,13 @@ else()
         $<$<CONFIG:Debug>:--enable-debug>
         $<$<CONFIG:Debug>:--enable-debug-info>
         $<$<CONFIG:Debug>:--enable-debug-gdb> &&
-      make
+      make -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL}
     INSTALL_COMMAND
       make install
     )
 endif()
+
+add_custom_target(build-submodules DEPENDS vst3sdk protobuf portaudio rtmidi fmtlib wxWidgets)
 
 ####################################################################
 # configure source file lists
@@ -264,6 +276,8 @@ function(generate_source_list output)
     message(FATAL_ERROR "SOURCE_DIRS must be specified.")
   endif()
 
+  message("Print EXCLUSION_PATTERNS: ${GSL_EXCLUSION_PATTERNS}")
+
   # set the root directory of the source file tree in IDE
   get_filename_component(GSL_BASE_DIR "${GSL_BASE_DIR}" ABSOLUTE)
 
@@ -280,7 +294,7 @@ function(generate_source_list output)
     # Define SourceGroup reflecting filesystem hierarchy.
     foreach(FILE_PATH ${FILES})
       get_filename_component(FILEPATH "${FILE_PATH}" ABSOLUTE)
-      TEST_EXCLUDED(${FILE_PATH} "${GSL_EXLUSION_PATTERNS}" IS_EXCLUDED)
+      TEST_EXCLUDED(${FILE_PATH} "${GSL_EXCLUSION_PATTERNS}" IS_EXCLUDED)
       if(IS_EXCLUDED)
         continue()
       endif()
@@ -301,7 +315,7 @@ generate_source_list(
   TERRA_APP_SOURCES
   BASE_DIR "./Terra"
   SOURCE_DIRS "./Terra" "./schema/cpp"
-  EXCLUSION_PATTERNS "Terra/test")
+  EXCLUSION_PATTERNS ".+/Terra/test/.+")
 
 generate_source_list(
   TERRA_TEST_SOURCES
@@ -310,23 +324,37 @@ generate_source_list(
   )
 
 # スキーマから自動生成されるソースファイルをソースリストに追加する。
-file(GLOB SCHEMA_FILES "${CMAKE_CURRENT_SOURCE_DIR}/schema/*.proto")
-foreach(SCHEMA_FILE ${SCHEMA_FILES})
-  get_filename_component(SCHEMA_NAME ${SCHEMA_FILE} NAME_WE)
-  set(SCHEMA_CC "${CMAKE_CURRENT_SOURCE_DIR}/schema/cpp/${SCHEMA_NAME}.pb.cc")
-  set(SCHEMA_H "${CMAKE_CURRENT_SOURCE_DIR}/schema/cpp/${SCHEMA_NAME}.pb.h")
+set(SCHEMA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/schema")
+set(SCHEMA_CPP_DIR "${SCHEMA_DIR}/cpp")
 
-  get_filename_component(PARENT_DIR "${SCHEMA_CC}" DIRECTORY)
-  file(RELATIVE_PATH GROUP_NAME "${SCHEMA_CC}" "${PARENT_DIR}")
-  string(REPLACE "/" "\\" GROUP_NAME "${GROUP_NAME}")
-  source_group("${GROUP_NAME}" FILES "${SCHEMA_CC}")
-  source_group("${GROUP_NAME}" FILES "${SCHEMA_H}")
-  list(APPEND TERRA_APP_SOURCES "${SCHEMA_CC}" "${SCHEMA_H}")
-  list(APPEND TERRA_TEST_SOURCES "${SCHEMA_CC}" "${SCHEMA_H}")
+file(GLOB SCHEMA_FILES "${SCHEMA_DIR}/*.proto")
+foreach(SCHEMA_FILE ${SCHEMA_FILES})
+  get_filename_component(SCHEMA_NAME "${SCHEMA_FILE}" NAME_WE)
+  set(SCHEMA_CC "${SCHEMA_CPP_DIR}/${SCHEMA_NAME}.pb.cc")
+  set(SCHEMA_H "${SCHEMA_CPP_DIR}/${SCHEMA_NAME}.pb.h")
+
+  set(SCHEMA_GROUP_NAME "schema")
+  set(SCHEMA_CPP_GROUP_NAME "schema\\cpp")
+
+  source_group("${SCHEMA_GROUP_NAME}" FILES "${SCHEMA_FILE}")
+  source_group("${SCHEMA_CPP_GROUP_NAME}" FILES "${SCHEMA_H}" "${SCHEMA_CC}")
+
+  set_source_files_properties("${SCHEMA_FILE}" PROPERTIES HEADER_FILE_ONLY ON)
+  list(APPEND TERRA_APP_SOURCES "${SCHEMA_FILE}" "${SCHEMA_CC}" "${SCHEMA_H}")
+  list(APPEND TERRA_TEST_SOURCES "${SCHEMA_FILE}" "${SCHEMA_CC}" "${SCHEMA_H}")
 
   file(WRITE "${SCHEMA_CC}" "#error Need to be auto-generated by compile-schemas target.")
   file(WRITE "${SCHEMA_H}" "#error Need to be auto-generated by compile-schemas target.")
 endforeach()
+
+# スキーマをコンパイルするターゲットを追加する
+add_custom_target(
+  compile-schemas
+  cd ${CMAKE_CURRENT_SOURCE_DIR}/gradle &&
+  $<IF:$<BOOL:${MSVC}>,gradlew,./gradlew> compile_schemas -Dconfig=$<CONFIG>
+  DEPENDS protobuf
+  SOURCES ${SCHEMA_FILES}
+  )
 
 ####################################################################
 # configure build targets
@@ -346,18 +374,18 @@ if(MSVC)
   set(VST3_SDK_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/sdk.lib")
   set(VST3_BASE_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/base.lib")
   set(VST3_PLUGINTERFACES_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/pluginterfaces.lib")
-  set(PROTOBUF_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/lib/$<IF:$<CONFIG:Debug>,libprotobufd.lib,libprotobuf.lib>")
-  set(RTMIDI_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/lib/rtmidi.lib")
-  set(PORTAUDIO_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/lib/portaudio_static_x64.lib")
-  set(FMT_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/lib/$<IF:$<CONFIG:Debug>,fmtd.lib,fmt.lib>")
+  set(PROTOBUF_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/protobuf/lib/$<IF:$<CONFIG:Debug>,libprotobufd.lib,libprotobuf.lib>")
+  set(RTMIDI_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/rtmidi/lib/rtmidi.lib")
+  set(PORTAUDIO_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/portaudio/lib/portaudio_static_x64.lib")
+  set(FMT_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/fmtlib/lib/$<IF:$<CONFIG:Debug>,fmtd.lib,fmt.lib>")
 else()
   set(VST3_SDK_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/libsdk.a")
   set(VST3_BASE_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/libbase.a")
   set(VST3_PLUGINTERFACES_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/libpluginterfaces.a")
-  set(PROTOBUF_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/lib/libprotobuf.a")
-  set(RTMIDI_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/lib/librtmidi.a")
-  set(PORTAUDIO_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/lib/libportaudio.a")
-  set(FMT_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/lib/$<IF:$<CONFIG:Debug>,libfmtd.a,libfmt.a>")
+  set(PROTOBUF_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/protobuf/lib/libprotobuf.a")
+  set(RTMIDI_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/rtmidi/lib/librtmidi.a")
+  set(PORTAUDIO_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/portaudio/lib/libportaudio.a")
+  set(FMT_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/fmtlib/lib/$<IF:$<CONFIG:Debug>,libfmtd.a,libfmt.a>")
 endif()
 
 find_library(JACK_LIB jack)
@@ -423,12 +451,15 @@ get_filename_component(PREFIX_HEADER_PATH "./Terra/prefix.hpp" ABSOLUTE)
 foreach(TARGET Terra;Terra-Test)
   message("Target: ${TARGET}")
 
-  add_dependencies(${TARGET} vst3sdk protobuf portaudio rtmidi fmtlib wxWidgets compile-schemas)
+  add_dependencies(${TARGET} build-submodules compile-schemas)
 
   target_include_directories(
     ${TARGET}
     PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/build/install/$<CONFIG>/include"
+    "${SUBMODULE_INSTALL_DIR}/portaudio/include"
+    "${SUBMODULE_INSTALL_DIR}/rtmidi/include"
+    "${SUBMODULE_INSTALL_DIR}/fmtlib/include"
+    "${SUBMODULE_INSTALL_DIR}/protobuf/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/ext/vst3sdk"
     "${CMAKE_CURRENT_SOURCE_DIR}/ext/variant/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/ext/midifile/include"
@@ -442,15 +473,15 @@ foreach(TARGET Terra;Terra-Test)
     target_include_directories(
       ${TARGET}
       PRIVATE
-      "${CMAKE_CURRENT_SOURCE_DIR}/build/install/$<CONFIG>/include"
-      "${CMAKE_CURRENT_SOURCE_DIR}/build/install/$<CONFIG>/include/msvc"
+      "${SUBMODULE_INSTALL_DIR}/wxWidgets/include"
+      "${SUBMODULE_INSTALL_DIR}/wxWidgets/include/msvc"
       )
   else()
     target_include_directories(
       ${TARGET}
       PRIVATE
-      "${CMAKE_CURRENT_SOURCE_DIR}/build/install/$<CONFIG>/include/wx-3.1"
-      "${CMAKE_CURRENT_SOURCE_DIR}/build/install/$<CONFIG>/lib/wx/include/osx_cocoa-unicode-static-3.1"
+      "${SUBMODULE_INSTALL_DIR}/wxWidgets/include/wx-3.1"
+      "${SUBMODULE_INSTALL_DIR}/wxWidgets/lib/wx/include/osx_cocoa-unicode-static-3.1"
       )
   endif()
 
@@ -487,7 +518,7 @@ foreach(TARGET Terra;Terra-Test)
   foreach(WX_LIB ${WX_LIBS})
     target_link_libraries(
       ${TARGET}
-      "${SUBMODULE_INSTALL_DIR}/lib/$<$<BOOL:${MSVC}>:vc_x64_lib>/${WX_LIB}"
+      "${SUBMODULE_INSTALL_DIR}/wxWidgets/lib/$<$<BOOL:${MSVC}>:vc_x64_lib>/${WX_LIB}"
       )
   endforeach()
 

@@ -379,9 +379,15 @@ def createAzureCacheStrategy = {
   }
 
   if(isWindows()) {
-    if(execute_may_fail("where az").failed()) { return null }
+    if(execute_may_fail("where az").failed()) {
+      logger.info("az command not found")
+      return null
+    }
   } else {
-    if(execute_may_fail("which az").failed()) { return null }
+    if(execute_may_fail("which az").failed()) {
+      logger.info("az command not found")
+      return null
+    }
   }
 
   if(getAzureStorageAccount() == ""
@@ -394,7 +400,7 @@ def createAzureCacheStrategy = {
 
   return [
     fetch: { def param ->
-      if(isCachedImpl(param) == false) {
+      if(isCached(param) == false) {
         return false
       }
 

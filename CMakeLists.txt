@@ -301,7 +301,7 @@ generate_source_list(
   TERRA_APP_SOURCES
   BASE_DIR "./Terra"
   SOURCE_DIRS "./Terra" "./schema/cpp"
-  EXCLUTION_PATTERNS "Terra/test")
+  EXCLUSION_PATTERNS "Terra/test")
 
 generate_source_list(
   TERRA_TEST_SOURCES

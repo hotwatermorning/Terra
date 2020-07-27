@@ -39,9 +39,8 @@ jobs:
           ${{ runner.os }}-
     - name: Test
       run: |
-        echo ${{ env.REF_SLUG }}
-#         cd gradle
-#         .\gradlew test
+        cd gradle
+        .\gradlew test
     - name: Build App
       run: |
         cd gradle
@@ -87,9 +86,8 @@ jobs:
           ${{ runner.os }}-
     - name: Test
       run: |
-        echo ${{ env.REF_SLUG }}
-#         cd gradle
-#         ./gradlew test
+        cd gradle
+        ./gradlew test
     - name: Build App
       run: |
         cd gradle

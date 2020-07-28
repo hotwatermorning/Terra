@@ -9,6 +9,7 @@ on:
     branches: [ master, develop, fix_build_script ]
   pull_request:
     branches: [ master ]
+  workflow_dispatch:
 
 jobs:
   build_win:

@@ -580,6 +580,7 @@ def submodule_target_list = ["protobuf", "wxWidgets", "portaudio", "fmt", "rtmid
 
 submodule_target_list.each { def name ->
   task "build_${name}" {
+    group = "build"
     dependsOn { [copy_resources, update_submodules, prepare_project] }
     doLast {
       def cache_hit = true
@@ -598,6 +599,7 @@ submodule_target_list.each { def name ->
 }
 
 task build_submodules {
+  group = "build"
   def deps = [copy_resources, update_submodules, prepare_project]
 
   submodule_target_list.each { def name ->
@@ -608,6 +610,8 @@ task build_submodules {
 }
 
 task build_app {
+  group = "build"
+  description = "Build Terra Application"
   dependsOn { [copy_resources, update_submodules, prepare_project] }
   mustRunAfter build_submodules
   doLast {
@@ -616,6 +620,7 @@ task build_app {
 }
 
 task build_test {
+  group = "build"
   dependsOn { [copy_resources, update_submodules, prepare_project] }
   mustRunAfter build_submodules
   doLast {
@@ -624,6 +629,7 @@ task build_test {
 }
 
 task run_test {
+  group = "test"
   mustRunAfter build_test
   doLast {
     assert(project.config == "Debug")
@@ -638,10 +644,12 @@ task run_test {
 }
 
 task test {
+  group = "build and test"
   dependsOn { [build_test, run_test] }
 }
 
 task build_all {
+  group = "build and test"
   dependsOn { [test, build_app] }
 }
 

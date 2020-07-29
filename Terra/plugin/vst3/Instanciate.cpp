@@ -1,10 +1,11 @@
-// VST3 SDK中のサンプル実装などを取り込み
+// VST3 SDK中のサンプル実装などを取り込む
 
+#include "base/source/fdebug.cpp"
 #include "public.sdk/source/common/memorystream.cpp"
 #include "public.sdk/source/vst/hosting/eventlist.cpp"
-#include "public.sdk/source/vst/hosting/hostclasses.cpp"
 #include "public.sdk/source/vst/hosting/parameterchanges.cpp"
 #include "public.sdk/source/vst/hosting/pluginterfacesupport.cpp"
+#include "public.sdk/source/vst/hosting/hostclasses.cpp"
 
 #include "public.sdk/source/vst/hosting/stringconvert.cpp"
 #include "public.sdk/source/vst/hosting/module.cpp"

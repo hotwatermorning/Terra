@@ -582,11 +582,17 @@ submodule_target_list.each { def name ->
   task "build_${name}" {
     dependsOn { [copy_resources, update_submodules, prepare_project] }
     doLast {
+      def cache_hit = true
       build_if_needed(name, file("../build/src/${name}-build"), get_hash(name), {
-        // キャッシュがヒットしたかどうかにかかわらず、なにも処理をしない。
-        // （キャッシュがヒットした場合でも、 buildProject(name) を実行してインストール処理を行う必要があるため。
+        cache_hit = false
+        buildProject(name)
       })
-      buildProject(name)
+
+      // キャッシュがヒットした場合でもインストール処理を行う必要があるため
+      // buildProject(name) を実行する。
+      if(cache_hit) {
+        buildProject(name)
+      }
     }
   }
 }

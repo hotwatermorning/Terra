@@ -576,15 +576,17 @@ task build_target {
   }
 }
 
-def submodule_target_list = ["protobuf", "wxWidgets", "portaudio", "fmt", "vst3sdk"]
+def submodule_target_list = ["protobuf", "wxWidgets", "portaudio", "fmt", "rtmidi", "vst3sdk"]
 
 submodule_target_list.each { def name ->
   task "build_${name}" {
     dependsOn { [copy_resources, update_submodules, prepare_project] }
     doLast {
       build_if_needed(name, file("../build/src/${name}-build"), get_hash(name), {
-        buildProject(name)
+        // キャッシュがヒットしたかどうかにかかわらず、なにも処理をしない。
+        // （キャッシュがヒットした場合でも、 buildProject(name) を実行してインストール処理を行う必要があるため。
       })
+      buildProject(name)
     }
   }
 }

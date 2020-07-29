@@ -41,7 +41,6 @@ set(VST3_CONFIG "$<IF:$<CONFIG:Debug>,Debug,Release>")
 # そのため、 INSTALL_DIR は使用しないようにする。
 
 set(SUBMODULE_INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt")
-set(VST3_SUBMODULE_INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt")
 
 set(ASIOSDK_DOWNLOAD_URL "https://www.steinberg.net/sdk_downloads/asiosdk2.3.zip")
 set(ASIOSDK_DIR "${CMAKE_CURRENT_BINARY_DIR}/src/asiosdk")
@@ -165,8 +164,8 @@ ExternalProject_Add(
     cd <BINARY_DIR> &&
     "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config ${VST3_CONFIG}
   INSTALL_COMMAND
-    cmake -E copy_directory "<BINARY_DIR>/bin/${VST3_CONFIG}" "${VST3_SUBMODULE_INSTALL_DIR}/vst3sdk/bin/${VST3_CONFIG}" &&
-    cmake -E copy_directory "<BINARY_DIR>/lib/${VST3_CONFIG}" "${VST3_SUBMODULE_INSTALL_DIR}/vst3sdk/lib/${VST3_CONFIG}"
+    cmake -E copy_directory "<BINARY_DIR>/bin/${VST3_CONFIG}" "${SUBMODULE_INSTALL_DIR}/vst3sdk/bin/$<CONFIG>" &&
+    cmake -E copy_directory "<BINARY_DIR>/lib/${VST3_CONFIG}" "${SUBMODULE_INSTALL_DIR}/vst3sdk/lib/$<CONFIG>"
   )
 
 if(MSVC)
@@ -372,21 +371,21 @@ endif()
 list(APPEND TARGET_LIST Terra Terra-Test)
 
 if(MSVC)
-  set(VST3_SDK_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/sdk.lib")
-  set(VST3_BASE_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/base.lib")
-  set(VST3_PLUGINTERFACES_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/pluginterfaces.lib")
-  set(PROTOBUF_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/protobuf/lib/$<IF:$<CONFIG:Debug>,libprotobufd.lib,libprotobuf.lib>")
-  set(RTMIDI_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/rtmidi/lib/rtmidi.lib")
-  set(PORTAUDIO_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/portaudio/lib/portaudio_static_x64.lib")
-  set(FMT_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/fmt/lib/$<IF:$<CONFIG:Debug>,fmtd.lib,fmt.lib>")
+  set(VST3_SDK_LIB "${SUBMODULE_INSTALL_DIR}/vst3sdk/lib/${VST3_CONFIG}/sdk.lib")
+  set(VST3_BASE_LIB "${SUBMODULE_INSTALL_DIR}/vst3sdk/lib/${VST3_CONFIG}/base.lib")
+  set(VST3_PLUGINTERFACES_LIB "${SUBMODULE_INSTALL_DIR}/vst3sdk/lib/${VST3_CONFIG}/pluginterfaces.lib")
+  set(PROTOBUF_LIB "${SUBMODULE_INSTALL_DIR}/protobuf/lib/$<IF:$<CONFIG:Debug>,libprotobufd.lib,libprotobuf.lib>")
+  set(RTMIDI_LIB "${SUBMODULE_INSTALL_DIR}/rtmidi/lib/rtmidi.lib")
+  set(PORTAUDIO_LIB "${SUBMODULE_INSTALL_DIR}/portaudio/lib/portaudio_static_x64.lib")
+  set(FMT_LIB "${SUBMODULE_INSTALL_DIR}/fmt/lib/$<IF:$<CONFIG:Debug>,fmtd.lib,fmt.lib>")
 else()
-  set(VST3_SDK_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/libsdk.a")
-  set(VST3_BASE_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/libbase.a")
-  set(VST3_PLUGINTERFACES_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/${VST3_CONFIG}/opt/vst3sdk/lib/${VST3_CONFIG}/libpluginterfaces.a")
-  set(PROTOBUF_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/protobuf/lib/libprotobuf.a")
-  set(RTMIDI_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/rtmidi/lib/librtmidi.a")
-  set(PORTAUDIO_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/portaudio/lib/libportaudio.a")
-  set(FMT_LIB "${CMAKE_CURRENT_BINARY_DIR}/install/$<CONFIG>/opt/fmt/lib/$<IF:$<CONFIG:Debug>,libfmtd.a,libfmt.a>")
+  set(VST3_SDK_LIB "${SUBMODULE_INSTALL_DIR}/vst3sdk/lib/${VST3_CONFIG}/libsdk.a")
+  set(VST3_BASE_LIB "${SUBMODULE_INSTALL_DIR}/vst3sdk/lib/${VST3_CONFIG}/libbase.a")
+  set(VST3_PLUGINTERFACES_LIB "${SUBMODULE_INSTALL_DIR}/vst3sdk/lib/${VST3_CONFIG}/libpluginterfaces.a")
+  set(PROTOBUF_LIB "${SUBMODULE_INSTALL_DIR}/protobuf/lib/libprotobuf.a")
+  set(RTMIDI_LIB "${SUBMODULE_INSTALL_DIR}/rtmidi/lib/librtmidi.a")
+  set(PORTAUDIO_LIB "${SUBMODULE_INSTALL_DIR}/portaudio/lib/libportaudio.a")
+  set(FMT_LIB "${SUBMODULE_INSTALL_DIR}/fmt/lib/$<IF:$<CONFIG:Debug>,libfmtd.a,libfmt.a>")
 endif()
 
 find_library(JACK_LIB jack)

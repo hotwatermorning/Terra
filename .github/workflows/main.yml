@@ -21,15 +21,13 @@ jobs:
     - name: Test
       run: |
         cd gradle
-        .\gradlew build_submodules test
-      env:
-        AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
-        AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
-        AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
+        .\gradlew build_submodules -Pconfig=Debug
+        .\gradlew test
     - name: Build App
       run: |
         cd gradle
-        .\gradlew build_submodules build_app -Pconfig=Release
+        .\gradlew build_submodules -Pconfig=Release
+        .\gradlew build_app -Pconfig=Release
       env:
         AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
         AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
@@ -56,7 +54,8 @@ jobs:
     - name: Test
       run: |
         cd gradle
-        ./gradlew build_submodules test
+        ./gradlew build_submodules -Pconfig=Debug
+        ./gradlew test -Pconfig=Debug
       env:
         AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
         AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
@@ -64,7 +63,8 @@ jobs:
     - name: Build App
       run: |
         cd gradle
-        ./gradlew build_submodules build_app -Pconfig=Release
+        ./gradlew build_submodules -Pconfig=Release
+        ./gradlew build_app -Pconfig=Release
       env:
         AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
         AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}

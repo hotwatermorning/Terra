@@ -352,9 +352,10 @@ add_custom_target(
   compile-schemas
   cd ${CMAKE_CURRENT_SOURCE_DIR}/gradle &&
   $<IF:$<BOOL:${MSVC}>,gradlew,./gradlew> compile_schemas -Dconfig=$<CONFIG>
-  DEPENDS protobuf
   SOURCES ${SCHEMA_FILES}
   )
+
+add_dependencies(compile-schemas protobuf)
 
 ####################################################################
 # configure build targets

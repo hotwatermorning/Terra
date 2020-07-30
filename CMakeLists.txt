@@ -77,7 +77,11 @@ function(generate_submodule_build_target submodule_name)
     string(REPLACE "<SOURCE_DIR>" "${GSBT_SOURCE_DIR}" elem "${elem}")
     string(REPLACE "<BINARY_DIR>" "${GSBT_BINARY_DIR}" elem "${elem}")
     string(REPLACE "<INSTALL_DIR>" "${GSBT_INSTALL_DIR}" elem "${elem}")
-    string(REPLACE "^^" "\;" elem "${elem}")
+    if(MSVC)
+      string(REPLACE "^^" "&" elem "${elem}")
+    else()
+      string(REPLACE "^^" "\;" elem "${elem}")
+    endif()
 
     list(APPEND INNER_BUILD_COMMAND "${elem}")
   endforeach()
@@ -86,12 +90,14 @@ function(generate_submodule_build_target submodule_name)
     add_custom_target(
       "${submodule_name}"
       COMMAND
-      if exist "${GSBT_INSTALL_DIR}" "("
-        echo "${submodule_name} is already installed." ";"
-        exit /b 0
-      ")" ";"
-      "${CMAKE_COMMAND}" -E make_directory "<BINARY_DIR>" ";"
-      ${INNER_BUILD_COMMAND}
+        echo "build ${submodule_name}" &
+        if exist "${GSBT_INSTALL_DIR}" "("
+          echo "${submodule_name} is already installed."
+        ")" else "("
+          "${CMAKE_COMMAND}" -E make_directory "${GSBT_BINARY_DIR}" &&
+          cd "${GSBT_BINARY_DIR}" &&
+          ${INNER_BUILD_COMMAND}
+        ")"
       )
   else()
     add_custom_target(
@@ -167,7 +173,7 @@ if(MSVC)
         "-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>"
         -Dprotobuf_BUILD_TESTS=OFF
         -Dprotobuf_MSVC_STATIC_RUNTIME=OFF
-        "<SOURCE_DIR>" ^^
+        "<SOURCE_DIR>/cmake" ^^
       cd "<BINARY_DIR>" ^^
       "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG> ^^
       "${CMAKE_COMMAND}" --install . --config $<CONFIG>
@@ -189,7 +195,7 @@ else()
       echo "autogen.sh succeeded." ^^
       echo "Run configure" ^^
       cd <BINARY_DIR> ^^
-      <SOURCE_DIR>/configure --disable-shared "--prefix=<INSTALL_DIR>" ^^
+      "<SOURCE_DIR>/configure" --disable-shared "--prefix=<INSTALL_DIR>" ^^
       make -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} ^^
       make install
     )
@@ -561,9 +567,10 @@ add_custom_target(
   cd "${CMAKE_CURRENT_SOURCE_DIR}/gradle" &&
   $<IF:$<BOOL:${MSVC}>,gradlew,./gradlew> compile_schemas -Dconfig=$<CONFIG>
   SOURCES ${SCHEMA_FILES}
+  DEPENDS protobuf
   )
 
-add_dependencies(compile-schemas protobuf)
+# add_dependencies(compile-schemas protobuf)
 
 ####################################################################
 # configure build targets

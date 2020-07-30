@@ -532,9 +532,19 @@ task compile_schemas {
     assert(file(protoc).exists())
 
     assert(mkdirs_if_needed(file("../schema/cpp")))
+    assert(mkdirs_if_needed(file("../schema/cpp_tmp")))
     file("../schema").eachFileMatch(~/.*\.proto$/) {
-      execute("'${protoc}' -Ischema --cpp_out=schema/cpp '${it.getName()}'", "..")
+      def filename_we = it.getName() - ~/\.\w+$/
+      def cc = filename_we + ".pb.cc"
+      def h = filename_we + ".pb.h"
+
+      // 仮のディレクトリにファイルを生成し、データの変更をチェックしてから上書きする。
+      // （compile_schemas タスクの実行によって、必ず Terra の再ビルドが行われてしまうことを避けるため）
+      execute("'${protoc}' -Ischema --cpp_out=schema/cpp_tmp '${it.getName()}'", "..")
+      execute("cmake -E copy_if_different \"schema/cpp_tmp/${cc}\" \"schema/cpp/${cc}\"", "..")
+      execute("cmake -E copy_if_different \"schema/cpp_tmp/${h}\" \"schema/cpp/${h}\"", "..")
     }
+    delete file("../schema/cpp_tmp")
   }
 }
 
@@ -583,17 +593,9 @@ submodule_target_list.each { def name ->
     group = "build"
     dependsOn { [copy_resources, update_submodules, prepare_project] }
     doLast {
-      def cache_hit = true
-      build_if_needed(name, file("../build/src/${name}-build"), get_hash(name), {
-        cache_hit = false
+      build_if_needed(name, file("../build/install/${project.config}/opt/${name}"), get_hash(name), {
         buildProject(name)
       })
-
-      // キャッシュがヒットした場合でもインストール処理を行う必要があるため
-      // buildProject(name) を実行する。
-      if(cache_hit) {
-        buildProject(name)
-      }
     }
   }
 }
@@ -611,6 +613,7 @@ task build_submodules {
 
 task build_app {
   group = "build"
+  mustRunAfter { [ "build_test", "run_test" ] }
   description = "Build Terra Application"
   dependsOn { [copy_resources, update_submodules, prepare_project] }
   mustRunAfter build_submodules

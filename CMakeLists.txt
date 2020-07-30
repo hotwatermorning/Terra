@@ -56,133 +56,173 @@ if(MSVC)
     BUILD_COMMAND ""
     INSTALL_COMMAND cmake -E copy_directory <SOURCE_DIR> "${SUBMODULE_INSTALL_DIR}/asiosdk"
     )
-  set(DEPENDS_ON_ASIOSDK "DEPENDS;asiosdk")
-else()
-  set(DEPENDS_ON_ASIOSDK "")
 endif()
 
-ExternalProject_Add(
+function(generate_submodule_build_target submodule_name)
+  cmake_parse_arguments(GSBT "" "" "BUILD_COMMAND" ${ARGN})
+
+  if(NOT submodule_name)
+    message(FATAL_ERROR "SUBMODULE_NAME must be specified.")
+  endif()
+
+  if(NOT GSBT_BUILD_COMMAND)
+    message(FATAL_ERROR "BUILD_COMMAND must be specified.")
+  endif()
+
+  set(GSBT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/${submodule_name}")
+  set(GSBT_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/src_/${submodule_name}")
+  set(GSBT_INSTALL_DIR "${SUBMODULE_INSTALL_DIR}/${submodule_name}")
+
+  foreach(elem ${GSBT_BUILD_COMMAND})
+    string(REPLACE "<SOURCE_DIR>" "${GSBT_SOURCE_DIR}" elem "${elem}")
+    string(REPLACE "<BINARY_DIR>" "${GSBT_BINARY_DIR}" elem "${elem}")
+    string(REPLACE "<INSTALL_DIR>" "${GSBT_INSTALL_DIR}" elem "${elem}")
+    string(REPLACE "^^" "\;" elem "${elem}")
+
+    list(APPEND INNER_BUILD_COMMAND "${elem}")
+  endforeach()
+
+  if(MSVC)
+    add_custom_target(
+      "${submodule_name}"
+      COMMAND
+      if exist "${GSBT_INSTALL_DIR}" "("
+        echo "${submodule_name} is already installed." ";"
+        exit /b 0
+      ")" ";"
+      "${CMAKE_COMMAND}" -E make_directory "<BINARY_DIR>" ";"
+      ${INNER_BUILD_COMMAND}
+      )
+  else()
+    add_custom_target(
+      "${submodule_name}"
+      COMMAND
+        set -ue ";"
+        if [ -d "${GSBT_INSTALL_DIR}" ] ";" then
+          echo "${submodule_name} is already installed." ";"
+          exit 0 ";"
+        fi ";"
+        "${CMAKE_COMMAND}" -E make_directory "${GSBT_BINARY_DIR}" ";"
+        cd "${GSBT_BINARY_DIR}" ";"
+        ${INNER_BUILD_COMMAND}
+      )
+  endif()
+endfunction()
+
+generate_submodule_build_target(
   portaudio
-  PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
-  SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/portaudio"
-  ${DEPENDS_ON_ASIOSDK}
-  CMAKE_ARGS
-    -DCMAKE_BUILD_TYPE=$<CONFIG>
-    "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/portaudio"
-    -DPA_BUILD_STATIC=ON
-    -DPA_BUILD_SHARED=OFF
-    $<$<BOOL:${MSVC}>:-DPA_DLL_LINK_WITH_STATIC_RUNTIME=OFF>
-    $<$<BOOL:${MSVC}>:-DPA_USE_WDMKS=OFF>
-    $<$<BOOL:${MSVC}>:-DPA_USE_ASIO=ON>
-    $<$<BOOL:${MSVC}>:-DASIOSDK_ROOT_DIR=${ASIOSDK_DIR}>
   BUILD_COMMAND
-    cd <BINARY_DIR> &&
-    "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG>
-  BUILD_BYPRODUCTS
-    "${CMAKE_CURRENT_BINARY_DIR}/src/portaudio-stamp/Debug/portaudio-build"
-  )
-
-ExternalProject_Add(
-  fmt
-  PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
-  SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/fmt"
-  CMAKE_ARGS
-    -DCMAKE_BUILD_TYPE=$<CONFIG>
-    "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/fmt"
-  BUILD_COMMAND
-    cd <BINARY_DIR> &&
-    "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG>
-  )
-
-ExternalProject_Add(
-  rtmidi
-  PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
-  SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/rtmidi"
-  CMAKE_ARGS
-    -DCMAKE_BUILD_TYPE=$<CONFIG>
-    "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/rtmidi"
-    -DRTMIDI_BUILD_STATIC_LIBS=ON
-    -DBUILD_SHARED_LIBS=OFF
-    -DBUILD_TESTING=OFF
-  BUILD_COMMAND
-    cd <BINARY_DIR> &&
-    "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG>
-  )
-
-if(MSVC)
-  ExternalProject_Add(
-    protobuf
-    PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
-    SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/protobuf/cmake"
-    CMAKE_ARGS
+    "${CMAKE_COMMAND}"
       -DCMAKE_BUILD_TYPE=$<CONFIG>
-      "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/protobuf"
-      -Dprotobuf_BUILD_TESTS=OFF
-      -Dprotobuf_MSVC_STATIC_RUNTIME=OFF
+      "-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>"
+      -DPA_BUILD_STATIC=ON
+      -DPA_BUILD_SHARED=OFF
+      $<$<BOOL:${MSVC}>:-DPA_DLL_LINK_WITH_STATIC_RUNTIME=OFF>
+      $<$<BOOL:${MSVC}>:-DPA_USE_WDMKS=OFF>
+      $<$<BOOL:${MSVC}>:-DPA_USE_ASIO=ON>
+      $<$<BOOL:${MSVC}>:-DASIOSDK_ROOT_DIR=${ASIOSDK_DIR}>
+      "<SOURCE_DIR>" ^^
+    cd "<BINARY_DIR>" ^^
+    "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG> ^^
+    "${CMAKE_COMMAND}" --install . --config $<CONFIG>
+  )
+if(MSVC)
+  add_dependencies(portaudio asiosdk)
+endif()
+
+generate_submodule_build_target(
+  fmt
+  BUILD_COMMAND
+    "${CMAKE_COMMAND}"
+      -DCMAKE_BUILD_TYPE=$<CONFIG>
+      "-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>"
+      "<SOURCE_DIR>" ^^
+    cd "<BINARY_DIR>" ^^
+    "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG> ^^
+    "${CMAKE_COMMAND}" --install . --config $<CONFIG>
+  )
+
+generate_submodule_build_target(
+  rtmidi
+  BUILD_COMMAND
+    "${CMAKE_COMMAND}"
+      -DCMAKE_BUILD_TYPE=$<CONFIG>
+      "-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>"
+      -DRTMIDI_BUILD_STATIC_LIBS=ON
+      -DBUILD_SHARED_LIBS=OFF
+      -DBUILD_TESTING=OFF
+      "<SOURCE_DIR>" ^^
+    cd "<BINARY_DIR>" ^^
+    "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG> ^^
+    "${CMAKE_COMMAND}" --install . --config $<CONFIG>
+  )
+
+# Protocol Buffers
+if(MSVC)
+  generate_submodule_build_target(
+    protobuf
     BUILD_COMMAND
-      cd <BINARY_DIR> &&
-      "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG>
+      "${CMAKE_COMMAND}"
+        -DCMAKE_BUILD_TYPE=$<CONFIG>
+        "-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>"
+        -Dprotobuf_BUILD_TESTS=OFF
+        -Dprotobuf_MSVC_STATIC_RUNTIME=OFF
+        "<SOURCE_DIR>" ^^
+      cd "<BINARY_DIR>" ^^
+      "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG> ^^
+      "${CMAKE_COMMAND}" --install . --config $<CONFIG>
     )
 else()
+
   if("$ENV{CI}" STREQUAL "true")
     list(APPEND AUTOGEN_SH "./autogen.sh")
   else()
     list(APPEND AUTOGEN_SH "test" "./autogen.sh")
   endif()
 
-  ExternalProject_Add(
+  generate_submodule_build_target(
     protobuf
-    PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
-    SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/protobuf"
-    CONFIGURE_COMMAND ""
     BUILD_COMMAND
-      echo "Run autogen.sh" &&
-      cd <SOURCE_DIR> &&
-      ${AUTOGEN_SH} &&
-      echo "autogen.sh succeeded." &&
-      echo "Run configure" &&
-      cd <BINARY_DIR> &&
-      <SOURCE_DIR>/configure --disable-shared "--prefix=${SUBMODULE_INSTALL_DIR}/protobuf" &&
-      make -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL}
-    INSTALL_COMMAND
+      echo "Run autogen.sh" ^^
+      cd <SOURCE_DIR> ^^
+      ${AUTOGEN_SH} ^^
+      echo "autogen.sh succeeded." ^^
+      echo "Run configure" ^^
+      cd <BINARY_DIR> ^^
+      <SOURCE_DIR>/configure --disable-shared "--prefix=<INSTALL_DIR>" ^^
+      make -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} ^^
       make install
     )
 endif()
 
-ExternalProject_Add(
+generate_submodule_build_target(
   vst3sdk
-  PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
-  SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/vst3sdk"
-  CMAKE_ARGS
-    -DCMAKE_BUILD_TYPE=${VST3_CONFIG}
-    -D
-    -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF
-    -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF
-    -DSMTG_RUN_VST_VALIDATOR=OFF
-    -DSMTG_ADD_VSTGUI=OFF
   BUILD_COMMAND
-    cd <BINARY_DIR> &&
-    "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config ${VST3_CONFIG}
-  INSTALL_COMMAND
-    cmake -E copy_directory "<BINARY_DIR>/bin/${VST3_CONFIG}" "${SUBMODULE_INSTALL_DIR}/vst3sdk/bin/$<CONFIG>" &&
-    cmake -E copy_directory "<BINARY_DIR>/lib/${VST3_CONFIG}" "${SUBMODULE_INSTALL_DIR}/vst3sdk/lib/$<CONFIG>"
+    "${CMAKE_COMMAND}"
+      -DCMAKE_BUILD_TYPE=${VST3_CONFIG}
+      -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF
+      -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF
+      -DSMTG_RUN_VST_VALIDATOR=OFF
+      -DSMTG_ADD_VSTGUI=OFF
+      "<SOURCE_DIR>" ^^
+    cd "<BINARY_DIR>" ^^
+    "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config ${VST3_CONFIG} ^^
+    cmake -E copy_directory "<BINARY_DIR>/bin/${VST3_CONFIG}" "<INSTALL_DIR>/bin/$<CONFIG>" ^^
+    cmake -E copy_directory "<BINARY_DIR>/lib/${VST3_CONFIG}" "<INSTALL_DIR>/lib/$<CONFIG>"
   )
 
 if(MSVC)
-  ExternalProject_Add(
+  generate_submodule_build_target(
     wxWidgets
-    PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
-    SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/wxWidgets"
-    BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/src/wxWidgets-build"
-    CONFIGURE_COMMAND
+    BUILD_COMMAND
       echo "Prepare setup.h" &&
       cd "<SOURCE_DIR>" &&
       "${CMAKE_COMMAND}" -E copy "./include/wx/msw/setup0.h" "./include/wx/msw/setup.h" &&
       echo "Prepare project" &&
       cd "<BINARY_DIR>" &&
-        "${CMAKE_COMMAND}"
-        -G "${CMAKE_GENERATOR}"
-        "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/wxWidgets"
+      "${CMAKE_COMMAND}"
+        -DCMAKE_BUILD_TYPE=$<CONFIG>
+        "-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>"
         -DwxBUILD_SHARED=OFF
         -DwxBUILD_MONOLITHIC=OFF
         -DwxBUILD_USE_STATIC_RUNTIME=OFF
@@ -190,18 +230,14 @@ if(MSVC)
         -DwxBUILD_TESTS=OFF
         -DwxBUILD_SAMPLES=OFF
         -DwxBUILD_DEMOS=OFF
-        "<SOURCE_DIR>"
-    BUILD_COMMAND
-      "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --target ALL_BUILD --config $<CONFIG>
-    INSTALL_COMMAND
-      "${CMAKE_COMMAND}" --install "<BINARY_DIR>" --config $<CONFIG>
+        "<SOURCE_DIR>" &&
+      cd "<BINARY_DIR>" &&
+      "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG> &&
+      "${CMAKE_COMMAND}" --install . --config $<CONFIG>
     )
 else()
-  ExternalProject_Add(
+  generate_submodule_build_target(
     wxWidgets
-    PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
-    SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/wxWidgets"
-    CONFIGURE_COMMAND
     BUILD_COMMAND
       echo "Run autogen.sh" &&
       cd <SOURCE_DIR> &&
@@ -209,7 +245,7 @@ else()
       echo "autogen.sh succeeded." &&
       echo "Run configure" &&
       cd <BINARY_DIR> &&
-      <SOURCE_DIR>/configure --disable-shared "--prefix=${SUBMODULE_INSTALL_DIR}/wxWidgets"
+      <SOURCE_DIR>/configure --disable-shared "--prefix=<INSTALL_DIR>"
         "CXXFLAGS=-stdlib=libc++ -DHAVE_TYPE_TRAITS" "OBJCXXFLAGS=-stdlib=libc++"
         "CPPFLAGS=-stdlib=libc++" "LDFLAGS=-stdlib=libc++"
         --with-macosx-version-min=10.9 --with-cocoa
@@ -222,11 +258,179 @@ else()
         $<$<CONFIG:Debug>:--enable-debug>
         $<$<CONFIG:Debug>:--enable-debug-info>
         $<$<CONFIG:Debug>:--enable-debug-gdb> &&
-      make -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL}
-    INSTALL_COMMAND
+      make -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} &&
       make install
     )
 endif()
+
+# generate_submodule_build_target(
+#   wxWidgets
+#   BUILD_COMMAND
+#     "${CMAKE_COMMAND}" -E make_directory "<BINARY_DIR>" ^^
+#     cd "<BINARY_DIR>" ^^
+#     "${CMAKE_COMMAND}"
+#       -DCMAKE_BUILD_TYPE=$<CONFIG>
+#       "-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>"
+#       "<SOURCE_DIR>" ^^
+#     cd "<BINARY_DIR>" ^^
+#     "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG> ^^
+#     "${CMAKE_COMMAND}" --install . --config $<CONFIG>
+#   )
+
+# ExternalProject_Add(
+#   fmt
+#   PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
+#   SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/fmt"
+#   CMAKE_ARGS
+#     -DCMAKE_BUILD_TYPE=$<CONFIG>
+#     "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/fmt"
+#   BUILD_ALWAYS TRUE
+#   LIST_SEPARATOR ^^
+#   BUILD_COMMAND
+#     if test -d "${SUBMODULE_INSTALL_DIR}/fmt"^^ then^^
+#         exit 0^^
+#     fi \\^^
+#     cd "<BINARY_DIR>" \\^^
+#     "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG> \\^^
+#     "${CMAKE_COMMAND}" --install . --config $<CONFIG>
+#   )
+
+# ExternalProject_Add(
+#   rtmidi
+#   PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
+#   SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/rtmidi"
+#   CMAKE_ARGS
+#     -DCMAKE_BUILD_TYPE=$<CONFIG>
+#     "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/rtmidi"
+#     -DRTMIDI_BUILD_STATIC_LIBS=ON
+#     -DBUILD_SHARED_LIBS=OFF
+#     -DBUILD_TESTING=OFF
+#   BUILD_COMMAND
+#     cd <BINARY_DIR> &&
+#     "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG>
+#   )
+
+# if(MSVC)
+#   ExternalProject_Add(
+#     protobuf
+#     PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
+#     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/protobuf/cmake"
+#     CMAKE_ARGS
+#       -DCMAKE_BUILD_TYPE=$<CONFIG>
+#       "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/protobuf"
+#       -Dprotobuf_BUILD_TESTS=OFF
+#       -Dprotobuf_MSVC_STATIC_RUNTIME=OFF
+#     BUILD_COMMAND
+#       cd <BINARY_DIR> &&
+#       "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config $<CONFIG>
+#     )
+# else()
+#   if("$ENV{CI}" STREQUAL "true")
+#     list(APPEND AUTOGEN_SH "./autogen.sh")
+#   else()
+#     list(APPEND AUTOGEN_SH "test" "./autogen.sh")
+#   endif()
+# 
+#   ExternalProject_Add(
+#     protobuf
+#     PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
+#     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/protobuf"
+#     CONFIGURE_COMMAND ""
+#     BUILD_COMMAND
+#       echo "Run autogen.sh" &&
+#       cd <SOURCE_DIR> &&
+#       ${AUTOGEN_SH} &&
+#       echo "autogen.sh succeeded." &&
+#       echo "Run configure" &&
+#       cd <BINARY_DIR> &&
+#       <SOURCE_DIR>/configure --disable-shared "--prefix=${SUBMODULE_INSTALL_DIR}/protobuf" &&
+#       make -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL}
+#     INSTALL_COMMAND
+#       make install
+#     )
+# endif()
+# 
+# 
+# ExternalProject_Add(
+#   vst3sdk
+#   PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
+#   SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/vst3sdk"
+#   CMAKE_ARGS
+#     -DCMAKE_BUILD_TYPE=${VST3_CONFIG}
+#     -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF
+#     -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF
+#     -DSMTG_RUN_VST_VALIDATOR=OFF
+#     -DSMTG_ADD_VSTGUI=OFF
+#   BUILD_COMMAND
+#     echo "hello world" \\$<SEMICOLON>
+#     if test -d "<INSTALL_DIR>" \\$<SEMICOLON> then
+#        echo "Already installed" \\\$<SEMICOLON>
+#     fi $<SEMICOLON>
+#     cd <BINARY_DIR> &&
+#     "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --config ${VST3_CONFIG}
+#   INSTALL_COMMAND
+#     cmake -E copy_directory "<BINARY_DIR>/bin/${VST3_CONFIG}" "${SUBMODULE_INSTALL_DIR}/vst3sdk/bin/$<CONFIG>" &&
+#     cmake -E copy_directory "<BINARY_DIR>/lib/${VST3_CONFIG}" "${SUBMODULE_INSTALL_DIR}/vst3sdk/lib/$<CONFIG>"
+#   )
+# if(MSVC)
+#   ExternalProject_Add(
+#     wxWidgets
+#     PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
+#     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/wxWidgets"
+#     BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/src/wxWidgets-build"
+#     CONFIGURE_COMMAND
+#       echo "Prepare setup.h" &&
+#       cd "<SOURCE_DIR>" &&
+#       "${CMAKE_COMMAND}" -E copy "./include/wx/msw/setup0.h" "./include/wx/msw/setup.h" &&
+#       echo "Prepare project" &&
+#       cd "<BINARY_DIR>" &&
+#         "${CMAKE_COMMAND}"
+#         -G "${CMAKE_GENERATOR}"
+#         "-DCMAKE_INSTALL_PREFIX=${SUBMODULE_INSTALL_DIR}/wxWidgets"
+#         -DwxBUILD_SHARED=OFF
+#         -DwxBUILD_MONOLITHIC=OFF
+#         -DwxBUILD_USE_STATIC_RUNTIME=OFF
+#         -DwxBUILD_MSVC_MULTIPROC=ON
+#         -DwxBUILD_TESTS=OFF
+#         -DwxBUILD_SAMPLES=OFF
+#         -DwxBUILD_DEMOS=OFF
+#         "<SOURCE_DIR>"
+#     BUILD_COMMAND
+#       "${CMAKE_COMMAND}" --build . -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL} --target ALL_BUILD --config $<CONFIG>
+#     INSTALL_COMMAND
+#       "${CMAKE_COMMAND}" --install "<BINARY_DIR>" --config $<CONFIG>
+#     )
+# else()
+#   ExternalProject_Add(
+#     wxWidgets
+#     PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
+#     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ext/wxWidgets"
+#     CONFIGURE_COMMAND
+#     BUILD_COMMAND
+#       echo "Run autogen.sh" &&
+#       cd <SOURCE_DIR> &&
+#       test ./autogen.sh &&
+#       echo "autogen.sh succeeded." &&
+#       echo "Run configure" &&
+#       cd <BINARY_DIR> &&
+#       <SOURCE_DIR>/configure --disable-shared "--prefix=${SUBMODULE_INSTALL_DIR}/wxWidgets"
+#         "CXXFLAGS=-stdlib=libc++ -DHAVE_TYPE_TRAITS" "OBJCXXFLAGS=-stdlib=libc++"
+#         "CPPFLAGS=-stdlib=libc++" "LDFLAGS=-stdlib=libc++"
+#         --with-macosx-version-min=10.9 --with-cocoa
+#         --with-libjpeg=builtin --with-libpng=builtin
+#         --with-regex=builtin --with-libtiff=builtin
+#         --with-zlib=builtin --with-expat=builtin
+#         --enable-stl --enable-std_containers
+#         --enable-std_iostreams --enable-std_string
+#         --enable-unicode --with-cxx=14
+#         $<$<CONFIG:Debug>:--enable-debug>
+#         $<$<CONFIG:Debug>:--enable-debug-info>
+#         $<$<CONFIG:Debug>:--enable-debug-gdb> &&
+#       make -j $ENV{CMAKE_BUILD_PARALLEL_LEVEL}
+#     INSTALL_COMMAND
+#       make install
+#     )
+# endif()
 
 add_custom_target(build-submodules DEPENDS vst3sdk protobuf portaudio rtmidi fmt wxWidgets)
 
@@ -339,17 +543,22 @@ foreach(SCHEMA_FILE ${SCHEMA_FILES})
   source_group("${SCHEMA_CPP_GROUP_NAME}" FILES "${SCHEMA_H}" "${SCHEMA_CC}")
 
   set_source_files_properties("${SCHEMA_FILE}" PROPERTIES HEADER_FILE_ONLY ON)
-  list(APPEND TERRA_APP_SOURCES "${SCHEMA_FILE}" "${SCHEMA_CC}" "${SCHEMA_H}")
-  list(APPEND TERRA_TEST_SOURCES "${SCHEMA_FILE}" "${SCHEMA_CC}" "${SCHEMA_H}")
+  list(APPEND SCHEMA_SOURCES "${SCHEMA_CC}" "${SCHEMA_H}")
 
   file(WRITE "${SCHEMA_CC}" "#error Need to be auto-generated by compile-schemas target.")
   file(WRITE "${SCHEMA_H}" "#error Need to be auto-generated by compile-schemas target.")
 endforeach()
 
+list(APPEND TERRA_APP_SOURCES ${SCHEMA_SOURCES})
+list(APPEND TERRA_TEST_SOURCES ${SCHEMA_SOURCES})
+
+message("schema files: ${SCHEMA_FILES}")
+message("schema sources: ${SCHEMA_SOURCES}")
+
 # スキーマをコンパイルするターゲットを追加する
 add_custom_target(
   compile-schemas
-  cd ${CMAKE_CURRENT_SOURCE_DIR}/gradle &&
+  cd "${CMAKE_CURRENT_SOURCE_DIR}/gradle" &&
   $<IF:$<BOOL:${MSVC}>,gradlew,./gradlew> compile_schemas -Dconfig=$<CONFIG>
   SOURCES ${SCHEMA_FILES}
   )

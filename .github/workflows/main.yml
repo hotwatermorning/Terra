@@ -10,7 +10,7 @@ on:
   pull_request:
     branches: [ master ]
   workflow_dispatch:
-    branches: [ master, develop, fix_build_script ]
+    branches: [ "*" ]
     inputs:
       renew_cache:
         description: "Renew Cache"

@@ -32,7 +32,7 @@ jobs:
         submodules: recursive
     - name: Test
       run: |
-        if ( ${{ github.event.inputs != null }} ) {
+        if ( "${{ github.event.inputs != null }}" -eq "true" ) {
           $env:ORG_GRADLE_PROJECT_renew_cache = "${{github.event.inputs.renew_cache}}"
         }
         Get-ChildItem env:
@@ -47,7 +47,7 @@ jobs:
         submodules: recursive
     - name: Build App
       run: |
-        if ( ${{ github.event.inputs != null }} ) {
+        if ( "${{ github.event.inputs != null }}" -eq "true" ) {
           $env:ORG_GRADLE_PROJECT_renew_cache = "${{github.event.inputs.renew_cache}}"
         }
         Get-ChildItem env:
@@ -75,8 +75,8 @@ jobs:
         brew install autoconf automake libtool
     - name: Test
       run: |
-        if [ ${{ github.event.inputs != null }} ]; then
-          export ORG_GRADLE_PROJECT_renew_cache="${{ github.event.inputs.renew_cache }}"
+        if [ "${{github.event.inputs != null}}" = "true" ]; then
+          export ORG_GRADLE_PROJECT_renew_cache="${{github.event.inputs.renew_cache}}"
         fi
         printenv
         cd gradle
@@ -93,8 +93,8 @@ jobs:
         brew install autoconf automake libtool
     - name: Build App
       run: |
-        if [ ${{ github.event.inputs != null }} ]; then
-          export ORG_GRADLE_PROJECT_renew_cache="${{ github.event.inputs.renew_cache }}"
+        if ["${{ github.event.inputs != null}}" = "true" ]; then
+          export ORG_GRADLE_PROJECT_renew_cache="${{github.event.inputs.renew_cache}}"
         fi
         printenv
         cd gradle

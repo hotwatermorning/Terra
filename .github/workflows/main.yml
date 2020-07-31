@@ -17,8 +17,14 @@ on:
         required: true
         default: "false"
 
+env:
+  ORG_GRADLE_PROJECT_cache_strategy: azure
+  AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+  AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+  AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
+
 jobs:
-  build_win:
+  test_win:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v2
@@ -26,24 +32,28 @@ jobs:
         submodules: recursive
     - name: Test
       run: |
+        if ( ${{ github.event.inputs != null }} ) {
+          $env:ORG_GRADLE_PROJECT_renew_cache = "${{github.event.inputs.renew_cache}}"
+        }
+        Get-ChildItem env:
         cd gradle
         .\gradlew build_submodules -Pconfig=Debug
         .\gradlew test
-      env:
-        AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
-        AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
-        AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
-        ORG_GRADLE_PROJECT_cache_strategy: azure
+  app_win:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: recursive
     - name: Build App
       run: |
+        if ( ${{ github.event.inputs != null }} ) {
+          $env:ORG_GRADLE_PROJECT_renew_cache = "${{github.event.inputs.renew_cache}}"
+        }
+        Get-ChildItem env:
         cd gradle
         .\gradlew build_submodules -Pconfig=Release
         .\gradlew build_app -Pconfig=Release
-      env:
-        AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
-        AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
-        AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
-        ORG_GRADLE_PROJECT_cache_strategy: azure
     - name: Archive
       run: |
         cd build/Release
@@ -54,7 +64,7 @@ jobs:
       with:
         name: release-win
         path: build\release-win.zip
-  build_mac:
+  test_mac:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v2
@@ -65,24 +75,31 @@ jobs:
         brew install autoconf automake libtool
     - name: Test
       run: |
+        if [ ${{ github.event.inputs != null }} ]; then
+          export ORG_GRADLE_PROJECT_renew_cache="${{ github.event.inputs.renew_cache }}"
+        fi
+        printenv
         cd gradle
         ./gradlew build_submodules -Pconfig=Debug
         ./gradlew test -Pconfig=Debug
-      env:
-        AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
-        AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
-        AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
-        ORG_GRADLE_PROJECT_cache_strategy: azure
+  app_mac:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: recursive
+    - name: Install dependencies
+      run: |
+        brew install autoconf automake libtool
     - name: Build App
       run: |
+        if [ ${{ github.event.inputs != null }} ]; then
+          export ORG_GRADLE_PROJECT_renew_cache="${{ github.event.inputs.renew_cache }}"
+        fi
+        printenv
         cd gradle
         ./gradlew build_submodules -Pconfig=Release
         ./gradlew build_app -Pconfig=Release
-      env:
-        AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
-        AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
-        AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
-        ORG_GRADLE_PROJECT_cache_strategy: azure
     - name: Archive
       run: |
         cd build/Release
@@ -94,7 +111,7 @@ jobs:
         name: release-mac
         path: build/release-mac.zip
   release:
-    needs: [build_win, build_mac]
+    needs: [app_win, app_mac, test_win, test_win] # テストが成功してから実行する。
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v2

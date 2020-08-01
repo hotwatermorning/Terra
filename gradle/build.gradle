@@ -24,7 +24,7 @@ ensure_property(project, "config", ["Debug", "Release"])
 ensure_property(project, "use_ccache", ["true", "false"])
 // build libraries even if cache archives are available.
 ensure_property(project, "renew_cache", ["false", "true"])
-ensure_property(project, "msvc_version", ["Visual Studio 16 2019", "Visual Studio 15 2017"])
+ensure_property(project, "msvc_version", ["Visual Studio 16 2019"])
 
 ensure_property(project, "cache_strategy", ["azure", "file", "null"])
 
@@ -86,28 +86,28 @@ def tokenize_with_error(String src)
   def quoted = { found_quote != "" }
 
   src.each { it ->
-    logger.debug("it: ${it}")
+//     logger.debug("it: ${it}")
 
     if(quoted()) {
       if(is_escaped) {
         is_escaped = false
-        logger.debug("\t--1")
+//         logger.debug("\t--1")
       } else if(it == escape_char) {
         is_escaped = true
-        logger.debug("\t--2")
+//         logger.debug("\t--2")
       } else if(it == found_quote) {
         found_quote = ""
-        logger.debug("\t--3")
+//         logger.debug("\t--3")
         return
       }
     } else {
       if(quote_chars.contains(it)) {
         found_quote = it
-        logger.debug("\t--4")
+//         logger.debug("\t--4")
         return
       } else if(it == separator_char) {
         if(token != "") {
-          logger.debug("\t--5")
+//           logger.debug("\t--5")
           output << token
           token = ""
         }
@@ -565,6 +565,7 @@ task copy_resources {
     }
   }
 
+  group "build"
   description = """copy resource data into the output directory."""
 }
 

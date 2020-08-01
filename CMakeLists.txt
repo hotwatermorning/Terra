@@ -395,7 +395,7 @@ list(APPEND TERRA_TEST_SOURCES ${SCHEMA_SOURCES})
 # スキーマをコンパイルするターゲットを追加する
 add_custom_target(
   compile-schemas
-  "$<IF:$<BOOL:${MSVC}>,gradlew,./gradlew>" --debug compile_schemas -Pconfig=$<CONFIG>
+  "$<IF:$<BOOL:${MSVC}>,gradlew,./gradlew>" compile_schemas -Pconfig=$<CONFIG>
   SOURCES ${SCHEMA_FILES}
   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/gradle"
   VERBATIM

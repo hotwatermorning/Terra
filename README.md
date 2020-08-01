@@ -22,63 +22,61 @@ The yet another audio plugin hosting application. (alpha version)
 
 Currently Terra can be built on these platforms:
 
-* macOS 10.13 & Xcode 9.3.1
 * macOS 10.14 & Xcode 10.2.1
-* Windows 10 & Visual Studio 2017
 * Windows 10 & Visual Studio 2019
 
 ### Prerequisites
 
 * Java JRE (or JDK) version 8 or higher (for Gradle)
-* Git 2.8.1 or later
-* CMake 3.14.1 or later
-* Xcode 9.3.1 or later
-* Visual Studio 2017 or later
-* automake, libtool (macOS only)
-
-> automake and libtool can be installed with this command:
-> `brew install automake libtool`
+* Git 2.27.0 or later
+* CMake 3.15 or later
+* Xcode 11.3.1 or later
+* Visual Studio 2019 or later
+* autoconf, automake, libtool (macOS only)
 
 ### macOS
 
 ```sh
+# Install prerequisites
+brew install autoconf automake libtool
+
+cd /path/to/develop
+
+# Checkout the project
+git clone https://github.com/hotwatermorning/Terra.git
+cd Terra
+
+# Generate a project file and build it.
+# To build with release configuration, use `-Pconfig=Release`
 cd ./gradle
-
 ./gradlew build_all [-Pconfig=Debug]
-# The `config` property is optional. For release build, use `-Pconfig=Release` instead.
 
-open ../build_debug/Debug/Terra.app
+# To run the app, execute this command.
+open ../build/<Debug or Release>/Terra.app
+
+# To debug or modify source code, open the generated project file with this command.
+open ../build/Terra.xcodeproj
 ```
 
 ### Windows
 
 ```bat
+cd C:\path\to\develop
+
+REM Checkout the project
+git clone https://github.com/hotwatermorning/Terra.git
+cd Terra
+
+REM Generate a project file and build it.
+REM To build with release configuration, use `-Pconfig=Release`
 cd .\gradle
+.\gradlew build_all [-Pconfig=Debug]
 
-gradlew build_all [-Pconfig=Debug] [-Pmsvc_version="..."]
-: The `config` property is optional. For release build, use `-Pconfig=Release` instead.
-: The `msvc_version` property can be either `"Visual Studio 16 2019"` or `"Visual Studio 15 2017"`.
-: The former is the default value.
-: If you have only Visual Studio 2017, specify the latter value to the property.
-: For non-English locales, add `-Dfile.encoding=UTF-8` option to prevent Mojibake.
+REM To run the app, execute this command.
+open ..\build\<Debug or Release>\Terra.exe
 
-start ..\build_debug\Debug\Terra.exe
-```
-
-### TIPS
-
-* Building submodules may fail after checking out new commit which refers another submodule commits.
-If it occured, run the `gradlew` command again with `clean_all` task followed by the `build_all` task like this:
-
-```sh
-./gradlew clean_all build_all [-Pconfig=Debug]
-```
-
-* To cleanup the build directory of a specific submodule, remove `/path/to/Terra/ext/<submodule-name>/build_<config-name>` directory manually.
-* If submodules are already built and only Terra need to be built, you can run the `gradlew` command with `prepare_app` and `build_app` tasks to skip rebuilding submodules:
-
-```sh
-./gradlew prepare_app build_app [-Pconfig=Debug]
+REM To debug or modify source code, open the generated project file with this command.
+open ..\build\Terra.sln
 ```
 
 ## License and dependencies.

@@ -389,19 +389,29 @@ endforeach()
 list(APPEND TERRA_APP_SOURCES ${SCHEMA_SOURCES})
 list(APPEND TERRA_TEST_SOURCES ${SCHEMA_SOURCES})
 
-message("schema files: ${SCHEMA_FILES}")
-message("schema sources: ${SCHEMA_SOURCES}")
+# message("schema files: ${SCHEMA_FILES}")
+# message("schema sources: ${SCHEMA_SOURCES}")
 
 # スキーマをコンパイルするターゲットを追加する
 add_custom_target(
   compile-schemas
-  cd "${CMAKE_CURRENT_SOURCE_DIR}/gradle" &&
-  $<IF:$<BOOL:${MSVC}>,gradlew,./gradlew> compile_schemas -Pconfig=$<CONFIG>
+  "$<IF:$<BOOL:${MSVC}>,gradlew,./gradlew>" --debug compile_schemas -Pconfig=$<CONFIG>
   SOURCES ${SCHEMA_FILES}
-  DEPENDS protobuf
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/gradle"
+  VERBATIM
   )
 
-# add_dependencies(compile-schemas protobuf)
+add_dependencies(compile-schemas protobuf)
+
+if(MSVC)
+  file(GLOB_RECURSE RESOURCE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/data")
+  add_custom_target(
+    copy-resources
+    gradlew copy_resources -Pconfig=$<CONFIG>
+    SOURCES ${RESOURCE_FILES}
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/gradle"
+    )
+endif()
 
 ####################################################################
 # configure build targets
@@ -499,6 +509,10 @@ foreach(TARGET Terra;Terra-Test)
   message("Target: ${TARGET}")
 
   add_dependencies(${TARGET} build-submodules compile-schemas)
+
+  if(MSVC)
+    add_dependencies(${TARGET} copy-resources)
+  endif()
 
   target_include_directories(
     ${TARGET}
